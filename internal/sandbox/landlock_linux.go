@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
 	ll "github.com/landlock-lsm/go-landlock/landlock/syscall"
@@ -23,6 +24,9 @@ var config = landlock.Config{
 	HandledAccessFS: landlock.V10.HandledAccessFS,
 	Scoped:          landlock.V10.Scoped,
 }.BestEffort()
+
+// fileRights are the rights that apply to a file rather than a directory.
+const fileRights = ll.AccessFSExecute | ll.AccessFSWriteFile | ll.AccessFSReadFile | ll.AccessFSTruncate | ll.AccessFSIoctlDev
 
 func rights(a Access) landlock.AccessFSSet {
 	var r landlock.AccessFSSet
@@ -50,7 +54,12 @@ func Enforce(rs Ruleset) error {
 	}
 	rules := make([]landlock.Rule, 0, len(rs.Grants))
 	for _, g := range rs.Grants {
-		rules = append(rules, landlock.PathAccess(rights(g.Access), g.Path).IgnoreIfMissing())
+		r := rights(g.Access)
+		if fi, err := os.Stat(g.Path); err == nil && !fi.IsDir() {
+			// The kernel rejects directory rights on a file rule.
+			r &= fileRights
+		}
+		rules = append(rules, landlock.PathAccess(r, g.Path).IgnoreIfMissing())
 	}
 	if err := config.Restrict(rules...); err != nil {
 		return fmt.Errorf("landlock: %w", err)

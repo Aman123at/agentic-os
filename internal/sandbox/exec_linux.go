@@ -17,13 +17,14 @@ type helperSpec struct {
 	Argv   []string
 }
 
-// Command returns a command that runs argv as uid/gid, confined to rs.
+// Command returns a command that runs argv as uid/gid, confined to rs, with
+// exactly env as its environment (aosd's own environment is never inherited).
 //
 // Confinement must not touch the calling process (aosd stays unconfined), so the
 // command re-executes the current binary, which enforces rs on itself and then
 // executes argv. Every program that calls Command must call RunHelperIfRequested
 // at the start of main.
-func Command(rs Ruleset, uid, gid uint32, argv ...string) (*exec.Cmd, error) {
+func Command(rs Ruleset, uid, gid uint32, env []string, argv ...string) (*exec.Cmd, error) {
 	self, err := os.Executable()
 	if err != nil {
 		return nil, err
@@ -33,7 +34,7 @@ func Command(rs Ruleset, uid, gid uint32, argv ...string) (*exec.Cmd, error) {
 		return nil, err
 	}
 	cmd := exec.Command(self)
-	cmd.Env = append(os.Environ(), helperEnv+"="+string(spec))
+	cmd.Env = append(append([]string{}, env...), helperEnv+"="+string(spec))
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{Uid: uid, Gid: gid, Groups: []uint32{}},
 	}
