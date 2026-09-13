@@ -1,0 +1,5 @@
+# Force LF so scripts and configs work in Windows checkouts mounted into Linux containers.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.woff2 binary
