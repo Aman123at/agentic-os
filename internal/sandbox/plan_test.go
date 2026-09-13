@@ -134,3 +134,47 @@ func TestPlanHomeIsWritableExceptProtectedPaths(t *testing.T) {
 		t.Errorf("/home/aos: want create-only, got %v", got)
 	}
 }
+
+func TestPlanCleansPolicyPaths(t *testing.T) {
+	p := Policy{
+		Hidden:    []string{"/run/secrets/"},
+		Protected: []string{"/home/aos/.ssh/", "/home/aos//.bashrc"},
+		Writable:  []string{"/home/aos/"},
+	}
+
+	rs, err := Plan(p, machine())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]Access{
+		"/home/aos":           Create,
+		"/home/aos/Documents": Write,
+		"/home/aos/.ssh":      0,
+		"/home/aos/.bashrc":   0,
+		"/run":                List,
+		"/run/secrets":        0,
+	} {
+		if got := accessOf(t, rs, path) &^ Read; got != want {
+			t.Errorf("%s: want %v, got %v (grants %v)", path, want, got, rs.Grants)
+		}
+	}
+}
+
+func TestPlanProtectsTheTargetOfASymlinkedProtectedPath(t *testing.T) {
+	fsys := machine()
+	delete(fsys, "home/aos/.bashrc")
+	fsys["home/aos/dotfiles/bashrc"] = &fstest.MapFile{}
+	fsys["home/aos/dotfiles/vimrc"] = &fstest.MapFile{}
+	fsys["home/aos/.bashrc"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("dotfiles/bashrc")}
+
+	rs, err := Plan(defaultPolicy(), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := accessOf(t, rs, "/home/aos/dotfiles"); got&Write != 0 {
+		t.Errorf("/home/aos/dotfiles holds the target of Protected ~/.bashrc: want no write, got %v", got)
+	}
+	if got := accessOf(t, rs, "/home/aos/dotfiles/vimrc"); got&Write == 0 {
+		t.Errorf("/home/aos/dotfiles/vimrc: want writable, got %v", got)
+	}
+}

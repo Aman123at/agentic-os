@@ -3,6 +3,7 @@ package sandbox
 import (
 	"fmt"
 	"os"
+	"syscall"
 
 	"github.com/landlock-lsm/go-landlock/landlock"
 	ll "github.com/landlock-lsm/go-landlock/landlock/syscall"
@@ -48,12 +49,19 @@ func rights(a Access) landlock.AccessFSSet {
 // Enforce sets no_new_privs and restricts the calling process, and everything it
 // later executes, to rs. It cannot be undone.
 func Enforce(rs Ruleset) error {
-	// Set explicitly so setuid binaries (sudo) are neutralised even without Landlock.
-	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
-		return fmt.Errorf("prctl(PR_SET_NO_NEW_PRIVS): %w", err)
+	// no_new_privs is per thread and Go runs many; setting it on all of them keeps
+	// setuid binaries (sudo) neutralised even when Landlock is unavailable and
+	// go-landlock returns without touching threads.
+	if _, _, errno := syscall.AllThreadsSyscall(syscall.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0); errno != 0 {
+		return fmt.Errorf("prctl(PR_SET_NO_NEW_PRIVS): %w", errno)
 	}
 	rules := make([]landlock.Rule, 0, len(rs.Grants))
 	for _, g := range rs.Grants {
+		// Plan never grants symlinks, but one may have been swapped in since. Adding
+		// the rule would follow it, so refuse rather than grant its target.
+		if fi, err := os.Lstat(g.Path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("%s became a symlink after planning", g.Path)
+		}
 		r := rights(g.Access)
 		if fi, err := os.Stat(g.Path); err == nil && !fi.IsDir() {
 			// The kernel rejects directory rights on a file rule.

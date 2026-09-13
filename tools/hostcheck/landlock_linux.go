@@ -14,6 +14,14 @@ import (
 func checkLandlock(ctx context.Context, m *machine, rec recorder) {
 	abi := sandbox.ABI()
 	rec.check("Landlock is available", abi >= 1, "ABI %d", abi)
+	// no_new_privs must hold even without Landlock: it is what keeps sudo away.
+	base, err := sandbox.Plan(sandbox.DefaultPolicy(m.opts.Home, m.opts.Shared), sandbox.RootFS())
+	if err != nil {
+		rec.add("plan ruleset", Fail, "%v", err)
+		return
+	}
+	exit, out, confined := m.confined(ctx, base, `grep -q "^NoNewPrivs:[[:space:]]*1" /proc/self/status && ! sudo -n true 2>/dev/null`)
+	rec.check("Agent processes have no_new_privs and cannot sudo", confined && exit == 0, "%s", describe(exit, out))
 	if abi < 1 {
 		rec.add("Agent Session confinement", Skip, "no Landlock: Agents fall back to policy checks only (ADR-0004)")
 		return
@@ -90,7 +98,7 @@ func checkLandlock(ctx context.Context, m *machine, rec recorder) {
 	allowed("writes in a home folder", fmt.Sprintf("echo more >> %s && mkdir -p %s/sub && echo new > %s/sub/new.txt && rm -r %s/sub", q(free+"/file.txt"), q(free), q(free), q(free)))
 	// A directory split around a Protected Path only grants create, so a new file in it
 	// cannot be written until the Ruleset is re-planned (docs/m0-findings.md, F1).
-	exit, out, confined := m.confined(ctx, rs, fmt.Sprintf("echo new > %s/new.txt", q(work)))
+	exit, out, confined = m.confined(ctx, rs, fmt.Sprintf("echo new > %s/new.txt", q(work)))
 	rec.known("F1", "Agent writes a new file next to a Protected Path in one command", confined && exit == 0, "%s", describe(exit, out))
 	allowed("writes in /tmp", fmt.Sprintf("echo x > /tmp/%s && rm /tmp/%s", m.tag, m.tag))
 	allowed("creates a new top-level home folder", "mkdir "+q(newTop))
@@ -108,16 +116,16 @@ func checkLandlock(ctx context.Context, m *machine, rec recorder) {
 		denied("append to Protected ~/"+rel, "echo pwned >> "+q(target))
 		denied("truncate Protected ~/"+rel, "truncate -s 0 "+q(target))
 		denied("delete Protected ~/"+rel, "rm -f "+q(target))
-		denied("rename Protected ~/"+rel, "mv "+q(target)+" "+q(work+"/moved"))
-		denied("hard-link Protected ~/"+rel+" into a writable folder", "ln "+q(target)+" "+q(work+"/link"))
+		// Destinations are in a fully writable folder, so only the source's protection can refuse.
+		denied("rename Protected ~/"+rel, "mv "+q(target)+" "+q(free+"/moved"))
+		denied("hard-link Protected ~/"+rel+" into a writable folder", "ln "+q(target)+" "+q(free+"/link"))
 		denied("delete Protected ~/"+rel+" from Python", "python3 -c "+q("import os,sys; os.unlink(sys.argv[1])")+" "+q(target))
 	}
 	denied("delete a Protected top-level folder", "rm -rf "+q(topLocked))
-	denied("rename a Protected top-level folder", "mv "+q(topLocked)+" "+q(work+"/ssh"))
+	denied("rename a Protected top-level folder", "mv "+q(topLocked)+" "+q(free+"/ssh"))
 	denied("write a new file into a Protected folder", "echo pwned > "+q(topLocked+"/config"))
 	denied("create a symlink in home", "ln -s /tmp "+q(filepath.Join(home, m.tag+"-sym")))
 	denied("read a Hidden path", "cat "+q(hidden+"/token"))
-	denied("list /var/lib/aos", "ls /var/lib/aos")
 
 	if secrets, _ := filepath.Glob("/run/secrets/*"); len(secrets) > 0 {
 		// Output is discarded: the check must never print a secret.

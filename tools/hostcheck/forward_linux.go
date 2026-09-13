@@ -28,6 +28,11 @@ func checkForwarding(ctx context.Context, m *machine, rec recorder) {
 
 	addr, via := m.opts.AosdAddr, "aosd"
 	if !reachable(addr) {
+		if m.opts.RequireAosd {
+			rec.add("aosd is reachable at "+addr, Fail, "is the Machine running? docker compose ps")
+			return
+		}
+		rec.add("forwarding through aosd", Skip, "aosd is not running; checking the proxy in-process")
 		// aosd is not running (e.g. in CI's test container): check the same handler in-process.
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {

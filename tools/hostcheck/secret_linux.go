@@ -35,6 +35,7 @@ func checkSecret(rec recorder) {
 		return
 	}
 	rec.add("secret file is mounted", Pass, "%s, %d bytes", detail, fi.Size())
+	rec.check("secret file is owned by root and not writable by others", st.Uid == 0 && fi.Mode().Perm()&0o022 == 0, "%s", detail)
 
 	key, err := os.ReadFile(secretPath)
 	if err != nil {

@@ -7,14 +7,14 @@
 
 | # | Prototype | Result on the macOS Host |
 |---|---|---|
-| 0.1 | Landlock ruleset | ✅ Protected files cannot be written, truncated, deleted, renamed or hard-linked by shell commands or Python; `/run/secrets` and `/var/lib/aos` cannot be read; `sudo` fails; a User Session's environment cannot be read and it cannot be signalled; User Sessions are unaffected. ⚠️ **F1** and **F2** need a decision. |
+| 0.1 | Landlock ruleset | ⚠️ **Partial: F1 and F2 need a decision.** ✅ Protected files cannot be written, truncated, deleted, renamed or hard-linked by shell commands or Python; `/run/secrets` and `/var/lib/aos` cannot be read; `sudo` fails; a User Session's environment cannot be read and it cannot be signalled; User Sessions are unaffected. `no_new_privs` holds on every thread. |
 | 0.2 | Session framing | ✅ 1,000 mixed commands (23 kinds: binary output, NUL bytes, no trailing newline, heredocs with tabs, 100 KB command text, fake markers, background jobs, interactive prompts, `return`, redirected stdout) all framed with correct output and exit codes. Round trip p50 0.32 ms, **p95 0.46 ms** (target < 10 ms). |
 | 0.3 | Replay from cache | ✅ 10 packages (17 with dependencies) reinstalled with `--network none` in a fresh container at exact versions, by two strategies (**F9**). |
 | 0.4 | Compose secret | ✅ Arrives only as a file (`root:root 0444`, copied in, not bind-mounted); the key is absent from `docker inspect`, `docker compose config`, and every `/proc/*/environ` and `cmdline`. ⚠️ **F4**: `up` fails when the variable is entirely unset. |
 | 0.5 | Forwarding | ✅ Subdomain and path modes (HTTP and WebSocket) work through aosd. Chrome and Safari: subdomain mode works in both (**F5**); path mode gives `origin=null`, with cookies and localStorage blocked, in both. Override file publishes a port range. Edge and Firefox are not installed on this Host. |
-| 0.6 | Build | ✅ `docker compose up --build` from zsh for `cli` and `ui`; the `cli` build never runs the Node stage; `AOS_MODE=ui` on a `cli` image fails clearly; start to healthy in 0.32 s; aosd idle RSS 9.8 MB. ⚠️ **F3** size targets missed; ⚠️ **F6** Docker Desktop hangs on bind mounts from `~/Desktop`. |
+| 0.6 | Build | ⚠️ **Partial: F3 and F6.** ✅ `docker compose up --build` from zsh for `cli` and `ui`; the `cli` build never runs the Node stage; `AOS_MODE=ui` on a `cli` image fails clearly; start to healthy in 0.32 s; aosd idle RSS 9.8 MB. Size targets missed (F3); Docker Desktop hangs on bind mounts from `~/Desktop` (F6). |
 | 0.7 | Low ports | ✅ `ip_unprivileged_port_start=0`; both User and Agent Sessions bind port 80. |
-| 0.8 | Host check | ✅ `docker compose exec aos aos doctor --host-check` runs 0.1, 0.2, 0.4, 0.5 (without browsers) and 0.7: **54 passed, 0 failed, 2 known** (F1, F2). |
+| 0.8 | Host check | ✅ `docker compose exec aos aos doctor --host-check` runs 0.1, 0.2, 0.4, 0.5 (without browsers) and 0.7: **56 passed, 0 failed, 2 known** (F1, F2), with forwarding checked through the running aosd. |
 
 ## Decisions needed before M1
 
@@ -77,14 +77,31 @@ I verified every compose scenario with `AOS_SHARED_DIR` in a scratch directory, 
 - **F10 — Session framing design.**
   - aosd writes each command to a root-owned file under `/run/aos` and types one short line: ` __aos_c <nonce>; source <file>; __aos_d <nonce> $?`. Markers are written to `/dev/tty`, so they survive redirected stdout.
   - `exit` ends the shell, and aosd must restart the Session. Output uses CR LF (PTY), which Tools normalise.
-- **F11 — Sandbox details.**
+  - `Run` refuses (`ErrBusy`) while a command still waits for input, so the next command is never typed into it. Command files are deleted when the command finishes. Output that background jobs print between commands is dropped; background commands are tracked separately (§10).
+  - For M1:
+    - Command files are readable by other Agent Sessions (same uid) while they run. M1 makes `/run/aos/sessions` Hidden and grants each Agent Session only its own directory.
+    - §10's "last line looks like a prompt" heuristic belongs to the `run_command` Tool; M0 detects idle output only.
+- **F11 — Sandbox details** (several found by the M0 code review and fixed):
   - Landlock rejects directory rights on file rules, so the applier masks them.
-  - Symlinks are never granted: Landlock would grant their target.
+  - Symlinks are never granted: Landlock would grant their target. A Protected or Hidden path that is itself a symlink also protects its target.
+  - Enforcement refuses a grant path that became a symlink after planning. A narrow window remains between that check and go-landlock opening the path.
+  - Policy paths are cleaned: a trailing slash once disabled protection.
+  - `no_new_privs` is set on **all** threads, and the helper execs from a locked thread. Previously a Host without Landlock could have exec'd from a thread without it, leaving `sudo` usable.
+  - The Ruleset travels as argv chunks, not one environment string, which avoids E2BIG on large folders.
   - The sandbox helper receives an explicit environment, never aosd's, so `AOS_ACCESS_TOKEN` cannot leak.
-  - A check counts as "denied" only if the confined shell actually started.
+  - Host check hardening:
+    - A check counts as "denied" only if the confined shell actually started.
+    - Rename and hard-link probes target a fully writable folder.
+    - The `/var/lib/aos` probe was dropped, since file permissions already deny it.
+    - The secret file's owner and mode are asserted.
+    - `aos doctor --host-check` fails if aosd is unreachable, instead of silently testing in-process.
 - **F12 — Smaller items for M1.**
+  - `/dev` is Writable for Agents (`/dev/null`, `/dev/tty`, the PTY); this is not in §7.2's list.
   - The Host allow-list rejects LAN host names, so `AOS_BIND` beyond localhost needs configured names.
-  - The proxy strips the Desktop session cookie from requests and `Set-Cookie` from responses in both modes; path mode adds `Content-Security-Policy: sandbox` without `allow-same-origin`.
+  - The proxy strips the Desktop session cookie from requests.
+  - From responses, in both modes, the proxy drops any `Set-Cookie` that names it (however spelled), carries a `Domain` attribute (cookie tossing from `<port>.localhost` onto `localhost`), or doesn't parse.
+  - Path mode adds `Content-Security-Policy: sandbox` without `allow-same-origin`, and keeps percent-encoded paths intact.
+  - M1 should also name the cookie `__Host-aos_session`.
   - aosd's own port is never forwarded, which would loop.
   - `sudo` is added to the baseline; it was missing from §6.3 but User Sessions need it.
 
@@ -100,7 +117,7 @@ Please send the full report. Expected on a healthy Host: `0 failed` and 2 known 
 
 ## Proposed plan and ADR changes (for approval)
 
-1. ADR-0004 and PLAN §7.2–7.3: adopt Option B (F1). Mount the Shared Folder at `/shared` (F2).
+1. ADR-0004 and PLAN §7.2–7.3: adopt Option B (F1); mount the Shared Folder at `/shared` (F2); list `/dev` as Writable. ADR-0004's ruleset section is final once this is decided.
 2. PLAN §6.2: volume `${AOS_SHARED_DIR}:/shared`; README quick start begins with `cp .env.example .env` (F4); troubleshooting entry for F6.
 3. PLAN §6.3/§16: size targets per F3; add `sudo` and `apt-utils` to the baseline.
 4. PLAN §11: Ledger records dependencies; Replay installs cached `.deb` files first (F9).

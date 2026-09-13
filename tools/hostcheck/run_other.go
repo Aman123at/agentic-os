@@ -8,7 +8,7 @@ import (
 )
 
 // Options describes the Machine under test.
-type Options struct{}
+type Options struct{ RequireAosd bool }
 
 // DefaultOptions matches the Machine image.
 func DefaultOptions() Options { return Options{} }

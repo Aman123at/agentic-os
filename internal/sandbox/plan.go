@@ -66,15 +66,21 @@ type Ruleset struct {
 	split map[string][]string
 }
 
-// Plan computes the grants that implement p on the filesystem fsys, which must
-// be rooted at "/" (for example os.DirFS("/")).
-func Plan(p Policy, fsys fs.ReadDirFS) (Ruleset, error) {
+// FS is the filesystem Plan inspects, rooted at "/" (see RootFS).
+type FS interface {
+	fs.ReadDirFS
+	fs.ReadLinkFS
+}
+
+// Plan computes the grants that implement p on the filesystem fsys.
+func Plan(p Policy, fsys FS) (Ruleset, error) {
 	rs := Ruleset{split: map[string][]string{}}
-	if err := carve(fsys, "/", p.Hidden, Read, List, &rs); err != nil {
+	hidden := withTargets(fsys, p.Hidden)
+	if err := carve(fsys, "/", hidden, Read, List, &rs); err != nil {
 		return Ruleset{}, err
 	}
-	readOnly := append(append([]string{}, p.Protected...), p.Hidden...)
-	for _, w := range p.Writable {
+	readOnly := append(withTargets(fsys, p.Protected), hidden...)
+	for _, w := range cleanAll(p.Writable) {
 		if _, err := fs.Stat(fsys, fsPath(w)); errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -85,9 +91,58 @@ func Plan(p Policy, fsys fs.ReadDirFS) (Ruleset, error) {
 	return rs, nil
 }
 
+// withTargets cleans paths and adds the final target of every path that is, or
+// passes through, a symlink: protecting ~/.bashrc must also protect the file it
+// links to.
+func withTargets(fsys FS, paths []string) []string {
+	out := cleanAll(paths)
+	for _, p := range out {
+		if t := resolve(fsys, p); t != p {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+func cleanAll(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, path.Clean("/"+p))
+	}
+	return out
+}
+
+// resolve follows symlinks in every component of the absolute path p, as the
+// kernel would. Components that do not exist are kept as they are.
+func resolve(fsys FS, p string) string {
+	parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
+	cur := "/"
+	for hops := 0; len(parts) > 0 && hops < 40; {
+		next := path.Join(cur, parts[0])
+		parts = parts[1:]
+		fi, err := fsys.Lstat(fsPath(next))
+		if err != nil || fi.Mode()&fs.ModeSymlink == 0 {
+			cur = next
+			continue
+		}
+		target, err := fsys.ReadLink(fsPath(next))
+		if err != nil {
+			cur = next
+			continue
+		}
+		hops++
+		if !path.IsAbs(target) {
+			target = path.Join(cur, target)
+		}
+		parts = append(strings.Split(strings.TrimPrefix(path.Clean(target), "/"), "/"), parts...)
+		cur = "/"
+	}
+	return path.Clean(path.Join(append([]string{cur}, parts...)...))
+}
+
 // carve grants full on every path under root that contains no excluded path, and
 // partial on each directory that had to be split to exclude something.
-func carve(fsys fs.ReadDirFS, root string, excluded []string, full, partial Access, rs *Ruleset) error {
+func carve(fsys FS, root string, excluded []string, full, partial Access, rs *Ruleset) error {
 	if isExcluded(root, excluded) {
 		return nil
 	}

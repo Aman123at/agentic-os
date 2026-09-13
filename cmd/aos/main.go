@@ -45,7 +45,9 @@ func doctorCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Fprintln(w, "\nHost check")
-			report, err := hostcheck.Run(cmd.Context(), hostcheck.DefaultOptions())
+			opts := hostcheck.DefaultOptions()
+			opts.RequireAosd = true
+			report, err := hostcheck.Run(cmd.Context(), opts)
 			if err != nil {
 				return err
 			}

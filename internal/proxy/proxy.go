@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -37,14 +38,14 @@ func New(next http.Handler, selfPort int) http.Handler {
 				http.Error(w, "invalid port", http.StatusBadRequest)
 				return
 			}
-			forward(w, r, port, r.URL.Path, false)
+			forward(w, r, port, r.URL.EscapedPath(), false)
 			return
 		}
 		if name != "localhost" && name != "127.0.0.1" && name != "::1" {
 			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 			return
 		}
-		rest, ok := strings.CutPrefix(r.URL.Path, "/port/")
+		rest, ok := strings.CutPrefix(r.URL.EscapedPath(), "/port/")
 		if !ok {
 			next.ServeHTTP(w, r)
 			return
@@ -57,26 +58,37 @@ func New(next http.Handler, selfPort int) http.Handler {
 		}
 		if !hasSlash {
 			// Relative URLs in the Service's pages only resolve under a trailing slash.
-			http.Redirect(w, r, "/port/"+portText+"/", http.StatusPermanentRedirect)
+			target := "/port/" + portText + "/"
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusPermanentRedirect)
 			return
 		}
 		forward(w, r, port, "/"+subpath, true)
 	})
 }
 
-func forward(w http.ResponseWriter, r *http.Request, port int, path string, sandbox bool) {
+// forward proxies r to the Service on port. escapedPath is the path to request,
+// still percent-encoded so %2F and friends reach the Service unchanged.
+func forward(w http.ResponseWriter, r *http.Request, port int, escapedPath string, sandbox bool) {
+	path, err := url.PathUnescape(escapedPath)
+	if err != nil {
+		http.Error(w, "invalid path", http.StatusBadRequest)
+		return
+	}
 	target := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	rp := &httputil.ReverseProxy{
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.Out.URL.Scheme = "http"
 			pr.Out.URL.Host = target
 			pr.Out.URL.Path = path
-			pr.Out.URL.RawPath = ""
+			pr.Out.URL.RawPath = escapedPath
 			pr.Out.Host = r.Host
 			removeCookie(pr.Out.Header, SessionCookie)
 		},
 		ModifyResponse: func(resp *http.Response) error {
-			removeSetCookie(resp.Header, SessionCookie)
+			filterSetCookie(resp.Header)
 			if sandbox {
 				// Added alongside any policy of the Service's own; browsers enforce all of them.
 				resp.Header.Add("Content-Security-Policy", sandboxCSP)
@@ -124,12 +136,20 @@ func removeCookie(h http.Header, name string) {
 	}
 }
 
-func removeSetCookie(h http.Header, name string) {
+// filterSetCookie drops cookies a Service must never set: the Desktop's session
+// cookie under any spelling a browser would accept, cookies with a Domain
+// attribute (a subdomain Service could toss them onto localhost), and anything
+// that does not parse.
+func filterSetCookie(h http.Header) {
 	values := h.Values("Set-Cookie")
 	h.Del("Set-Cookie")
 	for _, v := range values {
-		if !strings.HasPrefix(strings.TrimSpace(v), name+"=") {
-			h.Add("Set-Cookie", v)
+		name, _, _ := strings.Cut(v, "=")
+		name = strings.TrimSpace(name)
+		c, err := http.ParseSetCookie(v)
+		if err != nil || name == "" || strings.EqualFold(name, SessionCookie) || c.Domain != "" {
+			continue
 		}
+		h.Add("Set-Cookie", v)
 	}
 }

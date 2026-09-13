@@ -47,7 +47,7 @@ func main() {
 	}
 
 	srv := &http.Server{
-		Addr:              ":7700",
+		Addr:              fmt.Sprintf(":%d", port),
 		Handler:           proxy.New(mux, port),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

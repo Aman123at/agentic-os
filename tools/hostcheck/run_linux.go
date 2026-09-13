@@ -24,6 +24,9 @@ type Options struct {
 	User   string // the Machine's unprivileged user
 	// AosdAddr is aosd's listen address inside the Machine, used by the forwarding check.
 	AosdAddr string
+	// RequireAosd fails the forwarding check when aosd is not reachable, instead of
+	// checking the proxy in-process (which is all CI's test container can do).
+	RequireAosd bool
 	// Commands is the number of commands in the Session framing corpus.
 	Commands int
 }

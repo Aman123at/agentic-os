@@ -61,6 +61,7 @@ type Command struct {
 	activity chan struct{}
 	done     chan struct{}
 	exited   <-chan struct{}
+	file     string
 }
 
 // Result is what Wait observed.
@@ -74,6 +75,10 @@ type Result struct {
 
 // ErrExited is returned when the Session's shell has exited.
 var ErrExited = errors.New("session shell exited")
+
+// ErrBusy is returned by Run while the previous command has not finished; any
+// line typed now would become that command's input.
+var ErrBusy = errors.New("session is still running a command")
 
 // Start launches bash on a new PTY.
 func Start(opts Options) (*Session, error) {
@@ -152,28 +157,40 @@ func (s *Session) read() {
 	}
 }
 
-// Run starts command in the Session. Only one command runs at a time; the
-// previous one must have finished.
+// Run starts command in the Session. Only one command runs at a time: Run
+// returns ErrBusy until the previous command has finished.
 func (s *Session) Run(command string) (*Command, error) {
-	s.seq++
-	nonce, err := newNonce()
+	c, line, err := s.prepare(command)
 	if err != nil {
 		return nil, err
 	}
-	file := filepath.Join(s.opts.Dir, "cmd-"+strconv.Itoa(s.seq))
-	if err := os.WriteFile(file, []byte(command+"\n"), 0o644); err != nil {
-		return nil, err
-	}
-	c := &Command{frame: NewFrame(nonce), activity: make(chan struct{}, 1), done: make(chan struct{}), exited: s.exited}
-	s.mu.Lock()
-	s.current = c
-	s.mu.Unlock()
-	// Ctrl-U clears anything typed at the prompt; the leading space keeps the line out of history.
-	line := fmt.Sprintf("\x15 __aos_c %s; source %s; __aos_d %s $?\r", nonce, file, nonce)
+	// Written without holding s.mu: the reader needs it to drain output while we block.
 	if _, err := s.pty.Write([]byte(line)); err != nil {
 		return nil, err
 	}
 	return c, nil
+}
+
+// prepare reserves the Session for command and returns the line to type.
+func (s *Session) prepare(command string) (*Command, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current != nil && !s.current.finished() {
+		return nil, "", ErrBusy
+	}
+	s.seq++
+	nonce, err := newNonce()
+	if err != nil {
+		return nil, "", err
+	}
+	file := filepath.Join(s.opts.Dir, "cmd-"+strconv.Itoa(s.seq))
+	if err := os.WriteFile(file, []byte(command+"\n"), 0o644); err != nil {
+		return nil, "", err
+	}
+	c := &Command{frame: NewFrame(nonce), activity: make(chan struct{}, 1), done: make(chan struct{}), exited: s.exited, file: file}
+	s.current = c
+	// Ctrl-U clears anything typed at the prompt; the leading space keeps the line out of history.
+	return c, fmt.Sprintf("\x15 __aos_c %s; source %s; __aos_d %s $?\r", nonce, file, nonce), nil
 }
 
 // Input writes keystrokes to the Session, for commands waiting for input.
@@ -209,7 +226,14 @@ func (c *Command) feed(chunk []byte) {
 	}
 	if c.frame.Done() {
 		close(c.done)
+		_ = os.Remove(c.file)
 	}
+}
+
+func (c *Command) finished() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.frame.Done()
 }
 
 // Wait returns when the command finishes, or, if idle > 0, when it has produced

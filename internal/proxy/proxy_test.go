@@ -15,7 +15,12 @@ func service(t *testing.T) (port string) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Set-Cookie", "app=1; Path=/")
 		w.Header().Add("Set-Cookie", SessionCookie+"=stolen; Path=/")
-		fmt.Fprintf(w, "path=%s query=%s cookies=%s", r.URL.Path, r.URL.RawQuery, r.Header.Get("Cookie"))
+		// Browsers trim the name, so these would also replace the session cookie.
+		w.Header().Add("Set-Cookie", SessionCookie+" =stolen; Path=/")
+		w.Header().Add("Set-Cookie", "="+SessionCookie+"=stolen; Path=/")
+		// A subdomain Service must not toss cookies onto the Desktop's localhost.
+		w.Header().Add("Set-Cookie", "tossed=1; Domain=localhost; Path=/")
+		fmt.Fprintf(w, "path=%s query=%s cookies=%s", r.URL.EscapedPath(), r.URL.RawQuery, r.Header.Get("Cookie"))
 	}))
 	t.Cleanup(srv.Close)
 	u, _ := url.Parse(srv.URL)
@@ -74,19 +79,27 @@ func TestServicesCannotSetTheDesktopSessionCookie(t *testing.T) {
 		do(t, "localhost:7700", "/port/"+port+"/"),
 		do(t, port+".localhost:7700", "/"),
 	} {
-		for _, c := range rec.Result().Cookies() {
-			if c.Name == SessionCookie {
-				t.Errorf("Set-Cookie for %s reached the browser", SessionCookie)
-			}
+		if got := rec.Header().Values("Set-Cookie"); len(got) != 1 || got[0] != "app=1; Path=/" {
+			t.Errorf("Set-Cookie reaching the browser = %q, want only the Service's own app cookie", got)
 		}
 	}
 }
 
-func TestPathModeWithoutTrailingSlashRedirects(t *testing.T) {
-	rec := do(t, "localhost:7700", "/port/8000")
+func TestPathModeKeepsEscapedPaths(t *testing.T) {
+	port := service(t)
 
-	if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != "/port/8000/" {
-		t.Errorf("got %d Location=%q, want 308 to /port/8000/", rec.Code, rec.Header().Get("Location"))
+	rec := do(t, "localhost:7700", "/port/"+port+"/files/a%2Fb%20c")
+
+	if got, want := rec.Body.String(), "path=/files/a%2Fb%20c query= cookies=app=1"; got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+}
+
+func TestPathModeWithoutTrailingSlashRedirects(t *testing.T) {
+	rec := do(t, "localhost:7700", "/port/8000?x=1")
+
+	if rec.Code != http.StatusPermanentRedirect || rec.Header().Get("Location") != "/port/8000/?x=1" {
+		t.Errorf("got %d Location=%q, want 308 to /port/8000/?x=1", rec.Code, rec.Header().Get("Location"))
 	}
 }
 

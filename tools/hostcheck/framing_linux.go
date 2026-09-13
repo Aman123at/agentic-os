@@ -3,6 +3,7 @@ package hostcheck
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -100,6 +101,8 @@ func checkFraming(ctx context.Context, m *machine, rec recorder) {
 	}
 	rec.check(fmt.Sprintf("%d mixed commands framed with correct output and exit codes", m.opts.Commands),
 		len(failures) == 0, "%d kinds; %s", len(counts), strings.Join(failures, "; "))
+	left, _ := filepath.Glob(filepath.Join(dir, "cmd-*"))
+	rec.check("command files are removed once commands finish", len(left) <= 1, "%d left", len(left))
 
 	var latencies []time.Duration
 	for i := 0; i < 300; i++ {
@@ -137,6 +140,9 @@ func runCase(ctx context.Context, s *session.Session, fc framingCase) error {
 	if fc.input != "" {
 		if !res.Waiting {
 			return fmt.Errorf("finished without waiting for input: %q", res.Output)
+		}
+		if _, err := s.Run("echo typed-into-the-prompt"); !errors.Is(err, session.ErrBusy) {
+			return fmt.Errorf("Run while waiting for input: got %v, want ErrBusy", err)
 		}
 		if err := s.Input([]byte(fc.input)); err != nil {
 			return err

@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -30,6 +29,6 @@ func DefaultPolicy(home, shared string) Policy {
 }
 
 // RootFS is the Machine's filesystem rooted at "/", for Plan and Ruleset.Stale.
-func RootFS() fs.ReadDirFS {
-	return os.DirFS("/").(fs.ReadDirFS)
+func RootFS() FS {
+	return os.DirFS("/").(FS)
 }
