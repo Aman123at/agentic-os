@@ -1,0 +1,9 @@
+version: "2"
+linters:
+  exclusions:
+    # Unchecked Close, fmt.Fprint* and os.Remove* are conventional in Go.
+    presets:
+      - std-error-handling
+formatters:
+  enable:
+    - gofmt
