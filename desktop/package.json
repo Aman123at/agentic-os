@@ -1,0 +1,10 @@
+{
+  "name": "aos-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Placeholder until M3: proves the ui target builds and embeds the Desktop.",
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

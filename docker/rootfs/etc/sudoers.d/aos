@@ -1,0 +1,2 @@
+# User Sessions may use sudo. Agent Sessions cannot: no_new_privs disables setuid (ADR-0004).
+aos ALL=(ALL) NOPASSWD:ALL

@@ -1,0 +1,12 @@
+# Never send secrets or local state to the build context.
+.env
+.env.*
+!.env.example
+compose.override.yaml
+shared/
+.git/
+bin/
+dist/
+desktop/node_modules/
+desktop/dist/
+**/.DS_Store

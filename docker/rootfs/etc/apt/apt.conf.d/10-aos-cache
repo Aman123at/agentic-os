@@ -1,0 +1,6 @@
+// Keep downloaded packages in the aos-pkgcache volume so Replay can reinstall
+// them offline at exact versions (ADR-0003, PLAN.md §11).
+Binary::apt::APT::Keep-Downloaded-Packages "true";
+APT::Keep-Downloaded-Packages "true";
+Dir::Cache::archives "/var/cache/aos/apt/archives";
+Dir::State::lists "/var/cache/aos/apt/lists";

@@ -1,0 +1,53 @@
+# Agentic OS: `docker compose up --build`, then open http://localhost:7700
+# Configuration: copy .env.example to .env (PLAN.md §6.4).
+name: agentic-os
+
+services:
+  aos:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: ${AOS_MODE:-ui}
+    image: agentic-os:${AOS_MODE:-ui}
+    init: true
+    hostname: aos
+    stop_grace_period: 30s
+    ports:
+      - "${AOS_BIND:-127.0.0.1}:${AOS_PORT:-7700}:7700"
+    # Explicit list: never env_file, which would put OPENAI_API_KEY into the
+    # environment of every process. The key arrives only as a secret file.
+    environment:
+      AOS_MODE: ${AOS_MODE:-ui}
+      AOS_BIND: ${AOS_BIND:-127.0.0.1}
+      AOS_PORT: ${AOS_PORT:-7700}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+      OPENAI_REASONING_EFFORT: ${OPENAI_REASONING_EFFORT:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      AOS_ACCESS_TOKEN: ${AOS_ACCESS_TOKEN:-}
+      AOS_AUTONOMY: ${AOS_AUTONOMY:-confirm-risky}
+      AOS_MAX_TASKS: ${AOS_MAX_TASKS:-3}
+      AOS_MAX_RETRIES: ${AOS_MAX_RETRIES:-3}
+      AOS_TASK_COST_LIMIT_USD: ${AOS_TASK_COST_LIMIT_USD:-}
+      AOS_DAILY_COST_LIMIT_USD: ${AOS_DAILY_COST_LIMIT_USD:-}
+      AOS_REQUIRE_LANDLOCK: ${AOS_REQUIRE_LANDLOCK:-false}
+      AOS_UID: ${AOS_UID:-1000}
+      AOS_GID: ${AOS_GID:-1000}
+      AOS_TRASH_RETENTION_DAYS: ${AOS_TRASH_RETENTION_DAYS:-30}
+      AOS_TRASH_MAX_GB: ${AOS_TRASH_MAX_GB:-5}
+      TZ: ${TZ:-UTC}
+    secrets:
+      - openai_api_key
+    volumes:
+      - aos-home:/home/aos
+      - aos-state:/var/lib/aos
+      - aos-pkgcache:/var/cache/aos
+      - ${AOS_SHARED_DIR:-./shared}:/home/aos/Shared
+
+secrets:
+  openai_api_key:
+    environment: OPENAI_API_KEY
+
+volumes:
+  aos-home: {}
+  aos-state: {}
+  aos-pkgcache: {}

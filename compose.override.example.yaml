@@ -1,0 +1,8 @@
+# Publish extra Service ports directly on the Host (full fidelity in every browser).
+# Copy to compose.override.yaml, which Compose loads automatically, set
+# AOS_PUBLISH_PORTS in .env (a port or a range such as 8000-8010), and run
+# `docker compose up -d` again.
+services:
+  aos:
+    ports:
+      - "${AOS_BIND:-127.0.0.1}:${AOS_PUBLISH_PORTS:?set AOS_PUBLISH_PORTS in .env}:${AOS_PUBLISH_PORTS}"
