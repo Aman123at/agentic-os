@@ -19,3 +19,5 @@ internal/webui/dist/*
 .DS_Store
 .idea/
 .vscode/
+/aosd
+/aos
