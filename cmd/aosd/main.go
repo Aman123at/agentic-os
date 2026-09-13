@@ -5,7 +5,7 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -37,12 +37,12 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ok\n") })
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "ok\n") })
 	if assets := webui.Assets(); assets != nil && mode == "ui" {
 		mux.Handle("GET /", http.FileServerFS(assets))
 	} else {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) {
-			io.WriteString(w, "Agentic OS is running in cli Mode: docker compose exec aos aos\n")
+			fmt.Fprint(w, "Agentic OS is running in cli Mode: docker compose exec aos aos\n")
 		})
 	}
 
@@ -60,7 +60,11 @@ func main() {
 		_ = srv.Shutdown(shutdown)
 	}()
 
-	log.Printf("%s Mode, listening on :%d (Desktop: http://localhost:%d)", mode, port, port)
+	hostPort := os.Getenv("AOS_PORT")
+	if hostPort == "" {
+		hostPort = "7700"
+	}
+	log.Printf("%s Mode, listening on :%d (on the Host: http://localhost:%s)", mode, port, hostPort)
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}

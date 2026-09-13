@@ -1,3 +1,5 @@
+//go:build linux
+
 // Command sandbox-run is an M0 spike tool: it runs a command as uid 1000 under a
 // Ruleset planned from flags, so alternative Landlock layouts can be probed from
 // a shell inside the Machine image.

@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -25,7 +24,7 @@ func service(t *testing.T) (port string) {
 
 // desktop stands in for everything aosd serves itself.
 var desktop = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-	io.WriteString(w, "desktop")
+	fmt.Fprint(w, "desktop")
 })
 
 func do(t *testing.T, host, target string) *httptest.ResponseRecorder {

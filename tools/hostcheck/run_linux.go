@@ -149,3 +149,30 @@ func truncate(s string, n int) string {
 func describe(exit int, out string) string {
 	return fmt.Sprintf("exit %d: %s", exit, truncate(out, 160))
 }
+
+// recorder collects results for one prototype.
+type recorder struct {
+	id      string
+	results *Report
+}
+
+func (rec recorder) add(name string, status Status, detail string, args ...any) {
+	*rec.results = append(*rec.results, Result{ID: rec.id, Name: name, Status: status, Detail: fmt.Sprintf(detail, args...)})
+}
+
+// known records a check whose failure is a documented design finding.
+func (rec recorder) known(finding, name string, ok bool, detail string, args ...any) {
+	if ok {
+		rec.add(name, Pass, detail, args...)
+		return
+	}
+	rec.add(name, Known, "finding "+finding+": "+detail, args...)
+}
+
+func (rec recorder) check(name string, ok bool, detail string, args ...any) {
+	status := Pass
+	if !ok {
+		status = Fail
+	}
+	rec.add(name, status, detail, args...)
+}

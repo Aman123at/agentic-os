@@ -23,7 +23,7 @@ func checkForwarding(ctx context.Context, m *machine, rec recorder) {
 		return
 	}
 	defer svc.Close()
-	go http.Serve(svc, testService())
+	go func() { _ = http.Serve(svc, testService()) }()
 	port := strconv.Itoa(svc.Addr().(*net.TCPAddr).Port)
 
 	addr, via := m.opts.AosdAddr, "aosd"
@@ -35,7 +35,7 @@ func checkForwarding(ctx context.Context, m *machine, rec recorder) {
 			return
 		}
 		defer ln.Close()
-		go http.Serve(ln, proxy.New(http.NotFoundHandler(), 7700))
+		go func() { _ = http.Serve(ln, proxy.New(http.NotFoundHandler(), 7700)) }()
 		addr, via = ln.Addr().String(), "in-process proxy (aosd not running)"
 	}
 
@@ -98,7 +98,7 @@ func reachable(addr string) bool {
 func testService() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/hello", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, "service:"+r.URL.Path)
+		fmt.Fprint(w, "service:"+r.URL.Path)
 	})
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Upgrade") != "websocket" {
@@ -110,10 +110,10 @@ func testService() http.Handler {
 			return
 		}
 		defer conn.Close()
-		buf.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
+		_, _ = buf.WriteString("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
 		buf.Flush()
 		line, _ := buf.ReadString('\n')
-		buf.WriteString("echo:" + line)
+		_, _ = buf.WriteString("echo:" + line)
 		buf.Flush()
 	})
 	return mux
