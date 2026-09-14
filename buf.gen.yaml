@@ -1,5 +1,6 @@
 version: v2
-# Local plugins pinned in go.mod (`tool` directives); TypeScript clients arrive with the Desktop (M3).
+# Go plugins are pinned in go.mod (`tool` directives). The TypeScript plugin is a
+# devDependency of the Desktop, so run `cd desktop && npm ci` before regenerating.
 plugins:
   - local: ["go", "tool", "protoc-gen-go"]
     out: gen/go
@@ -7,3 +8,6 @@ plugins:
   - local: ["go", "tool", "protoc-gen-connect-go"]
     out: gen/go
     opt: paths=source_relative
+  - local: ["./desktop/node_modules/.bin/protoc-gen-es"]
+    out: desktop/src/gen
+    opt: target=ts

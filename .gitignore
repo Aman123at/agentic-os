@@ -12,6 +12,7 @@ shared/
 /dist/
 desktop/node_modules/
 desktop/dist/
+desktop/*.tsbuildinfo
 internal/webui/dist/*
 !internal/webui/dist/.keep
 
