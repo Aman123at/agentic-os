@@ -1,15 +1,18 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, image, integration, e2e. With no arguments, all run in order.
+// Stages: lint, unit, ui, image, integration, e2e, playwright. With no arguments,
+// all run in order.
 package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -20,15 +23,22 @@ var sizeTargets = map[string]int{"cli": 520, "ui": 540}
 
 const compressedTargetMB = 180
 
+// bundleBudgetKB is the Desktop's initial bundle target, gzipped (PLAN.md §16).
+const bundleBudgetKB = 150
+
+const desktopDir = "desktop"
+
 var stages = []struct {
 	name string
 	run  func() error
 }{
 	{"lint", lint},
 	{"unit", unit},
+	{"ui", ui},
 	{"image", image},
 	{"integration", integration},
 	{"e2e", e2e},
+	{"playwright", playwright},
 }
 
 func main() {
@@ -77,6 +87,88 @@ func lint() error {
 
 func unit() error {
 	return run("go", "test", "./...")
+}
+
+// ui builds the Desktop and checks its initial bundle against the §16 budget.
+func ui() error {
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "run", "build"); err != nil {
+		return err
+	}
+	kb, err := bundleKB()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("    initial bundle: %d KB gzipped (target < %d KB)\n", kb, bundleBudgetKB)
+	if kb >= bundleBudgetKB {
+		return fmt.Errorf("the Desktop's initial bundle is over its %d KB budget", bundleBudgetKB)
+	}
+	return nil
+}
+
+// playwright runs the Desktop's browser e2e and performance suite (§16, §17).
+// The specs arrive in M3.5; until then this reports that there is nothing to run.
+func playwright() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "e2e")); os.IsNotExist(err) {
+		fmt.Println("    no Playwright specs yet (added in M3.5)")
+		return nil
+	}
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	return run("npm", "--prefix", desktopDir, "run", "e2e")
+}
+
+// npmInstall installs the Desktop's dependencies, skipping the reinstall when a
+// developer already has node_modules in place; CI starts from a clean checkout.
+func npmInstall() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "node_modules")); err == nil {
+		return nil
+	}
+	return run("npm", "ci", "--prefix", desktopDir)
+}
+
+// bundleKB is the gzipped size of the initial bundle: the assets index.html
+// pulls in (entry script, its module preloads and stylesheets). Lazily loaded
+// app chunks are not referenced there, so they do not count against the budget.
+func bundleKB() (int, error) {
+	index, err := os.ReadFile(filepath.Join(desktopDir, "dist", "index.html"))
+	if err != nil {
+		return 0, err
+	}
+	ref := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`)
+	total := 0
+	for _, m := range ref.FindAllStringSubmatch(string(index), -1) {
+		size, err := gzipSize(filepath.Join(desktopDir, "dist", filepath.FromSlash(m[1])))
+		if err != nil {
+			return 0, err
+		}
+		total += size
+	}
+	return total / 1024, nil
+}
+
+// gzipSize reports how many bytes a file takes after gzip -9, matching how a
+// server delivers it.
+func gzipSize(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	var buf bytes.Buffer
+	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := zw.Write(data); err != nil {
+		return 0, err
+	}
+	if err := zw.Close(); err != nil {
+		return 0, err
+	}
+	return buf.Len(), nil
 }
 
 func image() error {
