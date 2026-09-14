@@ -9,8 +9,10 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
+	"github.com/amantiwari/agentic-os/internal/cli"
 	"github.com/amantiwari/agentic-os/internal/config"
 	"github.com/amantiwari/agentic-os/internal/daemon"
 	"github.com/amantiwari/agentic-os/internal/files"
@@ -22,6 +24,10 @@ func main() {
 	// aosd re-executes itself as the sandbox helper and as the file worker; both
 	// must return before anything else happens.
 	sandbox.RunHelperIfRequested()
+	// The image links aos, and the Agent's rm shim, to this binary.
+	if name := filepath.Base(os.Args[0]); name == "aos" || name == "rm" {
+		os.Exit(cli.Main())
+	}
 	if len(os.Args) > 1 && os.Args[1] == files.WorkerArg {
 		os.Exit(files.WorkerMain())
 	}

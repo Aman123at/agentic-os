@@ -30,14 +30,14 @@ FROM go-base AS aosd-cli
 ARG TARGETOS TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w" -o /out/ ./cmd/aosd ./cmd/aos
+    go build -trimpath -ldflags "-s -w" -o /out/ ./cmd/aosd
 
 FROM go-base AS aosd-ui
 ARG TARGETOS TARGETARCH
 COPY --from=desktop-build /src/desktop/dist/ internal/webui/dist/
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -tags desktop -ldflags "-s -w" -o /out/ ./cmd/aosd ./cmd/aos
+    go build -trimpath -tags desktop -ldflags "-s -w" -o /out/ ./cmd/aosd
 
 # ---------------------------------------------------------------- Node.js (baseline software)
 FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS node-dist
@@ -77,8 +77,10 @@ RUN userdel -r ubuntu 2>/dev/null || true; \
  && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos /shared \
  && chmod 0700 /var/lib/aos
 COPY docker/rootfs/ /
+# aos and the Agent's rm shim are links to aosd, one binary for all three.
 RUN chmod 0440 /etc/sudoers.d/aos \
  && mkdir -p /usr/local/lib/aos/agent-bin \
+ && ln -s aosd /usr/local/bin/aos \
  && ln -s /usr/local/bin/aos /usr/local/lib/aos/agent-bin/rm
 WORKDIR /home/aos
 EXPOSE 7700
