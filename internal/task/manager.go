@@ -23,6 +23,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/policy"
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/tool"
+	"github.com/amantiwari/agentic-os/internal/usage"
 )
 
 // Config wires a Manager.
@@ -42,6 +43,10 @@ type Config struct {
 	MaxRetries int
 	Landlock   bool
 	Home       string
+	// Usage records usage per day and estimates costs; nil records usage without prices.
+	Usage *usage.Tracker
+	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
+	TaskCostLimit, DailyCostLimit float64
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
 	NewEnv func(env *tool.Env) (release func(), err error)
 	// Protection returns the current Protected Paths for a Task.
@@ -89,6 +94,9 @@ func New(cfg Config) (*Manager, error) {
 	}
 	if cfg.Audit == nil {
 		cfg.Audit = &audit.Log{DB: cfg.DB}
+	}
+	if cfg.Usage == nil {
+		cfg.Usage = &usage.Tracker{DB: cfg.DB, Now: cfg.Now}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	m := &Manager{cfg: cfg, ctx: ctx, cancel: cancel, running: map[string]*run{}, waiting: map[string]*waiter{}, asking: map[string]*question{}}
@@ -227,6 +235,10 @@ type run struct {
 	env       *tool.Env
 	grants    []policy.Grant
 	cancelled bool
+	// costPause is the Task cost at which the next Cost Limit pause happens;
+	// dailyAck is the day the user let the Task continue past the daily limit.
+	costPause float64
+	dailyAck  string
 }
 
 func (r *run) execute() {
@@ -364,20 +376,86 @@ func (r *run) TextDelta(stepID, delta string) {
 	r.m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TextDelta{TextDelta: &aosv1.TextDelta{TaskId: r.id, StepId: stepID, Delta: delta}}})
 }
 
+// Responded adds a response's usage and estimated cost to the Task and to
+// today's totals, and shows it live.
 func (r *run) Responded(ctx context.Context, resp llm.Response) error {
+	cost, known, err := r.m.cfg.Usage.Record(ctx, r.m.cfg.Model, resp.Usage)
+	if err != nil {
+		return err
+	}
 	r.mu.Lock()
 	u := r.task.Usage
 	if u == nil {
-		u = &aosv1.Usage{}
+		u = &aosv1.Usage{CostKnown: true}
 		r.task.Usage = u
 	}
 	u.InputTokens += resp.Usage.InputTokens
 	u.CachedInputTokens += resp.Usage.CachedInputTokens
 	u.OutputTokens += resp.Usage.OutputTokens
 	u.ReasoningTokens += resp.Usage.ReasoningTokens
+	u.CostUsd += cost
+	u.CostKnown = u.CostKnown && known
 	snapshot := proto.Clone(r.task).(*aosv1.Task)
 	r.mu.Unlock()
-	return r.m.cfg.DB.Write(ctx, func(tx *sql.Tx) error { return saveTask(ctx, tx, snapshot) })
+	if err := r.m.cfg.DB.Write(ctx, func(tx *sql.Tx) error { return saveTask(ctx, tx, snapshot) }); err != nil {
+		return err
+	}
+	r.m.publishTask(snapshot)
+	return nil
+}
+
+// Budget implements agent.Host: before each model request, a reached Cost
+// Limit pauses the Task until the user lets it continue (PLAN.md §8.4).
+func (r *run) Budget(ctx context.Context) error {
+	cfg := r.m.cfg
+	if limit := cfg.TaskCostLimit; limit > 0 {
+		r.mu.Lock()
+		cost := r.task.GetUsage().GetCostUsd()
+		if r.costPause == 0 {
+			r.costPause = limit
+		}
+		next := r.costPause
+		r.mu.Unlock()
+		if cost >= next {
+			why := fmt.Sprintf("This Task's estimated cost reached $%.2f (AOS_TASK_COST_LIMIT_USD=%.2f).", cost, limit)
+			if err := r.pauseForCost(ctx, why, fmt.Sprintf("Reply to continue until it reaches $%.2f, or cancel the Task.", cost+limit)); err != nil {
+				return err
+			}
+			r.mu.Lock()
+			r.costPause = cost + limit
+			r.mu.Unlock()
+		}
+	}
+	if limit := cfg.DailyCostLimit; limit > 0 {
+		day := now(cfg).Format("2006-01-02")
+		r.mu.Lock()
+		acked := r.dailyAck == day
+		r.mu.Unlock()
+		if acked {
+			return nil
+		}
+		today, err := cfg.Usage.Today(ctx)
+		if err != nil {
+			return err
+		}
+		if today.CostUsd >= limit {
+			why := fmt.Sprintf("Today's estimated model spend reached $%.2f, the daily Cost Limit (AOS_DAILY_COST_LIMIT_USD=%.2f).", today.CostUsd, limit)
+			if err := r.pauseForCost(ctx, why, "Reply to let this Task continue today, or cancel it."); err != nil {
+				return err
+			}
+			r.mu.Lock()
+			r.dailyAck = day
+			r.mu.Unlock()
+		}
+	}
+	return nil
+}
+
+func (r *run) pauseForCost(ctx context.Context, why, ask string) error {
+	if _, err := r.Pause(ctx, aosv1.AwaitingKind_AWAITING_KIND_COST_LIMIT, why+"\n"+ask); err != nil {
+		return fmt.Errorf("%s (%w)", why, err)
+	}
+	return nil
 }
 
 func finished(s aosv1.TaskState) bool {

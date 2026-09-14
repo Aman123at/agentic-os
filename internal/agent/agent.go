@@ -55,6 +55,9 @@ type Host interface {
 	// Pause makes the Task Awaiting User and returns the user's reply (PLAN.md
 	// §8.3). It fails when nobody can reply.
 	Pause(ctx context.Context, kind aosv1.AwaitingKind, text string) (string, error)
+	// Budget returns when the Task may make another model request; it pauses
+	// the Task while a Cost Limit is reached (PLAN.md §8.4).
+	Budget(ctx context.Context) error
 }
 
 // Run works on the Task until the model answers without calling Tools, and
@@ -63,6 +66,9 @@ func Run(ctx context.Context, cfg Config, h Host, transcript []llm.Item) (string
 	input, previous := transcript, ""
 	guard := newRetryGuard(cfg.MaxRetries)
 	for {
+		if err := h.Budget(ctx); err != nil {
+			return "", err
+		}
 		req := llm.Request{
 			Model:              cfg.Model,
 			ReasoningEffort:    cfg.ReasoningEffort,

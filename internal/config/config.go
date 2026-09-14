@@ -26,6 +26,8 @@ type Config struct {
 	UID, GID               int
 	TrashRetention         time.Duration
 	TrashMaxBytes          int64
+	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
+	TaskCostLimit, DailyCostLimit float64
 	// FakeModel is a folder of cassettes that replaces OpenAI (tests only).
 	FakeModel string
 }
@@ -51,7 +53,21 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		}
 		return n
 	}
+	money := func(name string) float64 {
+		v := str(name, "")
+		if v == "" {
+			return 0
+		}
+		n, err := strconv.ParseFloat(strings.TrimPrefix(v, "$"), 64)
+		if err != nil || n < 0 {
+			errs = append(errs, fmt.Sprintf("%s=%q is not an amount in USD", name, v))
+			return 0
+		}
+		return n
+	}
 	c := Config{
+		TaskCostLimit:   money("AOS_TASK_COST_LIMIT_USD"),
+		DailyCostLimit:  money("AOS_DAILY_COST_LIMIT_USD"),
 		ImageMode:       getenv("AOS_IMAGE_MODE"),
 		Model:           str("OPENAI_MODEL", ""),
 		ReasoningEffort: str("OPENAI_REASONING_EFFORT", ""),

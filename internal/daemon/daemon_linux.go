@@ -39,6 +39,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/task"
 	"github.com/amantiwari/agentic-os/internal/tool"
+	"github.com/amantiwari/agentic-os/internal/usage"
 )
 
 // Paths inside the Machine.
@@ -55,6 +56,7 @@ const (
 	tokenFile    = StateDir + "/token"
 	outputsDir   = StateDir + "/outputs"
 	databaseFile = StateDir + "/aos.db"
+	pricesFile   = StateDir + "/prices.yaml"
 )
 
 // Daemon is a running aosd.
@@ -73,6 +75,7 @@ type Daemon struct {
 	locks    *locks
 	outputs  *tool.Outputs
 	auth     *api.Auth
+	usage    *usage.Tracker
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -97,6 +100,9 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if err != nil {
 		return err
 	}
+	if (cfg.TaskCostLimit > 0 || cfg.DailyCostLimit > 0) && !d.pricesKnown(model) {
+		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, model)
+	}
 	osName := osRelease()
 	instructions := agent.Instructions(agent.Machine{OS: osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
 	registry := tool.NewRegistry(append(append(append(tool.SessionTools(), tool.FilesTools()...), tool.InternetTools()...), tool.CoordinationTools()...)...)
@@ -104,6 +110,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
 		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.layout.Home,
+		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit,
 		NewEnv: d.newEnv, Protection: d.protection,
 	})
 	if err != nil {
@@ -199,6 +206,12 @@ func (d *Daemon) init() error {
 	if d.db, err = store.Open(databaseFile); err != nil {
 		return err
 	}
+	// The user edits prices.yaml; it is only written when missing.
+	if f, err := os.OpenFile(pricesFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
+		_, _ = f.WriteString(usage.DefaultPrices)
+		f.Close()
+	}
+	d.usage = &usage.Tracker{DB: d.db, Prices: &usage.File{Path: pricesFile}}
 	d.bus = events.New()
 	d.audit = &audit.Log{DB: d.db}
 	d.registry = session.NewRegistry()
@@ -379,7 +392,17 @@ func (d *Daemon) info(model string) *aosv1.InfoResponse {
 		key = "present"
 	}
 	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[d.cfg.Autonomy]
-	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: model, Autonomy: autonomy, MaxTasks: int32(d.cfg.MaxTasks)}
+	today, _ := d.usage.Today(context.Background())
+	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: model, Autonomy: autonomy,
+		MaxTasks: int32(d.cfg.MaxTasks), MaxRetries: int32(d.cfg.MaxRetries), Today: today, PricesKnown: d.pricesKnown(model),
+		TaskCostLimitUsd: d.cfg.TaskCostLimit, DailyCostLimitUsd: d.cfg.DailyCostLimit}
+}
+
+// pricesKnown reports whether prices.yaml prices model.
+func (d *Daemon) pricesKnown(model string) bool {
+	prices, err := d.usage.Prices.Prices()
+	_, ok := prices.Lookup(model)
+	return err == nil && ok
 }
 
 func (d *Daemon) expireTrash(ctx context.Context, runner files.Runner) {
