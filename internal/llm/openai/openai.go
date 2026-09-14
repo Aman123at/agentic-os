@@ -31,6 +31,9 @@ type Provider struct {
 	BaseURL string
 	// HTTPClient is the SDK's default when nil.
 	HTTPClient *http.Client
+	// MaxRetries is how often rate limits, server errors and timeouts are
+	// retried, with backoff, before the request fails (AOS_MAX_RETRIES).
+	MaxRetries int
 }
 
 // ErrNoKey means no API key is configured.
@@ -51,7 +54,7 @@ func (p *Provider) Respond(ctx context.Context, req llm.Request, onText func(str
 	if base == "" {
 		base = DefaultBaseURL
 	}
-	opts := []option.RequestOption{option.WithAPIKey(key), option.WithBaseURL(base), option.WithMaxRetries(3)}
+	opts := []option.RequestOption{option.WithAPIKey(key), option.WithBaseURL(base), option.WithMaxRetries(p.MaxRetries)}
 	if p.HTTPClient != nil {
 		opts = append(opts, option.WithHTTPClient(p.HTTPClient))
 	}
@@ -80,9 +83,11 @@ func (p *Provider) Respond(ctx context.Context, req llm.Request, onText func(str
 			if msg == "" {
 				msg = ev.Response.IncompleteDetails.Reason
 			}
-			return llm.Response{}, fmt.Errorf("the model response %s: %s", strings.TrimPrefix(ev.Type, "response."), msg)
+			err := fmt.Errorf("the model response %s: %s", strings.TrimPrefix(ev.Type, "response."), msg)
+			return llm.Response{}, transientIf(transientCode(string(ev.Response.Error.Code)), err)
 		case "error":
-			return llm.Response{}, fmt.Errorf("the model returned an error: %s %s", ev.Code, ev.Message)
+			err := fmt.Errorf("the model returned an error: %s %s", ev.Code, ev.Message)
+			return llm.Response{}, transientIf(transientCode(ev.Code), err)
 		}
 	}
 	if err := stream.Err(); err != nil {
@@ -92,11 +97,28 @@ func (p *Provider) Respond(ctx context.Context, req llm.Request, onText func(str
 				return llm.Response{}, llm.ErrPreviousResponseUnavailable
 			}
 			// Never include the request: only the status and the API's message.
-			return llm.Response{}, fmt.Errorf("OpenAI API: %d %s: %s", apiErr.StatusCode, apiErr.Code, apiErr.Message)
+			err := fmt.Errorf("OpenAI API: %d %s: %s", apiErr.StatusCode, apiErr.Code, apiErr.Message)
+			// 429 also means an exhausted quota, which waiting doesn't fix.
+			transient := apiErr.StatusCode == http.StatusTooManyRequests && apiErr.Code != "insufficient_quota" ||
+				apiErr.StatusCode == http.StatusRequestTimeout || apiErr.StatusCode >= 500
+			return llm.Response{}, transientIf(transient, err)
 		}
-		return llm.Response{}, err
+		// A dropped connection or a timeout, unless the Task was cancelled.
+		return llm.Response{}, transientIf(ctx.Err() == nil, err)
 	}
-	return llm.Response{}, errors.New("the model stream ended without a response")
+	return llm.Response{}, transientIf(ctx.Err() == nil, errors.New("the model stream ended without a response"))
+}
+
+func transientIf(transient bool, err error) error {
+	if transient {
+		return &llm.TransientError{Err: err}
+	}
+	return err
+}
+
+// transientCode reports whether an error code in a stream means "try later".
+func transientCode(code string) bool {
+	return code == "server_error" || code == "rate_limit_exceeded" || strings.Contains(code, "timeout")
 }
 
 // requestBody builds the Responses API request as JSON.

@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -45,6 +46,70 @@ func AnalyzeCommand(command string, env ShellEnv) CommandAnalysis {
 		return true
 	})
 	return a.result
+}
+
+// Program returns the program a command is about: the first one it runs other
+// than cd, export and the like, looking through wrappers such as sudo, env and
+// timeout. The Retry guard counts failures per program (PLAN.md §8.3).
+func Program(command string) string {
+	file, err := syntax.NewParser(syntax.Variant(syntax.LangBash)).Parse(strings.NewReader(command), "")
+	if err != nil {
+		if f := strings.Fields(command); len(f) > 0 {
+			return filepath.Base(f[0])
+		}
+		return ""
+	}
+	a := &analyzer{}
+	name := ""
+	syntax.Walk(file, func(node syntax.Node) bool {
+		if call, ok := node.(*syntax.CallExpr); ok && name == "" {
+			args := make([]arg, len(call.Args))
+			for i, w := range call.Args {
+				args[i] = a.word(w)
+			}
+			if p := program(args); !setup[p] {
+				name = p
+			}
+		}
+		return name == ""
+	})
+	return name
+}
+
+// setup lists commands that prepare for the real one.
+var setup = map[string]bool{"": true, "cd": true, "pushd": true, "popd": true, "export": true, "set": true, "unset": true, "source": true, ".": true, "alias": true}
+
+// program returns the base name of the program args run, through wrappers.
+func program(args []arg) string {
+	for len(args) > 0 {
+		if !args[0].static {
+			return ""
+		}
+		name := filepath.Base(args[0].value)
+		values, ok := wrappers[name]
+		if !ok {
+			return name
+		}
+		rest := args[1:]
+		i := 0
+	options:
+		for ; i < len(rest); i++ {
+			v := rest[i].value
+			switch {
+			case name == "env" && strings.Contains(v, "=") && !strings.HasPrefix(v, "-"):
+			case strings.HasPrefix(v, "-") && v != "-":
+				if slices.Contains(values, v) {
+					i++
+				}
+			case name == "timeout":
+				name = "" // the duration; the command follows
+			default:
+				break options
+			}
+		}
+		args = rest[i:]
+	}
+	return ""
 }
 
 type analyzer struct {

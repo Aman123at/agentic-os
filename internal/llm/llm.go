@@ -83,3 +83,17 @@ type Provider interface {
 // ErrPreviousResponseUnavailable means PreviousResponseID can't be used; the
 // caller sends the whole transcript instead.
 var ErrPreviousResponseUnavailable = errors.New("previous response unavailable")
+
+// TransientError is a model request that failed for a reason that may pass: a
+// rate limit, a server error, a timeout or a dropped connection. The provider
+// has already retried it with backoff (PLAN.md §8.3).
+type TransientError struct{ Err error }
+
+func (e *TransientError) Error() string { return e.Err.Error() }
+func (e *TransientError) Unwrap() error { return e.Err }
+
+// IsTransient reports whether err is a TransientError.
+func IsTransient(err error) bool {
+	var t *TransientError
+	return errors.As(err, &t)
+}

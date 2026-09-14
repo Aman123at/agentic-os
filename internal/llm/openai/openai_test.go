@@ -104,6 +104,33 @@ func TestAnExpiredPreviousResponseAsksForTheWholeTranscript(t *testing.T) {
 	}
 }
 
+func TestRateLimitsAndServerErrorsAreTransientButAnExhaustedQuotaIsNot(t *testing.T) {
+	for _, c := range []struct {
+		status    int
+		code      string
+		transient bool
+	}{
+		{http.StatusTooManyRequests, `"rate_limit_exceeded"`, true},
+		{http.StatusTooManyRequests, `"insufficient_quota"`, false},
+		{http.StatusInternalServerError, `"server_error"`, true},
+		{http.StatusServiceUnavailable, `null`, true},
+		{http.StatusBadRequest, `"invalid_request_error"`, false},
+		{http.StatusUnauthorized, `"invalid_api_key"`, false},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(c.status)
+			fmt.Fprintf(w, `{"error":{"message":"no","type":"x","param":null,"code":%s}}`, c.code)
+		}))
+		// MaxRetries 0: the SDK gives up at once.
+		_, err := (&Provider{Key: func() string { return dummyKey }, BaseURL: srv.URL}).Respond(context.Background(), llm.Request{Model: "m"}, nil)
+		srv.Close()
+		if err == nil || llm.IsTransient(err) != c.transient {
+			t.Errorf("%d %s: err %v, transient %v", c.status, c.code, err, llm.IsTransient(err))
+		}
+	}
+}
+
 // roundTrip answers every request in-process.
 type roundTrip func(*http.Request) *http.Response
 

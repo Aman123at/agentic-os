@@ -103,7 +103,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d.tasks, err = task.New(task.Config{
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
-		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, Landlock: d.abi >= 1, Home: d.layout.Home,
+		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.layout.Home,
 		NewEnv: d.newEnv, Protection: d.protection,
 	})
 	if err != nil {
@@ -260,7 +260,7 @@ func (d *Daemon) provider() (llm.Provider, string, error) {
 		log.Printf("replaying recorded model conversations from %s instead of calling OpenAI", d.cfg.FakeModel)
 		return &fake.Library{Dir: d.cfg.FakeModel}, model, nil
 	}
-	return &openai.Provider{Key: readKey, BaseURL: d.cfg.BaseURL}, model, nil
+	return &openai.Provider{Key: readKey, BaseURL: d.cfg.BaseURL, MaxRetries: d.cfg.MaxRetries}, model, nil
 }
 
 // agentPolicy is the sandbox policy for Agents: the layout, other Sessions'

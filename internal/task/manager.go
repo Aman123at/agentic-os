@@ -38,8 +38,10 @@ type Config struct {
 	// Autonomy is used by Tasks created without one.
 	Autonomy policy.Autonomy
 	MaxTasks int
-	Landlock bool
-	Home     string
+	// MaxRetries is AOS_MAX_RETRIES (PLAN.md §8.3).
+	MaxRetries int
+	Landlock   bool
+	Home       string
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
 	NewEnv func(env *tool.Env) (release func(), err error)
 	// Protection returns the current Protected Paths for a Task.
@@ -57,8 +59,8 @@ type Manager struct {
 	mu      sync.Mutex
 	queue   []string
 	running map[string]*run
-	waiting map[string]*waiter     // by Approval id
-	asking  map[string]chan string // by Task id
+	waiting map[string]*waiter   // by Approval id
+	asking  map[string]*question // by Task id
 }
 
 // waiter is an Approval a running Task waits for.
@@ -67,6 +69,15 @@ type waiter struct {
 	call     policy.Call
 	decision chan aosv1.ApprovalDecision
 }
+
+// question is a reply a running Task waits for: to ask_user, or after a pause.
+type question struct {
+	kind   aosv1.AwaitingKind
+	answer chan string
+}
+
+// ErrNobodyToAsk is returned when a Task that nobody watches needs a reply.
+var ErrNobodyToAsk = errors.New("nobody is available to reply")
 
 // New starts a Manager.
 func New(cfg Config) (*Manager, error) {
@@ -80,7 +91,7 @@ func New(cfg Config) (*Manager, error) {
 		cfg.Audit = &audit.Log{DB: cfg.DB}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &Manager{cfg: cfg, ctx: ctx, cancel: cancel, running: map[string]*run{}, waiting: map[string]*waiter{}, asking: map[string]chan string{}}
+	m := &Manager{cfg: cfg, ctx: ctx, cancel: cancel, running: map[string]*run{}, waiting: map[string]*waiter{}, asking: map[string]*question{}}
 	if err := m.recover(); err != nil {
 		cancel()
 		return nil, err
@@ -239,7 +250,7 @@ func (r *run) execute() {
 	defer release()
 
 	transcript := []llm.Item{llm.UserMessage(t.Prompt)}
-	ac := agent.Config{Provider: cfg.Provider, Tools: cfg.Tools, Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort, Instructions: cfg.Instructions}
+	ac := agent.Config{Provider: cfg.Provider, Tools: cfg.Tools, Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort, Instructions: cfg.Instructions, MaxRetries: cfg.MaxRetries}
 	final, err := agent.Run(r.ctx, ac, r, transcript)
 	r.mu.Lock()
 	cancelled := r.cancelled
@@ -435,7 +446,7 @@ func (r *run) Approve(ctx context.Context, step *aosv1.TaskStep, c *tool.Call, d
 	step.ToolCall.Status = aosv1.ToolCallStatus_TOOL_CALL_STATUS_AWAITING_APPROVAL
 	_ = r.UpdateStep(ctx, step, nil)
 	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_Approval{Approval: &aosv1.ApprovalChanged{Approval: a}}})
-	r.await(&aosv1.Awaiting{ApprovalId: a.Id})
+	r.await(&aosv1.Awaiting{ApprovalId: a.Id, Kind: aosv1.AwaitingKind_AWAITING_KIND_APPROVAL})
 	select {
 	case decision := <-w.decision:
 		r.await(nil)
@@ -550,20 +561,34 @@ func fromProto(a aosv1.Autonomy) policy.Autonomy {
 }
 
 // askUser makes the Task Awaiting User with a question until Answer is called.
-func (r *run) askUser(ctx context.Context, question string) (string, error) {
+func (r *run) askUser(ctx context.Context, q string) (string, error) {
+	return r.wait(ctx, aosv1.AwaitingKind_AWAITING_KIND_QUESTION, q)
+}
+
+// Pause implements agent.Host: the Task waits for the user's reply, if anyone
+// can give one.
+func (r *run) Pause(ctx context.Context, kind aosv1.AwaitingKind, text string) (string, error) {
+	if !r.task.Interactive {
+		return "", ErrNobodyToAsk
+	}
+	return r.wait(ctx, kind, text)
+}
+
+// wait makes the Task Awaiting User until Answer is called.
+func (r *run) wait(ctx context.Context, kind aosv1.AwaitingKind, text string) (string, error) {
 	m := r.m
-	ch := make(chan string, 1)
+	q := &question{kind: kind, answer: make(chan string, 1)}
 	m.mu.Lock()
-	m.asking[r.id] = ch
+	m.asking[r.id] = q
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
 		delete(m.asking, r.id)
 		m.mu.Unlock()
 	}()
-	r.await(&aosv1.Awaiting{Question: question})
+	r.await(&aosv1.Awaiting{Question: text, Kind: kind})
 	select {
-	case answer := <-ch:
+	case answer := <-q.answer:
 		r.await(nil)
 		return answer, nil
 	case <-ctx.Done():
@@ -571,10 +596,11 @@ func (r *run) askUser(ctx context.Context, question string) (string, error) {
 	}
 }
 
-// Answer answers the question a Task is waiting on.
+// Answer replies to a Task waiting for the user: the answer to its question,
+// or a hint after its Retries ran out.
 func (m *Manager) Answer(ctx context.Context, taskID, text, by string) error {
 	m.mu.Lock()
-	ch, ok := m.asking[taskID]
+	q, ok := m.asking[taskID]
 	if ok {
 		delete(m.asking, taskID)
 	}
@@ -583,11 +609,21 @@ func (m *Manager) Answer(ctx context.Context, taskID, text, by string) error {
 	if !ok || r == nil {
 		return fmt.Errorf("task %s: %w (it is not waiting for an answer)", taskID, ErrNotFound)
 	}
+	// An answer to ask_user reaches the model as the call's output; a hint as a
+	// message of its own.
+	var items []llm.Item
+	tool := "ask_user"
+	switch q.kind {
+	case aosv1.AwaitingKind_AWAITING_KIND_RETRIES:
+		items, tool = []llm.Item{llm.UserMessage(text)}, "retry_guard"
+	case aosv1.AwaitingKind_AWAITING_KIND_COST_LIMIT:
+		tool = "cost_limit"
+	}
 	step := &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: text}
-	if err := r.AddStep(ctx, step, nil); err != nil {
+	if err := r.AddStep(ctx, step, items); err != nil {
 		return err
 	}
-	_ = m.cfg.Audit.Record(ctx, audit.Entry{TaskID: taskID, StepID: step.Id, Tool: "ask_user", Decision: "answer", DecidedBy: by, Result: text, Actor: by})
-	ch <- text
+	_ = m.cfg.Audit.Record(ctx, audit.Entry{TaskID: taskID, StepID: step.Id, Tool: tool, Decision: "answer", DecidedBy: by, Result: text, Actor: by})
+	q.answer <- text
 	return nil
 }

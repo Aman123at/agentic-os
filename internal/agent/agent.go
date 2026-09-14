@@ -30,7 +30,12 @@ type Config struct {
 	Model           string
 	ReasoningEffort string
 	Instructions    string
+	// MaxRetries is AOS_MAX_RETRIES: attempts allowed after a failure (PLAN.md §8.3).
+	MaxRetries int
 }
+
+// replyHint ends what a paused Task tells the user.
+const replyHint = `Reply with a hint, or "try another way", and the Agent continues; or cancel the Task.`
 
 // Host is the Task an Agent works on: it records steps and decides Approvals.
 type Host interface {
@@ -47,12 +52,16 @@ type Host interface {
 	Approve(ctx context.Context, step *aosv1.TaskStep, c *tool.Call, d policy.Decision) (aosv1.ApprovalDecision, error)
 	Audit(ctx context.Context, e audit.Entry)
 	Progress(stepID, url, path string, n, total int64)
+	// Pause makes the Task Awaiting User and returns the user's reply (PLAN.md
+	// §8.3). It fails when nobody can reply.
+	Pause(ctx context.Context, kind aosv1.AwaitingKind, text string) (string, error)
 }
 
 // Run works on the Task until the model answers without calling Tools, and
 // returns that answer. transcript holds the conversation so far.
 func Run(ctx context.Context, cfg Config, h Host, transcript []llm.Item) (string, error) {
 	input, previous := transcript, ""
+	guard := newRetryGuard(cfg.MaxRetries)
 	for {
 		req := llm.Request{
 			Model:              cfg.Model,
@@ -64,8 +73,23 @@ func Run(ctx context.Context, cfg Config, h Host, transcript []llm.Item) (string
 			CacheKey:           "aos-agent",
 		}
 		resp, textStep, err := respond(ctx, cfg, h, req)
-		if errors.Is(err, llm.ErrPreviousResponseUnavailable) {
-			req.Input, req.PreviousResponseID = transcript, ""
+		for err != nil && ctx.Err() == nil {
+			switch {
+			case errors.Is(err, llm.ErrPreviousResponseUnavailable) && req.PreviousResponseID != "":
+				req.Input, req.PreviousResponseID = transcript, ""
+			case llm.IsTransient(err):
+				// The provider already retried with backoff: now the user decides.
+				why := fmt.Sprintf("The model API kept failing (%d attempts): %v", cfg.MaxRetries+1, err)
+				reply, perr := h.Pause(ctx, aosv1.AwaitingKind_AWAITING_KIND_RETRIES, why+"\n"+replyHint)
+				if perr != nil {
+					return "", fmt.Errorf("%s (%w)", why, perr)
+				}
+				hint := llm.UserMessage(reply)
+				req.Input = append(slices.Clip(req.Input), hint)
+				transcript = append(transcript, hint)
+			default:
+				return "", err
+			}
 			resp, textStep, err = respond(ctx, cfg, h, req)
 		}
 		if err != nil {
@@ -99,10 +123,26 @@ func Run(ctx context.Context, cfg Config, h Host, transcript []llm.Item) (string
 		if len(calls) == 0 {
 			return text.String(), nil
 		}
-		outputs, err := runCalls(ctx, cfg, h, calls, others)
+		outputs, attempts, err := runCalls(ctx, cfg, h, calls, others)
 		transcript = append(transcript, outputs...)
 		if err != nil {
 			return "", err
+		}
+		why := ""
+		for _, a := range attempts {
+			if w := guard.observe(a); w != "" && why == "" {
+				why = w
+			}
+		}
+		if why != "" {
+			reply, err := h.Pause(ctx, aosv1.AwaitingKind_AWAITING_KIND_RETRIES, why+"\n"+replyHint)
+			if err != nil {
+				return "", fmt.Errorf("%s (%w)", why, err)
+			}
+			guard.reset()
+			hint := llm.UserMessage(reply)
+			outputs = append(outputs, hint)
+			transcript = append(transcript, hint)
 		}
 		input, previous = outputs, resp.ID
 	}
@@ -143,8 +183,9 @@ type pending struct {
 }
 
 // runCalls prepares and decides every call, then runs them: consecutive
-// read-only calls that need no Approval run in parallel, the rest in order.
-func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) ([]llm.Item, error) {
+// read-only calls that need no Approval run in parallel, the rest in order. It
+// returns the outputs for the model and the finished calls for the Retry guard.
+func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) ([]llm.Item, []attempt, error) {
 	env := h.Env()
 	calls := make([]*pending, len(items))
 	for i, item := range items {
@@ -155,7 +196,7 @@ func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) 
 		p.step = &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_TOOL_CALL, ToolCall: &aosv1.ToolCall{
 			CallId: item.CallID, Tool: item.Name, ArgumentsJson: item.Arguments, Status: aosv1.ToolCallStatus_TOOL_CALL_STATUS_PENDING}}
 		if err := h.AddStep(ctx, p.step, p.items()); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if t, ok := cfg.Tools.Get(item.Name); !ok {
 			p.output = fmt.Sprintf("error: there is no Tool called %q", item.Name)
@@ -189,11 +230,19 @@ func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) 
 			for _, p := range calls[j:] {
 				p.finish(ctx, h, aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED, "cancelled", "")
 			}
-			return outputsOf(calls), err
+			return outputsOf(calls), nil, err
 		}
 		i = j
 	}
-	return outputsOf(calls), nil
+	var attempts []attempt
+	for _, p := range calls {
+		switch p.step.ToolCall.Status {
+		case aosv1.ToolCallStatus_TOOL_CALL_STATUS_SUCCEEDED, aosv1.ToolCallStatus_TOOL_CALL_STATUS_FAILED, aosv1.ToolCallStatus_TOOL_CALL_STATUS_DENIED:
+			failed := p.step.ToolCall.Status != aosv1.ToolCallStatus_TOOL_CALL_STATUS_SUCCEEDED
+			attempts = append(attempts, newAttempt(p.item.Name, p.item.Arguments, p.step.Text, p.output, failed))
+		}
+	}
+	return outputsOf(calls), attempts, nil
 }
 
 func parallel(p *pending) bool {

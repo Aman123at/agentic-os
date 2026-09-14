@@ -48,15 +48,16 @@ func newHarness(t *testing.T, autonomy policy.Autonomy, turns ...fake.Turn) *har
 	h := &harness{home: home, model: fake.New(turns...), bus: events.New(), db: db}
 	ops := files.Ops{Home: home, Shared: filepath.Join(dir, "shared"), UID: os.Getuid()}
 	h.cfg = Config{
-		DB:       db,
-		Bus:      h.bus,
-		Provider: h.model,
-		Tools:    tool.NewRegistry(append(tool.FilesTools(), tool.CoordinationTools()...)...),
-		Model:    "gpt-test",
-		Autonomy: autonomy,
-		MaxTasks: 2,
-		Landlock: true,
-		Home:     home,
+		DB:         db,
+		Bus:        h.bus,
+		Provider:   h.model,
+		Tools:      tool.NewRegistry(append(tool.FilesTools(), tool.CoordinationTools()...)...),
+		Model:      "gpt-test",
+		Autonomy:   autonomy,
+		MaxTasks:   2,
+		MaxRetries: 3,
+		Landlock:   true,
+		Home:       home,
 		NewEnv: func(env *tool.Env) (func(), error) {
 			env.FileOps = ops
 			env.Files = func([]string) files.Runner { return files.InProcess{Ops: ops} }
