@@ -77,7 +77,9 @@ RUN userdel -r ubuntu 2>/dev/null || true; \
  && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos /shared \
  && chmod 0700 /var/lib/aos
 COPY docker/rootfs/ /
-RUN chmod 0440 /etc/sudoers.d/aos
+RUN chmod 0440 /etc/sudoers.d/aos \
+ && mkdir -p /usr/local/lib/aos/agent-bin \
+ && ln -s /usr/local/bin/aos /usr/local/lib/aos/agent-bin/rm
 WORKDIR /home/aos
 EXPOSE 7700
 

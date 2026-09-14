@@ -1,82 +1,77 @@
-// Command aos is the CLI inside the Machine (PLAN.md §4.2). M0 provides only
-// `aos doctor`; Tasks arrive in M1.
+// Command aos is the CLI inside the Machine (PLAN.md §4.2). It talks to aosd over
+// its Unix socket. Linked as rm, it is the Agent Session's rm shim (§7.8).
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"runtime"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/tools/hostcheck"
 )
+
+// exitError carries a process exit code out of a command.
+type exitError struct{ code int }
+
+func (e exitError) Error() string { return fmt.Sprintf("exit %d", e.code) }
 
 func main() {
 	sandbox.RunHelperIfRequested()
-	if err := rootCmd().Execute(); err != nil {
+	if filepath.Base(os.Args[0]) == "rm" {
+		os.Exit(rmShim(os.Args[1:]))
+	}
+	err := rootCmd().Execute()
+	var exit exitError
+	switch {
+	case errors.As(err, &exit):
+		os.Exit(exit.code)
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "aos:", err)
 		os.Exit(1)
 	}
 }
 
 func rootCmd() *cobra.Command {
-	root := &cobra.Command{Use: "aos", Short: "Agentic OS command line", SilenceUsage: true}
-	root.AddCommand(doctorCmd())
+	root := &cobra.Command{
+		Use:           "aos",
+		Short:         "Agentic OS: give Agents Tasks on this Machine",
+		Long:          "Without a command, aos starts an interactive chat: each message is a Task, and Approvals are asked in the terminal.",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
+		RunE:          func(cmd *cobra.Command, _ []string) error { return chat(cmd.Context()) },
+	}
+	root.AddCommand(runCmd(), tasksCmd(), showCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
+		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), auditCmd(), desktopURLCmd(), doctorCmd(), laterCmd("follow-up"), laterCmd("resume"))
 	return root
 }
 
-func doctorCmd() *cobra.Command {
-	var hostCheck bool
-	cmd := &cobra.Command{
-		Use:   "doctor",
-		Short: "Show Mode, Landlock status and API key presence; --host-check runs the Host acceptance report",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			w := cmd.OutOrStdout()
-			fmt.Fprintf(w, "Mode:      %s (image built for %s)\n", envOr("AOS_MODE", "unset"), envOr("AOS_IMAGE_MODE", "unknown"))
-			fmt.Fprintf(w, "Platform:  %s/%s\n", runtime.GOOS, runtime.GOARCH)
-			if abi := sandbox.ABI(); abi > 0 {
-				fmt.Fprintf(w, "Landlock:  ABI %d\n", abi)
-			} else {
-				fmt.Fprintln(w, "Landlock:  unavailable (Agents are confined by policy checks only)")
-			}
-			fmt.Fprintf(w, "API key:   %s\n", keyStatus())
-			if !hostCheck {
-				return nil
-			}
-			fmt.Fprintln(w, "\nHost check")
-			opts := hostcheck.DefaultOptions()
-			opts.RequireAosd = true
-			report, err := hostcheck.Run(cmd.Context(), opts)
-			if err != nil {
-				return err
-			}
-			report.Write(w)
-			if report.Failed() {
-				return fmt.Errorf("host check failed")
-			}
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&hostCheck, "host-check", false, "run the M0 prototype checks and print a pass/fail report")
-	return cmd
+// laterCmd is a command of a later milestone.
+func laterCmd(name string) *cobra.Command {
+	return &cobra.Command{Use: name + " <id>", Short: "Arrives in milestone M2", Hidden: true,
+		RunE: func(*cobra.Command, []string) error { return fmt.Errorf("aos %s arrives in milestone M2", name) }}
 }
 
-func keyStatus() string {
-	fi, err := os.Stat("/run/secrets/openai_api_key")
-	switch {
-	case err != nil:
-		return "not provided"
-	case fi.Size() == 0:
-		return "empty (OPENAI_API_KEY not set on the Host)"
-	default:
-		return "present"
+// rmShim moves rm's operands to the Trash (PLAN.md §7.8).
+func rmShim(args []string) int {
+	home := os.Getenv("HOME")
+	if home == "" {
+		home = "/home/aos"
 	}
-}
-
-func envOr(name, fallback string) string {
-	if v := os.Getenv(name); v != "" {
-		return v
+	cwd, err := os.Getwd()
+	if err != nil {
+		cwd = home
 	}
-	return fallback
+	ops := files.Ops{Home: home, Shared: sandbox.DefaultLayout().Shared, UID: os.Getuid()}
+	for _, a := range args {
+		if a == "--help" || a == "--version" {
+			// Unusual requests go to the real rm.
+			return execRealRm(args)
+		}
+	}
+	return files.Rm(ops, cwd, args, os.Stdout, os.Stderr)
 }
