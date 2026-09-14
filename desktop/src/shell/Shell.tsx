@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 
 import { useDesktop } from "../store";
+import Approvals from "./Approvals";
 import Dock from "./Dock";
 import MenuBar from "./MenuBar";
+import NotificationCenter from "./NotificationCenter";
 import Window from "./Window";
 import { installShortcuts } from "./keyboard";
 
@@ -38,6 +40,8 @@ export default function Shell() {
         ))}
       </div>
       <Dock />
+      <NotificationCenter />
+      <Approvals />
     </div>
   );
 }

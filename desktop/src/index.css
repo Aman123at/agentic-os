@@ -1142,3 +1142,181 @@ button {
 .tasks__btn:disabled { opacity: 0.5; cursor: default; }
 .tasks__btn--go { background: var(--accent); color: #fff; border-color: transparent; }
 .tasks__btn--danger { color: var(--danger); }
+
+/* ---------------------------------------------------------------- approval pop-up */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 200000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(2px);
+  padding: 24px;
+}
+.approval {
+  width: min(460px, 100%);
+  max-height: 86vh;
+  overflow-y: auto;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.approval__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.approval__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #d98a00;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+.approval__more {
+  color: var(--muted);
+  font-size: 12px;
+}
+.approval__summary {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.approval__tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.approval__tool code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.approval__link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-size: 12px;
+}
+.approval__reasons {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.approval__protected {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--error);
+  font-size: 12px;
+}
+.approval__protected ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.approval__protected code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.approval__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.approval__btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+.approval__btn:hover { border-color: var(--accent); }
+.approval__btn:disabled { opacity: 0.5; cursor: default; }
+.approval__btn--go { background: var(--accent); color: #fff; border-color: transparent; }
+.approval__btn--deny { color: var(--danger); }
+
+/* ---------------------------------------------------------------- notification center */
+.menubar__bell { position: relative; }
+.menubar__bell--alert { color: #ff9f0a; font-weight: 600; }
+.nc-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 149999;
+}
+.nc {
+  position: fixed;
+  top: 32px;
+  right: 8px;
+  z-index: 150000;
+  width: min(340px, calc(100vw - 16px));
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 8px;
+  border-radius: 14px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  color: var(--text);
+}
+.nc__empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+}
+.nc__section { margin-bottom: 8px; }
+.nc__title {
+  margin: 4px 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.nc__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  padding: 7px 8px;
+  border-radius: 9px;
+  font-size: 12.5px;
+}
+.nc__row:hover { background: var(--panel); }
+.nc__row:disabled { cursor: default; }
+.nc__row--await { background: rgba(217, 138, 0, 0.14); }
+.nc__icon { flex: none; }
+.nc__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nc__state {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+}
+.nc__state--queued { background: #8a8a90; }
+.nc__state--running { background: var(--accent); }
+.nc__state--await { background: #d98a00; }
+.nc__state--ok { background: #1a8f3c; }
+.nc__state--bad { background: var(--danger); }

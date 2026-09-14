@@ -13,7 +13,11 @@ export default function MenuBar() {
   const { openApp, setTheme } = useDesktop();
   const theme = useDesktop((s) => s.theme);
   const conn = useDesktop((s) => s.conn);
+  const toggleNotifCenter = useDesktop((s) => s.toggleNotifCenter);
+  // The bell badge counts what wants the user: pending Approvals first.
+  const pending = useDesktop((s) => Object.keys(s.approvals).length);
   const notifications = useDesktop((s) => s.notifications.length);
+  const badge = pending + notifications;
   const active = useDesktop((s) => {
     const win = s.windows.find((w) => w.id === s.focused && !w.minimized);
     return win ? APPS[win.appId]?.name : undefined;
@@ -29,7 +33,13 @@ export default function MenuBar() {
       </div>
       <div className="menubar__right">
         <span className={`menubar__conn menubar__conn--${conn}`} title={`aosd ${conn}`} />
-        <span className="menubar__item" title={`${notifications} notifications`}>🔔{notifications > 0 ? ` ${notifications}` : ""}</span>
+        <button
+          className={`menubar__item menubar__bell${pending > 0 ? " menubar__bell--alert" : ""}`}
+          title={`${pending} pending approval(s), ${notifications} notification(s)`}
+          onClick={() => toggleNotifCenter()}
+        >
+          🔔{badge > 0 ? ` ${badge}` : ""}
+        </button>
         <button className="menubar__item" title="Appearance" onClick={() => setTheme(nextTheme[theme])}>
           {themeLabel[theme]}
         </button>
