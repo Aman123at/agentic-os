@@ -1,0 +1,4 @@
+{"prompt": "e2e-cancel: wait a long time", "turns": [
+  {"calls": [{"name": "run_command", "arguments": {"command": "sleep 300"}}]},
+  {"text": "The wait finished, so cancelling did not work."}
+]}

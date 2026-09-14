@@ -1,0 +1,4 @@
+{"prompt": "e2e-approval: delete my SSH key", "turns": [
+  {"text": "Moving the key to the Trash.", "calls": [{"name": "delete", "arguments": {"path": "/home/aos/.ssh/id_ed25519"}}]},
+  {"text": "Done."}
+]}

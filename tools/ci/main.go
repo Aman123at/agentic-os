@@ -1,7 +1,7 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, image, integration. With no arguments, all run in order.
+// Stages: lint, unit, image, integration, e2e. With no arguments, all run in order.
 package main
 
 import (
@@ -28,6 +28,7 @@ var stages = []struct {
 	{"unit", unit},
 	{"image", image},
 	{"integration", integration},
+	{"e2e", e2e},
 }
 
 func main() {
@@ -139,6 +140,12 @@ func integration() error {
 		"-v", filepath.Join(dir, "shared")+":/shared",
 		"-v", filepath.Join(dir, "secrets")+":/run/secrets:ro",
 		"--entrypoint", "/t/hostcheck.test", "agentic-os:cli", "-test.run", "TestHostCheck", "-test.v")
+}
+
+// e2e runs the M1 acceptance tests (tools/e2e): the cli Machine under Docker
+// Compose, with recorded model conversations instead of OpenAI.
+func e2e() error {
+	return runEnv([]string{"AOS_E2E=1"}, "go", "test", "-count=1", "-v", "-timeout", "20m", "./tools/e2e")
 }
 
 func run(name string, args ...string) error { return runEnv(nil, name, args...) }

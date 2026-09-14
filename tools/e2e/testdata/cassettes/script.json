@@ -1,0 +1,4 @@
+{"prompt": "e2e-script: delete my SSH key with Python", "turns": [
+  {"calls": [{"name": "run_command", "arguments": {"command": "python3 -c 'import os; os.remove(\"/home/aos/.ssh/id_ed25519\")'"}}]},
+  {"text": "The sandbox refused to delete the key."}
+]}
