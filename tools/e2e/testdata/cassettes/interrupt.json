@@ -1,0 +1,4 @@
+{"prompt": "e2e-interrupt: wait for the restart", "turns": [
+  {"calls": [{"name": "run_command", "arguments": {"command": "sleep 300"}}]},
+  {"text": "The restart interrupted the wait; there is nothing left to do."}
+]}

@@ -142,10 +142,10 @@ func integration() error {
 		"--entrypoint", "/t/hostcheck.test", "agentic-os:cli", "-test.run", "TestHostCheck", "-test.v")
 }
 
-// e2e runs the M1 acceptance tests (tools/e2e): the cli Machine under Docker
-// Compose, with recorded model conversations instead of OpenAI.
+// e2e runs the milestones' acceptance tests (tools/e2e): the cli Machine under
+// Docker Compose, with recorded model conversations instead of OpenAI.
 func e2e() error {
-	return runEnv([]string{"AOS_E2E=1"}, "go", "test", "-count=1", "-v", "-timeout", "20m", "./tools/e2e")
+	return runEnv([]string{"AOS_E2E=1"}, "go", "test", "-count=1", "-v", "-timeout", "30m", "./tools/e2e")
 }
 
 func run(name string, args ...string) error { return runEnv(nil, name, args...) }

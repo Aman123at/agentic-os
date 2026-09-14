@@ -1,0 +1,7 @@
+{"prompt": "e2e-retry: read my notes", "turns": [
+  {"calls": [{"name": "run_command", "arguments": {"command": "cat /nonexistent/e2e-notes.txt"}}]},
+  {"calls": [{"name": "run_command", "arguments": {"command": "cat /nonexistent/e2e-notes.txt"}}]},
+  {"calls": [{"name": "run_command", "arguments": {"command": "cat /nonexistent/e2e-notes.txt"}}]},
+  {"calls": [{"name": "run_command", "arguments": {"command": "cat /nonexistent/e2e-notes.txt"}}]},
+  {"text": "Found them in ~/docs, thanks."}
+]}

@@ -1,10 +1,10 @@
-// Package e2e checks PLAN.md §18's M1 acceptance criteria against the cli
-// Machine started with `docker compose up --build`. Recorded model
+// Package e2e checks PLAN.md §18's M1 and M2 acceptance criteria against the
+// cli Machine started with `docker compose up --build`. Recorded model
 // conversations (testdata/cassettes) stand in for OpenAI, and every check
 // reads the Machine's state, never the Agent's claims.
 //
 // Run it with `go run ./tools/ci e2e`, or AOS_E2E=1 go test ./tools/e2e.
-// AOS_E2E_KEEP=1 leaves the Machine running for a look afterwards.
+// AOS_E2E_KEEP=1 leaves the Machines running for a look afterwards.
 package e2e
 
 import (
@@ -24,18 +24,14 @@ import (
 	"github.com/creack/pty"
 )
 
-// The Compose project and Host port of the test Machine, apart from the user's own.
-const (
-	project = "aos-e2e"
-	port    = "7793"
-	key     = "/home/aos/.ssh/id_ed25519"
-)
+const key = "/home/aos/.ssh/id_ed25519"
 
 func TestM1Acceptance(t *testing.T) {
 	if os.Getenv("AOS_E2E") == "" {
 		t.Skip("set AOS_E2E=1 to run against Docker: go run ./tools/ci e2e")
 	}
-	m := startMachine(t)
+	// A Compose project and Host port apart from the user's own Machine.
+	m := startMachine(t, "aos-e2e", "7793")
 	t.Run("DownloadAndExtract", m.downloadAndExtract)
 	t.Run("ProtectedDeleteAsksForApproval", m.protectedDeleteAsks)
 	t.Run("ScriptDeleteIsBlockedByTheKernel", m.scriptDeleteIsBlocked)
@@ -166,12 +162,14 @@ func (m *machine) cancel(t *testing.T) {
 // ---------------------------------------------------------------- the Machine
 
 type machine struct {
-	root string   // the repository
-	dir  string   // scratch folder: cassettes, Shared Folder, Compose files
-	env  []string // Compose variables, instead of the repository's .env
+	project, port string
+	root          string   // the repository
+	dir           string   // scratch folder: cassettes, Shared Folder, Compose files
+	env           []string // Compose variables, instead of the repository's .env
+	files         []string // Compose files after compose.yaml
 }
 
-func startMachine(t *testing.T) *machine {
+func startMachine(t *testing.T, project, port string) *machine {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -183,7 +181,7 @@ func startMachine(t *testing.T) *machine {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := &machine{root: root, dir: dir}
+	m := &machine{project: project, port: port, root: root, dir: dir, files: []string{filepath.Join(dir, "compose.e2e.yaml")}}
 	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +207,7 @@ func startMachine(t *testing.T) *machine {
 	}
 	// An explicit env file replaces the repository's .env, so neither the
 	// user's API key nor their settings reach the test Machine.
-	m.env = []string{"AOS_MODE=cli", "AOS_PORT=" + port, "AOS_BIND=127.0.0.1", "AOS_SHARED_DIR=" + filepath.Join(dir, "shared"),
+	m.env = []string{"AOS_MODE=cli", "AOS_PORT=" + m.port, "AOS_BIND=127.0.0.1", "AOS_SHARED_DIR=" + filepath.Join(dir, "shared"),
 		"AOS_AUTONOMY=confirm-risky", "OPENAI_API_KEY=sk-e2e-dummy-not-a-real-key"}
 	if err := os.WriteFile(filepath.Join(dir, "e2e.env"), []byte(strings.Join(m.env, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -221,7 +219,7 @@ func startMachine(t *testing.T) *machine {
 			t.Logf("aosd log:\n%s", out)
 		}
 		if os.Getenv("AOS_E2E_KEEP") != "" {
-			t.Logf("the Machine keeps running as Compose project %s; scratch folder %s", project, dir)
+			t.Logf("the Machine keeps running as Compose project %s; scratch folder %s", m.project, dir)
 			return
 		}
 		if out, err := m.compose(context.Background(), "down", "-v", "--remove-orphans").CombinedOutput(); err != nil {
@@ -243,8 +241,10 @@ func startMachine(t *testing.T) *machine {
 }
 
 func (m *machine) compose(ctx context.Context, args ...string) *exec.Cmd {
-	base := []string{"compose", "-p", project, "--env-file", filepath.Join(m.dir, "e2e.env"),
-		"-f", filepath.Join(m.root, "compose.yaml"), "-f", filepath.Join(m.dir, "compose.e2e.yaml")}
+	base := []string{"compose", "-p", m.project, "--env-file", filepath.Join(m.dir, "e2e.env"), "-f", filepath.Join(m.root, "compose.yaml")}
+	for _, f := range m.files {
+		base = append(base, "-f", f)
+	}
 	cmd := exec.CommandContext(ctx, "docker", append(base, args...)...)
 	cmd.Dir = m.root
 	cmd.Env = append(os.Environ(), m.env...)

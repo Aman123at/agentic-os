@@ -1,0 +1,10 @@
+{"prompt": "e2e-nginx: install nginx and serve ~/site on port 8081", "turns": [
+  {"calls": [{"name": "install_package", "arguments": {"manager": null, "packages": ["nginx"]}}]},
+  {"calls": [
+    {"name": "write_file", "arguments": {"path": "~/site/index.html", "content": "<h1>Hello from the e2e site</h1>\n", "overwrite": null}},
+    {"name": "write_file", "arguments": {"path": "~/site/nginx.conf", "content": "pid /tmp/nginx-site.pid;\nerror_log stderr;\nevents {}\nhttp {\n  include /etc/nginx/mime.types;\n  access_log off;\n  client_body_temp_path /tmp/nginx-body;\n  proxy_temp_path /tmp/nginx-proxy;\n  fastcgi_temp_path /tmp/nginx-fastcgi;\n  uwsgi_temp_path /tmp/nginx-uwsgi;\n  scgi_temp_path /tmp/nginx-scgi;\n  server {\n    listen 8081;\n    root /home/aos/site;\n  }\n}\n", "overwrite": null}}
+  ]},
+  {"calls": [{"name": "manage_service", "arguments": {"action": "create", "name": "site", "command": "nginx -e stderr -p /home/aos/site -c nginx.conf -g 'daemon off;'", "restart": "always"}}]},
+  {"calls": [{"name": "run_command", "arguments": {"command": "curl -s http://127.0.0.1:8081/"}}]},
+  {"text": "nginx serves ~/site on port 8081 as the Service site: open http://8081.localhost:7700."}
+]}
