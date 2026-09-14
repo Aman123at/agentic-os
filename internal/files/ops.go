@@ -250,6 +250,46 @@ func (o Ops) ReadText(path string, first, last int, maxBytes int) (Text, error) 
 	return t, nil
 }
 
+// MaxRead caps a single Read: the Desktop pulls larger files in successive chunks.
+const MaxRead = 1 << 20
+
+// Raw is a slice of a file's bytes: EOF reports that offset+len(Content) reached
+// the end, so the Desktop knows when to stop chunking (Quick Look, downloads).
+type Raw struct {
+	Content []byte `json:"content"`
+	EOF     bool   `json:"eof"`
+}
+
+// Read returns up to limit bytes of path from offset. A limit of 0, or one over
+// MaxRead, reads MaxRead bytes. Unlike ReadText it is byte-exact and works on
+// binary files, so it backs image Quick Look and download-to-Host.
+func (o Ops) Read(path string, offset, limit int64) (Raw, error) {
+	if limit <= 0 || limit > MaxRead {
+		limit = MaxRead
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return Raw{}, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return Raw{}, err
+	}
+	if fi.IsDir() {
+		return Raw{}, fmt.Errorf("%s is a folder", path)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	buf := make([]byte, limit)
+	n, err := f.ReadAt(buf, offset)
+	if err != nil && err != io.EOF {
+		return Raw{}, err
+	}
+	return Raw{Content: buf[:n], EOF: err == io.EOF || offset+int64(n) >= fi.Size()}, nil
+}
+
 // isBinary reports whether data looks like a binary file: a NUL byte, or invalid UTF-8.
 func isBinary(data []byte) bool {
 	if bytes.IndexByte(data, 0) >= 0 {

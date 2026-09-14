@@ -17,6 +17,7 @@ const (
 	OpStat        = "stat"
 	OpList        = "list"
 	OpReadText    = "read_text"
+	OpRead        = "read"
 	OpWrite       = "write"
 	OpEdit        = "edit"
 	OpMove        = "move"
@@ -55,6 +56,12 @@ type TransferArgs struct {
 	Source      string `json:"source"`
 	Destination string `json:"destination"`
 	Overwrite   bool   `json:"overwrite,omitempty"`
+}
+
+type ReadArgs struct {
+	Path   string `json:"path"`
+	Offset int64  `json:"offset,omitempty"`
+	Limit  int64  `json:"limit,omitempty"`
 }
 
 type ReadTextArgs struct {
@@ -206,6 +213,12 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return ops.ReadText(a.Path, a.FirstLine, a.LastLine, a.MaxBytes)
+	case OpRead:
+		var a ReadArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return ops.Read(a.Path, a.Offset, a.Limit)
 	case OpWrite:
 		var a WriteArgs
 		if err := decode(&a); err != nil {

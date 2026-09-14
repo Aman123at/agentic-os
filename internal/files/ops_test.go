@@ -116,6 +116,26 @@ func TestReadTextReturnsLineRangesAndRecognisesBinaryFiles(t *testing.T) {
 	}
 }
 
+func TestReadReturnsRawChunksAndSignalsEOF(t *testing.T) {
+	ops, home, _ := machine(t)
+	// A binary payload with a NUL byte, which ReadText would refuse.
+	blob := []byte("PNG\x00\x01\x02\x03rest of the bytes")
+	p := filepath.Join(home, "pic.png")
+	writeFile(t, p, string(blob))
+
+	got, err := ops.Read(p, 0, 4)
+	if err != nil || string(got.Content) != "PNG\x00" || got.EOF {
+		t.Errorf("first 4 bytes: %q eof=%v err=%v", got.Content, got.EOF, err)
+	}
+	got, err = ops.Read(p, 4, 0) // limit 0 reads to the end
+	if err != nil || string(got.Content) != string(blob[4:]) || !got.EOF {
+		t.Errorf("rest: %q eof=%v err=%v", got.Content, got.EOF, err)
+	}
+	if _, err := ops.Read(home, 0, 0); err == nil {
+		t.Error("reading a folder should fail")
+	}
+}
+
 func TestListStatAndSearch(t *testing.T) {
 	ops, home, _ := machine(t)
 	writeFile(t, filepath.Join(home, "proj", "main.go"), "package main\n// TODO: port\n")

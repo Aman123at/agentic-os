@@ -331,7 +331,15 @@ func (f fileService) Stat(ctx context.Context, req *connect.Request[aosv1.StatRe
 }
 
 func (f fileService) Read(ctx context.Context, req *connect.Request[aosv1.ReadRequest]) (*connect.Response[aosv1.ReadResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("raw reads arrive with the Desktop's /files/raw route (M3)"))
+	p, err := f.abs(req.Msg.Path)
+	if err != nil {
+		return nil, err
+	}
+	var raw files.Raw
+	if err := f.s.UserFiles.Run(ctx, files.OpRead, files.ReadArgs{Path: p, Offset: req.Msg.Offset, Limit: req.Msg.Limit}, &raw, nil); err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ReadResponse{Content: raw.Content, Eof: raw.EOF}), nil
 }
 
 func (f fileService) Write(ctx context.Context, req *connect.Request[aosv1.WriteRequest]) (*connect.Response[aosv1.WriteResponse], error) {
