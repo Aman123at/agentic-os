@@ -62,17 +62,18 @@ ENV LANG=C.UTF-8 TZ=UTC
 # image keeps no .deb files; the runtime apt config is installed afterwards.
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      bash coreutils procps less nano vim-tiny htop file tree jq sudo tzdata \
+      bash coreutils procps less nano vim-tiny htop file tree jq sudo apt-utils tzdata \
       curl wget ca-certificates iproute2 iputils-ping openssh-client \
       git rsync rclone zip unzip xz-utils p7zip-full \
       python3 python3-venv python3-pip pipx \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=node-dist /opt/node/ /usr/local/
 # Ubuntu images ship a `ubuntu` user with uid 1000; the Machine's user is `aos`.
+# aosd arranges the home layout (Protected dotfiles, ~/Shared) at every start.
 RUN userdel -r ubuntu 2>/dev/null || true; \
     useradd --uid 1000 --user-group --create-home --shell /bin/bash aos \
  && rm -f /etc/apt/apt.conf.d/docker-clean \
- && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos \
+ && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos /shared \
  && chmod 0700 /var/lib/aos
 COPY docker/rootfs/ /
 RUN chmod 0440 /etc/sudoers.d/aos

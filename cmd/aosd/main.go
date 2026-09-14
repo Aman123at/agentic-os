@@ -1,3 +1,5 @@
+//go:build linux
+
 // Command aosd is the Agentic OS daemon (PLAN.md §4.1). M0 serves only the
 // Desktop placeholder and Service forwarding; the API arrives in M1.
 package main
@@ -10,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"os/user"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -34,6 +38,10 @@ func main() {
 	}
 	if bind := os.Getenv("AOS_BIND"); bind != "" && bind != "127.0.0.1" {
 		log.Printf("WARNING: AOS_BIND=%s publishes port %d beyond this computer", bind, port)
+	}
+
+	if err := prepareHome(); err != nil {
+		log.Fatalf("preparing the home folder: %v", err)
 	}
 
 	mux := http.NewServeMux()
@@ -68,4 +76,19 @@ func main() {
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+// prepareHome arranges the Protected dotfiles and ~/Shared (PLAN.md §7.2).
+func prepareHome() error {
+	u, err := user.Lookup("aos")
+	if err != nil {
+		return err
+	}
+	uid, _ := strconv.Atoi(u.Uid)
+	gid, _ := strconv.Atoi(u.Gid)
+	notes, err := sandbox.PrepareHome(sandbox.DefaultLayout(), uid, gid)
+	for _, n := range notes {
+		log.Print(n)
+	}
+	return err
 }

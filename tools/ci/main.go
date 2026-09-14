@@ -15,12 +15,10 @@ import (
 	"time"
 )
 
-// Image size targets in MB, unpacked (PLAN.md §16). Both are currently missed:
-// finding F3 in docs/m0-findings.md awaits a decision, so misses are reported
-// without failing the run until then.
-var sizeTargets = map[string]int{"cli": 450, "ui": 500}
+// Image size targets (PLAN.md §16): unpacked MB per target, compressed MB for any.
+var sizeTargets = map[string]int{"cli": 520, "ui": 540}
 
-const sizeTargetsPending = true
+const compressedTargetMB = 180
 
 var stages = []struct {
 	name string
@@ -94,13 +92,19 @@ func image() error {
 		if err != nil {
 			return fmt.Errorf("image size: %q", out)
 		}
-		switch {
-		case mb <= sizeTargets[target]:
-			fmt.Printf("    %s image: %d MB unpacked (target < %d MB)\n", target, mb, sizeTargets[target])
-		case sizeTargetsPending:
-			fmt.Printf("    %s image: %d MB unpacked, over target %d MB (finding F3, pending decision)\n", target, mb, sizeTargets[target])
-		default:
-			return fmt.Errorf("%s image is %d MB unpacked, target < %d MB", target, mb, sizeTargets[target])
+		out, err = output("docker", "image", "inspect", "--format", "{{.Size}}", tag)
+		if err != nil {
+			return err
+		}
+		bytes, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+		if err != nil {
+			return fmt.Errorf("image size: %q", out)
+		}
+		compressed := int(bytes >> 20)
+		fmt.Printf("    %s image: %d MB unpacked (target < %d MB), %d MB compressed (target < %d MB)\n",
+			target, mb, sizeTargets[target], compressed, compressedTargetMB)
+		if mb >= sizeTargets[target] || compressed >= compressedTargetMB {
+			return fmt.Errorf("%s image is over its size target", target)
 		}
 	}
 	return nil
@@ -132,7 +136,7 @@ func integration() error {
 	}
 	return run("docker", "run", "--rm", "-e", "AOS_INTEGRATION=1",
 		"-v", filepath.Join(dir, "bin")+":/t:ro",
-		"-v", filepath.Join(dir, "shared")+":/home/aos/Shared",
+		"-v", filepath.Join(dir, "shared")+":/shared",
 		"-v", filepath.Join(dir, "secrets")+":/run/secrets:ro",
 		"--entrypoint", "/t/hostcheck.test", "agentic-os:cli", "-test.run", "TestHostCheck", "-test.v")
 }

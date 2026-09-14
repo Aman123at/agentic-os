@@ -38,10 +38,12 @@ services:
     secrets:
       - openai_api_key
     volumes:
-      - aos-home:/home/aos
+      # Mounted at /home so the Protected dotfiles in /home/.aos-protected persist too.
+      - aos-home:/home
       - aos-state:/var/lib/aos
       - aos-pkgcache:/var/cache/aos
-      - ${AOS_SHARED_DIR:-./shared}:/home/aos/Shared
+      # The Shared Folder; ~/Shared links here (outside home, see ADR-0004).
+      - ${AOS_SHARED_DIR:-./shared}:/shared
 
 secrets:
   openai_api_key:

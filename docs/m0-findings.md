@@ -30,7 +30,7 @@ Landlock can only grant whole trees. To exclude `~/.ssh`, `~/.bashrc`, … the h
 - Verified: git init and commit, create/move/delete, `mkdir -p` and `rm -rf`, and a Python venv in brand-new top-level folders all work in one command. Appending to `~/.bashrc`, `rm`/`mv`/`ln -sf` over it, writing `~/.ssh/config` or deleting keys, and touching the Shared Folder are all refused. The user still edits dotfiles, runs `git config --global`, and uses sudo.
 - Trade-offs:
   - `sed -i ~/.bashrc` fails for the user, because it replaces the symlink; `sed -i --follow-symlinks` works. The user cannot delete a protected symlink; unprotecting happens through System Settings or `aos unprotect`.
-  - Paths the user locks deeper inside home (🔒, `aos protect`) still use carve-outs, so F1's limitation remains inside the folder that contains the locked path. This is documented, and the Stale check re-plans before the next command.
+  - Paths the user locks inside home (🔒, `aos protect`) still use carve-outs. ~~F1's limitation remains inside the folder that contains the locked path.~~ **Corrected in M1:** every folder from home down to the locked path is split, home included (see Decisions).
 - Home layout is created by the image and by aosd at startup (also for existing volumes).
 
 **Option A:** keep carve-outs, re-plan between commands, and tell Agents to create things inside existing folders (`~/Projects`, `~/Downloads`). Cheaper, but common one-liners break.
@@ -113,7 +113,7 @@ AOS_MODE=cli docker compose up -d --build
 docker compose exec aos aos doctor --host-check
 ```
 
-Please send the full report. Expected on a healthy Host: `0 failed` and 2 known findings (F1, F2). On Linux Hosts without Landlock, 0.1 reports "Landlock is available: FAIL" plus a SKIP, and the rest should pass.
+Please send the full report. Expected on a healthy Host: `0 failed` and 1 known finding (F1, for paths the user locks). Reports from before the decisions below showed 2 known (F1, F2). On Linux Hosts without Landlock, 0.1 reports "Landlock is available: FAIL" plus a SKIP, and the rest should pass.
 
 ## Proposed plan and ADR changes (for approval)
 
@@ -122,3 +122,18 @@ Please send the full report. Expected on a healthy Host: `0 failed` and 2 known 
 3. PLAN §6.3/§16: size targets per F3; add `sudo` and `apt-utils` to the baseline.
 4. PLAN §11: Ledger records dependencies; Replay installs cached `.deb` files first (F9).
 5. PLAN §12/§15: Safari supports subdomain forwarding; path mode is a general fallback (F5).
+
+## Decisions (2026-09-14)
+
+All five proposals above were approved, and PLAN.md and ADR-0004 were updated. Two more decisions came out of the M1 kick-off:
+
+- **F1:** Option B.
+  - The home layout is created and repaired by aosd at every start.
+  - The `aos-home` volume is mounted at `/home`, so `/home/.aos-protected` persists as well.
+  - The host check now requires one-command work in new top-level folders and verifies the layout.
+- **F2:** the Shared Folder is mounted at `/shared`, and `~/Shared` is a root-owned symlink to it. Creating anything in it is now a hard check.
+- **F3:** targets are unpacked `cli` < 520 MB and `ui` < 540 MB, plus compressed < 180 MB, enforced by `go run ./tools/ci`. Measured after adding `apt-utils`: 498 / 499 MB unpacked, 151 / 152 MB compressed.
+- **F4, F9, F5:** folded into PLAN §6.2, §11 and §12/§15.
+- **Correction to F1 (paths the user locks):** a locked path splits every folder above it, home included. Once anything in home is locked, new top-level folders cannot be written in the command that creates them, and Agents can create empty entries inside the locked folder. **Decided:** keep carve-outs, re-sandbox before every command, and tell the Agent to clean up and re-run when a failed command created entries in a split folder.
+- **Approved calls on Protected Paths:** run as a one-off confined process with the ruleset widened to exactly the approved paths. An approved `run_command` runs outside the persistent Session (ADR-0004, PLAN §7.4).
+- **Pattern-based Protected Paths** (`.env` files, git trees with changes the Task did not make): enforced by policy only, narrowly (PLAN §7.3).

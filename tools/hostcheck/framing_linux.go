@@ -71,9 +71,9 @@ func checkFraming(ctx context.Context, m *machine, rec recorder) {
 	}
 	defer os.RemoveAll(dir)
 
-	opts := session.Options{Dir: dir, UID: m.uid, GID: m.gid, Home: m.opts.Home}
+	opts := session.Options{Dir: dir, UID: m.uid, GID: m.gid, Home: m.opts.Layout.Home}
 	if sandbox.ABI() >= 1 {
-		rs, err := sandbox.Plan(sandbox.DefaultPolicy(m.opts.Home, m.opts.Shared), sandbox.RootFS())
+		rs, err := sandbox.Plan(m.opts.Layout.Policy(), sandbox.RootFS())
 		if err != nil {
 			rec.add("plan ruleset", Fail, "%v", err)
 			return

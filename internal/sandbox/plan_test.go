@@ -135,6 +135,41 @@ func TestPlanHomeIsWritableExceptProtectedPaths(t *testing.T) {
 	}
 }
 
+func TestPlanDefaultLayoutGivesAgentsAllOfHome(t *testing.T) {
+	fsys := machine()
+	delete(fsys, "home/aos/.ssh/id_ed25519")
+	delete(fsys, "home/aos/.bashrc")
+	fsys["home/.aos-protected/ssh/id_ed25519"] = &fstest.MapFile{}
+	fsys["home/.aos-protected/bashrc"] = &fstest.MapFile{}
+	fsys["home/aos/.ssh"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/home/.aos-protected/ssh")}
+	fsys["home/aos/.bashrc"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/home/.aos-protected/bashrc")}
+	fsys["home/aos/Shared"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/shared")}
+	fsys["shared/report.pdf"] = &fstest.MapFile{}
+
+	rs, err := Plan(DefaultLayout().Policy(), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]Access{
+		"/home/aos":            Write, // not split: new top-level folders are writable at once
+		"/home/aos/.ssh":       0,     // symlinks are never granted
+		"/home/.aos-protected": 0,
+		"/shared":              0,
+		"/tmp":                 Write,
+	} {
+		if got := accessOf(t, rs, path) &^ (Read | List); got != want {
+			t.Errorf("%s: want %v, got %v (grants %v)", path, want, got, rs.Grants)
+		}
+	}
+	if stale, err := rs.Stale(fsys); err != nil || stale {
+		t.Fatalf("stale=%v err=%v before any change", stale, err)
+	}
+	fsys["home/aos/Projects"] = &fstest.MapFile{Mode: fs.ModeDir}
+	if stale, err := rs.Stale(fsys); err != nil || stale {
+		t.Errorf("new top-level folder in home: stale=%v err=%v, want not stale", stale, err)
+	}
+}
+
 func TestPlanCleansPolicyPaths(t *testing.T) {
 	p := Policy{
 		Hidden:    []string{"/run/secrets/"},

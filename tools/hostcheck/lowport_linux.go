@@ -20,7 +20,7 @@ func checkLowPorts(ctx context.Context, m *machine, rec recorder) {
 	rec.check("User Session binds port 80", exit == 0, "%s", describe(exit, out))
 
 	if sandbox.ABI() >= 1 {
-		rs, err := sandbox.Plan(sandbox.DefaultPolicy(m.opts.Home, m.opts.Shared), sandbox.RootFS())
+		rs, err := sandbox.Plan(m.opts.Layout.Policy(), sandbox.RootFS())
 		if err != nil {
 			rec.add("plan ruleset", Fail, "%v", err)
 			return

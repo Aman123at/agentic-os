@@ -1,6 +1,6 @@
 # Agentic OS — v1 Plan
 
-**Status:** Ready for approval · 2026-09-14 · all design decisions settled · nothing is implemented yet
+**Status:** Approved 2026-09-14 · M0 done ([findings](m0-findings.md); its decisions are folded in below) · M1 in progress
 **Vocabulary:** every capitalised term (Machine, Task, Agent, Tool, Session, Protected Path, Checkpoint, Replay, …) is defined in [CONTEXT.md](../CONTEXT.md).
 **Decisions:** the hard-to-reverse ones are recorded in [docs/adr/](adr/).
 
@@ -269,10 +269,10 @@ services:
       # … every other AOS_* / OPENAI_* variable from §6.4 except OPENAI_API_KEY
     secrets: [openai_api_key]
     volumes:
-      - aos-home:/home/aos
+      - aos-home:/home                # /home/aos plus /home/.aos-protected (§7.2)
       - aos-state:/var/lib/aos
       - aos-pkgcache:/var/cache/aos
-      - ${AOS_SHARED_DIR:-./shared}:/home/aos/Shared
+      - ${AOS_SHARED_DIR:-./shared}:/shared   # ~/Shared is a symlink to it
 secrets:
   openai_api_key:
     environment: OPENAI_API_KEY
@@ -287,10 +287,13 @@ volumes:
 - Compose reads `.env` only to fill in `${…}` values. Environment variables are passed explicitly, so `OPENAI_API_KEY` reaches the container only as the secret file. M0.4 verifies it is absent from every process environment.
 - Compose cannot add a port mapping only when an env var is set. Publishing extra ports (`AOS_PUBLISH_PORTS`) therefore lives in `compose.override.example.yaml`: copy it to `compose.override.yaml`, which Compose loads automatically on every Host.
 - The home folder is a named volume for speed on every Host. Only the Shared Folder is a bind mount.
+- The volume is mounted at `/home`, not `/home/aos`, so the relocated Protected dotfiles in `/home/.aos-protected` persist too.
+- `OPENAI_API_KEY` must be *defined* for `docker compose up` to start, even if empty (M0 finding F4). The README quick start therefore begins with `cp .env.example .env`. An empty value means "no key yet".
+- On macOS Hosts, Docker Desktop hangs on bind mounts from `~/Desktop`, `~/Documents` or `~/Downloads` unless it has been granted access to them (finding F6). This goes in README troubleshooting, together with `AOS_SHARED_DIR`.
 
 ### 6.3 Baseline software in the image
 
-- **Shell and core tools:** `bash`, coreutils, `procps`, `less`, `nano`, `vim-tiny`, `htop`, `file`, `tree`, `jq`
+- **Shell and core tools:** `bash`, coreutils, `procps`, `less`, `nano`, `vim-tiny`, `htop`, `file`, `tree`, `jq`, `sudo`, `apt-utils`, `tzdata`
 - **Network:** `curl`, `wget`, `ca-certificates`, `iproute2`, `iputils-ping`, `openssh-client`
 - **Transfer and archives:** `git`, `rsync`, `rclone`, `zip`, `unzip`, `xz-utils`, `p7zip-full`
 - **Python:** `python3`, `python3-venv`, `python3-pip`, `pipx`
@@ -298,7 +301,7 @@ volumes:
 
 Everything else is installed on demand and recorded in the Install Ledger.
 
-**Image size targets:** `cli` < 450 MB, `ui` < 500 MB.
+**Image size targets** (M0 finding F3), measured as the unpacked size (`du -sx /` in the image): `cli` < 520 MB, `ui` < 540 MB. Compressed (`docker image inspect` on arm64): < 180 MB.
 
 ### 6.4 Environment variables (`.env.example`)
 
@@ -335,24 +338,60 @@ There is deliberately **no step limit**.
 |---|---|---|---|
 | `aosd` | root | none | n/a |
 | Agent Sessions and everything they spawn | `aos` | Landlock + `no_new_privs` | **No**: the kernel ignores setuid under `no_new_privs` |
-| User Sessions (Desktop Terminal, `docker compose exec`) | `aos` | none | Yes, NOPASSWD |
+| User Sessions (Desktop Terminal, `docker compose exec -u aos aos bash`) | `aos` | none | Yes, NOPASSWD |
+| Approved calls on Protected Paths (§7.4) | `aos` | Landlock + `no_new_privs`, widened to the approved paths for that one call | **No** |
 | Services | `aos` by default, root only via an approved Privileged Tool | Same confinement as whoever created them | as creator |
 
-### 7.2 Landlock ruleset for Agent Sessions (to be validated in M0)
+A plain `docker compose exec aos …` runs as root (aosd is the container's main process, so the container's user is root). The `aos` CLI works either way.
 
-- **Read and execute:** everything except `/run/secrets` and `/var/lib/aos`.
-- **Write, create and remove:** the home folder and the Shared Folder **excluding Protected Paths**, plus `/tmp` and `/var/tmp`.
+### 7.2 Landlock ruleset for Agent Sessions (validated in M0, ADR-0004)
+
+**Home layout.** Landlock grants whole trees and cannot carve an exception out of a granted folder (M0 finding F1), so Protected dotfiles live outside home:
+
+```
+/home/                        aos-home volume
+├── .aos-protected/           root:root 0755; entries owned by aos
+│   ├── ssh/  gnupg/  config/
+│   └── bashrc  profile  bash_logout  (bash_profile  bash_login  inputrc: only if created)
+└── aos/                      the home folder: root:aos 1775 (sticky)
+    ├── .ssh -> /home/.aos-protected/ssh        root-owned symlinks
+    ├── .bashrc -> /home/.aos-protected/bashrc  …one for every entry above
+    ├── Shared -> /shared
+    └── everything else: owned by aos
+```
+
+- The sticky bit on a root-owned home means nobody but root can delete, rename or replace the symlinks.
+- A write through a symlink resolves to `/home/.aos-protected`, which Agents cannot write.
+- `aosd` creates and repairs this layout at every start, including on existing volumes.
+- The user (unconfined) edits dotfiles through the symlinks as usual, but `sed -i` needs `--follow-symlinks`.
+
+**Ruleset**
+
+- **Read and execute:** everything except Hidden paths: `/run/secrets`, `/var/lib/aos` and other Sessions' directories under `/run/aos/sessions`.
+- **Write, create and remove:** all of home, `/tmp`, `/var/tmp`, `/dev` (`/dev/null`, `/dev/tty`, the PTY) and the Session's own directory.
+- **Not writable:** everything else, including `/home/.aos-protected`, the Shared Folder (mounted at `/shared`, outside home: finding F2) and system folders.
+- **Paths the user locks** (🔒, `aos protect`) inside a Writable tree are carved out: every folder from home down to the locked path is split into per-entry grants.
+  - In a split folder, home included, a new entry can be created but not written until the Session is re-sandboxed, which happens before its next command.
+  - When a failed command created entries in a split folder, the Tool result tells the Agent to clean up and re-run.
+  - Agents can create empty entries inside a locked folder, but never change or delete its content.
+- **Symlinks are never granted**, because Landlock would grant their target.
 - **Process isolation:** a confined process cannot ptrace an unconfined one. On kernels with Landlock ABI ≥ 6, signals and abstract Unix sockets are also scoped, so Agents cannot signal or reach User Sessions or `aosd`.
-- **Open problem:** Landlock grants access to a directory tree and cannot carve an exception out of it. "All of home except `~/.ssh`" must be built from per-entry grants. M0 decides between re-sandboxing a Session when home's top-level layout changes, or giving each command its own ruleset.
+- **Files Tools** (§9) run as `aos` in a confined helper with the same ruleset, never as root inside `aosd`, so symlink tricks cannot turn them into root file access.
 
 ### 7.3 Protected Paths (defaults, editable in System Settings)
 
+**Enforced by the kernel** (Landlock, §7.2) and by policy:
+
 - `/etc`, `/usr`, `/bin`, `/sbin`, `/lib*`, `/boot`, `/var/lib`
-- `~/.ssh`, `~/.gnupg`, `~/.config`, `~/.bashrc`, `~/.profile`, and any `.env` file
+- `~/.ssh`, `~/.gnupg`, `~/.config`, `~/.bashrc`, `~/.profile`, `~/.bash_logout` (all in `/home/.aos-protected`)
 - The whole Shared Folder
 - AOS's own state: `/var/lib/aos`
 - Paths the user locks (🔒 in Finder, `aos protect`)
-- Git working trees with uncommitted changes (checked when a Tool targets them)
+
+**Enforced by policy only** (patterns that Landlock cannot express; a script can still change them, which is documented):
+
+- **Any `.env` file:** changing or deleting one needs Approval, when done through a Files Tool or a shell command the analysis recognises.
+- **Git working trees with changes the current Task did not make:** Approval is needed only to delete the tree or discard those changes (`git reset --hard`, `git clean`, `git checkout -- .`, `git restore .`, `git stash drop`). Edits do not need Approval.
 
 ### 7.4 Policy check for every Tool call
 
@@ -366,6 +405,13 @@ There is deliberately **no step limit**.
 4. **Is Landlock unavailable?** `auto` is treated as `confirm-risky`.
 
 Shell analysis is only an early warning so the Agent can ask first. Landlock is the actual enforcement.
+
+**Running an approved call on a Protected Path**
+
+- The call runs as a one-off process as `aos`, confined by the usual ruleset **widened to exactly the approved paths**. For a file that doesn't exist yet, or a delete or move, the widened path is its folder. The Approval shows these paths.
+- An approved `run_command` runs outside the persistent Session: in the Session's current folder, with a fresh environment.
+- Shell analysis cannot see every path a program touches. So `run_command` takes an optional `protected_paths` list: after a kernel denial, the Agent can ask for exactly those paths, which triggers an Approval.
+- Task-scoped grants never widen the ruleset: every Protected Path call is approved individually.
 
 ### 7.5 Approvals cannot come from Agents
 
@@ -389,7 +435,7 @@ Shell analysis is only an early warning so the Agent can ask first. Landlock is 
 
 - **Standard layout:** the freedesktop.org Trash specification, one Trash per filesystem, so deleting is always an instant rename:
   - `~/.local/share/Trash` for the home volume
-  - `Shared/.Trash-<uid>` for the Shared Folder (a hidden folder, visible on the Host)
+  - `/shared/.Trash-<uid>` for the Shared Folder (a hidden folder, visible on the Host)
 - **Agent `rm`:** an `rm` shim early in Agent `PATH` sends deletions to Trash. `/tmp`, `/var/tmp`, `node_modules`, `__pycache__`, `.cache` and build outputs are deleted permanently.
 - **Expiry:** after `AOS_TRASH_RETENTION_DAYS`, or oldest-first above `AOS_TRASH_MAX_GB`.
 - **Emptying:** only the user can empty the Trash.
@@ -467,7 +513,7 @@ stateDiagram-v2
 
 | Tool | Group | Risky? | Notes |
 |---|---|---|---|
-| `run_command` | Session | Depends on analysis | Timeout (default 10 min); `background: true` for long jobs |
+| `run_command` | Session | Depends on analysis | Timeout (default 10 min); `background: true` for long jobs; optional `protected_paths` requests an Approval to change those paths (§7.4) |
 | `send_input` | Session | No | For interactive prompts |
 | `read_output` | Session | No | Page through full or background output |
 | `stop_process` | Session | No | Only the Task's own processes |
@@ -510,7 +556,7 @@ stateDiagram-v2
 
 ## 11. Software
 
-**Install Ledger entry:** manager (`apt` | `pipx` | `npm`), package, exact version, action (install/remove), Task, time.
+**Install Ledger entry:** manager (`apt` | `pipx` | `npm`), package, exact version, action (install/remove), Task, time. For apt, every package the operation changed is recorded as `name:arch=version`, dependencies included, with a flag for automatically installed ones (M0 finding F9).
 
 **Per package manager**
 
@@ -533,7 +579,8 @@ stateDiagram-v2
 
 **Replay at startup (in the background):**
 - Compare `dpkg` state with the Ledger.
-- Install from the cache, offline and version-exact.
+- Install the cached `.deb` files directly (offline, version-exact, needs no package lists), then re-mark automatically installed packages. Otherwise, fall back to the package lists kept in `aos-pkgcache`, then to the network.
+- Cache clean-up keeps every `.deb` the Ledger references.
 - If a version is unavailable, install the latest and notify the user. If the image already has a newer version, skip it.
 - Show progress in the menu bar and in `aos doctor`.
 - Tasks may start meanwhile. Agents see "Replay in progress", and new installs wait for Replay to finish.
@@ -544,8 +591,9 @@ stateDiagram-v2
 - **Logs:** ring buffer in memory plus a rotated file. Visible in Activity Monitor and via `aos service logs`.
 - **Port discovery:** `/proc/net/tcp{,6}` is scanned every 2 s for listening sockets, feeding Activity Monitor and the Desktop's "Open" buttons.
 - **Forwarding:**
-  - `http://<port>.localhost:7700`: `aosd` routes by `Host` header to `127.0.0.1:<port>`, including WebSockets. Used by Chrome, Edge and Firefox.
-  - `http://localhost:7700/port/<port>/`: prefix stripped, CSP sandbox applied. Used automatically in Safari. Apps that need their own cookies or localStorage may not work in this mode.
+  - `http://<port>.localhost:7700`: `aosd` routes by `Host` header to `127.0.0.1:<port>`, including WebSockets. The default in every browser; Chrome and Safari verified in M0 (finding F5).
+  - `http://localhost:7700/port/<port>/`: prefix stripped, CSP sandbox applied. A fallback for setups where `*.localhost` doesn't resolve (proxies, custom resolvers). Apps that need their own cookies or localStorage may not work in this mode.
+  - Both modes strip the Desktop's session cookie from requests, and drop any `Set-Cookie` that names it or carries a `Domain` attribute.
   - Published ports via `compose.override.yaml`: full fidelity in every browser, needs a restart.
 - **Low ports:** Docker containers normally allow unprivileged binding to ports below 1024 (verified in M0), so nginx on port 80 works as `aos`.
 
@@ -587,7 +635,7 @@ stateDiagram-v2
 | Landlock | ✅ confirmed (linuxkit kernel) | ✅ in WSL2 kernel config | Depends on distro and kernel; fallback per ADR-0004 |
 | Shared Folder ownership | Automatic | Automatic | `AOS_UID`/`AOS_GID` applied at startup (re-owns home only when changed) |
 | Shared Folder live updates | fsnotify + 2 s polling | 2 s polling (Windows changes aren't reliably seen) | fsnotify + 2 s polling |
-| Service subdomains | Chrome/Edge/Firefox ✅, Safari → path mode | ✅ | ✅ |
+| Service subdomains | Chrome, Safari ✅ (M0); Edge, Firefox expected | ✅ | ✅ |
 | Reserved shortcuts | ⌘Space, ⌘Tab, ⌘W, ⌘Q | Alt+Space, Alt+Tab, Alt+F4, Win, Ctrl+W | Super, Alt+Tab, Ctrl+W |
 | Start command | `docker compose up --build` (zsh/bash) | same (PowerShell/cmd) | same |
 | Verified by | Me, during every milestone | You, via `aos doctor --host-check` + manual Desktop checklist | You, same |
@@ -602,7 +650,7 @@ stateDiagram-v2
 | Tool dispatch overhead | < 10 ms p95 | Go benchmark: policy + sandbox + framing around `true` |
 | First visible Agent step | < 1 s after submit | Time to first `TextDelta` or `TaskStep` (real-model live suite) |
 | `aosd` idle memory | < 50 MB RSS | `aos doctor` + CI assertion |
-| Image size | `cli` < 450 MB · `ui` < 500 MB | CI assertion on `docker image inspect` |
+| Image size | Unpacked: `cli` < 520 MB · `ui` < 540 MB. Compressed: < 180 MB | CI assertion on `du -sx /` in the image and `docker image inspect` |
 | Desktop initial bundle | < 150 KB gzipped | Vite build size check |
 
 A CI run that misses any deterministic target fails.
@@ -637,7 +685,7 @@ A CI run that misses any deterministic target fails.
 
 ## 18. Milestones
 
-### M0 — Prototypes (de-risk before building)
+### M0 — Prototypes (de-risk before building) ✅ done 2026-09-14, see [m0-findings.md](m0-findings.md)
 
 | # | Prototype | Passes when |
 |---|---|---|
@@ -720,7 +768,7 @@ A CI run that misses any deterministic target fails.
 
 | Risk | Mitigation |
 |---|---|
-| Landlock can't express "home except Protected Paths" cleanly | M0.1 first; fallbacks are per-command rulesets or re-sandboxing Sessions on layout change |
+| Landlock can't express "home except Protected Paths" cleanly | Resolved in M0: Protected dotfiles are relocated behind root-owned symlinks (§7.2). Paths the user locks inside home still split their folder. |
 | No step limit leads to runaway token spend | Retry guard, loop detection, visible live usage, optional Cost Limits; README recommends setting a daily limit |
 | Model quality varies by model and version | Live evaluation suite graded on Machine state; model is configurable |
 | Apps break in Safari path-forwarding mode | Documented; `compose.override.yaml` published ports as a full-fidelity escape hatch |
@@ -742,7 +790,12 @@ A CI run that misses any deterministic target fails.
 
 ## 21. Pending decisions
 
-None. The next step is plan approval, then M0.
+None. M0's findings were decided on 2026-09-14:
+- Option B home layout
+- Shared Folder at `/shared`
+- the new size targets
+- approved Protected Path calls run with a ruleset widened for that one call
+- pattern-based Protected Paths are enforced by policy only, narrowly
 
 ## 22. Working agreement
 

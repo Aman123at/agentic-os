@@ -19,9 +19,8 @@ import (
 
 // Options describes the Machine under test.
 type Options struct {
-	Home   string // the aos user's home folder
-	Shared string // the Shared Folder mount
-	User   string // the Machine's unprivileged user
+	Layout sandbox.Layout // home, Protected dotfiles and Shared Folder
+	User   string         // the Machine's unprivileged user
 	// AosdAddr is aosd's listen address inside the Machine, used by the forwarding check.
 	AosdAddr string
 	// RequireAosd fails the forwarding check when aosd is not reachable, instead of
@@ -33,7 +32,7 @@ type Options struct {
 
 // DefaultOptions matches the Machine image.
 func DefaultOptions() Options {
-	return Options{Home: "/home/aos", Shared: "/home/aos/Shared", User: "aos", AosdAddr: "127.0.0.1:7700", Commands: 1000}
+	return Options{Layout: sandbox.DefaultLayout(), User: "aos", AosdAddr: "127.0.0.1:7700", Commands: 1000}
 }
 
 // Run executes every check. It must run as root inside the Machine; it only
@@ -67,7 +66,7 @@ type machine struct {
 
 func (m *machine) env() []string {
 	return []string{
-		"HOME=" + m.opts.Home, "USER=" + m.opts.User, "LANG=C.UTF-8",
+		"HOME=" + m.opts.Layout.Home, "USER=" + m.opts.User, "LANG=C.UTF-8",
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
 	}
 }
