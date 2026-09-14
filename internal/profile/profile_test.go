@@ -1,0 +1,96 @@
+package profile
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/amantiwari/agentic-os/internal/events"
+	"github.com/amantiwari/agentic-os/internal/store"
+)
+
+func TestTheContextGivesMemoryThenTheMachineProfile(t *testing.T) {
+	m := Machine{OS: "Ubuntu 24.04.3 LTS", Arch: "arm64", Mode: "cli", Landlock: true,
+		Software:  []Software{{Manager: "apt", Name: "nginx", Version: "1.24.0-2ubuntu7"}},
+		Services:  []Service{{Name: "site", State: "running", Ports: []int{8081}}},
+		Listeners: []Listener{{Port: 8081, Process: "nginx", Service: "site"}, {Port: 3000, Process: "node"}},
+		Replaying: true}
+	got := Context([]string{"I prefer tabs.", " Answer in French. "}, m)
+	for _, want := range []string{
+		"# Memory\nThe user asked AOS to remember:\n- I prefer tabs.\n- Answer in French.\n\n# Machine Profile\n",
+		"Ubuntu 24.04.3 LTS on arm64, cli Mode; Landlock confines Agents.",
+		"Replay is reinstalling software",
+		"Installed through AOS: nginx 1.24.0-2ubuntu7 (apt).",
+		"Services: site (running, port 8081).",
+		"Also listening: 3000 (node).",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the context lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "8081 (nginx)") {
+		t.Errorf("a Service's port is listed twice:\n%s", got)
+	}
+	if empty := Context(nil, Machine{}); strings.Contains(empty, "Memory") || !strings.Contains(empty, "Installed through AOS: nothing yet.") {
+		t.Errorf("without Memory or software:\n%s", empty)
+	}
+}
+
+func TestTheMachineProfileStaysUnder1KB(t *testing.T) {
+	m := Machine{OS: "Ubuntu 24.04.3 LTS", Arch: "arm64", Mode: "ui", Landlock: true}
+	for i := 0; i < 200; i++ {
+		m.Software = append(m.Software, Software{Manager: "apt", Name: fmt.Sprintf("package-with-a-long-name-%d", i), Version: "1.2.3-4ubuntu5"})
+		m.Services = append(m.Services, Service{Name: fmt.Sprintf("service-%d", i), State: "running", Ports: []int{8000 + i}})
+		m.Listeners = append(m.Listeners, Listener{Port: 9000 + i, Process: "python3"})
+	}
+	p := Profile(m)
+	if len(p) >= maxProfile || !strings.Contains(p, "(apt) and 196 more.") || !strings.Contains(p, "port 8003) and 196 more.") {
+		t.Errorf("profile of %d bytes:\n%s", len(p), p)
+	}
+}
+
+func TestMemoryProposalsWaitForTheUser(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	bus := events.New()
+	sub := bus.Subscribe(t.Context(), "")
+	s := &Memories{DB: db, Bus: bus}
+	ctx := context.Background()
+
+	proposal, err := s.Propose(ctx, "t_1", "The user deploys with rsync.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := (<-sub).GetNotification(); n.GetMemoryId() != proposal.Id || n.Body != "The user deploys with rsync." || n.TaskId != "t_1" {
+		t.Errorf("notification %+v", n)
+	}
+	written, _ := s.Add(ctx, "", "I prefer tabs.")
+	if accepted, _ := s.Accepted(ctx); len(accepted) != 1 || accepted[0] != "I prefer tabs." {
+		t.Fatalf("accepted before the proposal was: %v", accepted)
+	}
+	if m, err := s.Accept(ctx, proposal.Id); err != nil || m.Status != Accepted {
+		t.Fatalf("accept: %+v %v", m, err)
+	}
+	if accepted, _ := s.Accepted(ctx); len(accepted) != 2 {
+		t.Errorf("accepted %v", accepted)
+	}
+	if err := s.Forget(ctx, written.Id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Forget(ctx, written.Id); !errors.Is(err, ErrNoMemory) {
+		t.Errorf("forgetting twice: %v", err)
+	}
+	if _, err := s.Add(ctx, "", "  "); err == nil {
+		t.Error("an empty entry was saved")
+	}
+	list, _ := s.List(ctx)
+	if len(list) != 1 || list[0].Id != proposal.Id {
+		t.Errorf("list %v", list)
+	}
+}

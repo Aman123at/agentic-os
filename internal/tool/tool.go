@@ -82,7 +82,10 @@ type Env struct {
 	Outputs  *Outputs
 	HTTP     *http.Client
 	AskUser  func(ctx context.Context, question string) (string, error)
-	Remember func(ctx context.Context, text string) error
+	// Remember saves a Memory entry; direct saves it without asking the user.
+	Remember func(ctx context.Context, text string, direct bool) error
+	// UserMessages returns what the user said in this Task so far.
+	UserMessages func() []string
 }
 
 func (e *Env) stat(path string) (exists, dir bool) {

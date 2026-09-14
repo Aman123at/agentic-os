@@ -45,26 +45,50 @@ func (askUser) Prepare(_ context.Context, env *Env, args json.RawMessage) (*Call
 type remember struct{}
 
 func (remember) Spec() Spec {
-	return Spec{Name: "remember", Description: "Propose a lasting preference or fact for future Tasks (Memory). It is saved only if the user accepts it.",
-		Parameters: object(map[string]any{"text": str("The preference or fact, in one sentence")})}
+	return Spec{Name: "remember", Description: "Keep a lasting preference or fact for future Tasks (Memory). It is saved once the user accepts it, or at once when the user asked you to remember it.",
+		Parameters: object(map[string]any{
+			"text":       str("The preference or fact, in one sentence"),
+			"user_asked": optBool("True only if the user explicitly asked you to remember this"),
+		})}
 }
 
 func (remember) Prepare(_ context.Context, env *Env, args json.RawMessage) (*Call, error) {
-	var a struct{ Text string }
+	var a struct {
+		Text      string
+		UserAsked bool `json:"user_asked"`
+	}
 	if err := decode(args, &a); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(a.Text) == "" {
 		return nil, errors.New("text is empty")
 	}
-	return &Call{Summary: "Propose to remember: " + oneLine(a.Text, 200), Policy: policy.Call{Tool: "remember", Coordination: true},
+	// The Agent's word alone is not enough: the user must have said "remember".
+	direct := a.UserAsked && env.UserMessages != nil && mentionsRemember(env.UserMessages())
+	summary := "Propose to remember: "
+	if direct {
+		summary = "Remember: "
+	}
+	return &Call{Summary: summary + oneLine(a.Text, 200), Policy: policy.Call{Tool: "remember", Coordination: true},
 		Run: func(ctx context.Context, r Run) Result {
 			if env.Remember == nil {
 				return Errorf("Memory is not available")
 			}
-			if err := env.Remember(ctx, a.Text); err != nil {
+			if err := env.Remember(ctx, a.Text, direct); err != nil {
 				return Errorf("%v", err)
+			}
+			if direct {
+				return Result{Output: "Saved to Memory; future Tasks are given it."}
 			}
 			return Result{Output: "Proposed to the user; it is saved only if they accept."}
 		}}, nil
+}
+
+func mentionsRemember(messages []string) bool {
+	for _, m := range messages {
+		if strings.Contains(strings.ToLower(m), "remember") {
+			return true
+		}
+	}
+	return false
 }

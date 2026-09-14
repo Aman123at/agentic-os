@@ -46,6 +46,9 @@ type Config struct {
 	Home       string
 	// Usage records usage per day and estimates costs; nil records usage without prices.
 	Usage *usage.Tracker
+	// Context returns AOS's message that starts an Agent's conversation: the
+	// user's Memory and the Machine Profile (PLAN.md §8.2). Nil means none.
+	Context func(ctx context.Context) string
 	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
 	TaskCostLimit, DailyCostLimit float64
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
@@ -163,7 +166,11 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 	t := &aosv1.Task{Id: newID("t_"), Title: title(prompt), Prompt: prompt, State: aosv1.TaskState_TASK_STATE_QUEUED,
 		Autonomy: autonomy, Interactive: interactive, Model: m.cfg.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at}
 	step := &aosv1.TaskStep{Id: newID("s_"), TaskId: t.Id, Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: prompt, CreatedAt: at}
-	items, _ := json.Marshal([]llm.Item{llm.UserMessage(prompt)})
+	start := []llm.Item{llm.UserMessage(prompt)}
+	if c := m.context(ctx); c != "" {
+		start = []llm.Item{llm.DeveloperMessage(c), llm.UserMessage(prompt)}
+	}
+	items, _ := json.Marshal(start)
 	err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error {
 		if err := insertTask(ctx, tx, t); err != nil {
 			return err
@@ -200,6 +207,9 @@ func (m *Manager) FollowUp(ctx context.Context, id, text string, interactive boo
 	if t.State == aosv1.TaskState_TASK_STATE_INTERRUPTED {
 		items = append(items, llm.DeveloperMessage(restartNote))
 	}
+	if c := m.freshContext(ctx, id); c != "" {
+		items = append(items, llm.DeveloperMessage(c))
+	}
 	items = append(items, llm.UserMessage(text))
 	return m.requeue(ctx, t, interactive, &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: text}, items)
 }
@@ -214,7 +224,57 @@ func (m *Manager) Resume(ctx context.Context, id string, interactive bool) (*aos
 		return nil, fmt.Errorf("task %s is %s; only Interrupted Tasks can be resumed", id, stateName(t.State))
 	}
 	step := &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_NOTE, Text: "Resumed after AOS restarted."}
-	return m.requeue(ctx, t, interactive, step, []llm.Item{llm.DeveloperMessage(restartNote)})
+	items := []llm.Item{llm.DeveloperMessage(restartNote)}
+	if c := m.freshContext(ctx, id); c != "" {
+		items = append(items, llm.DeveloperMessage(c))
+	}
+	return m.requeue(ctx, t, interactive, step, items)
+}
+
+func (m *Manager) context(ctx context.Context) string {
+	if m.cfg.Context == nil {
+		return ""
+	}
+	return m.cfg.Context(ctx)
+}
+
+// freshContext returns the context message when it differs from the last one
+// in the Task's conversation, so a continued Agent learns what changed.
+func (m *Manager) freshContext(ctx context.Context, taskID string) string {
+	c := m.context(ctx)
+	if c == "" {
+		return ""
+	}
+	_, stored, err := listSteps(ctx, m.cfg.DB.Read(), taskID)
+	if err != nil {
+		return c
+	}
+	last := ""
+	for _, it := range buildTranscript(stored) {
+		// The profile package starts its message with one of these headings.
+		if it.Type == llm.Message && it.Role == "developer" && (strings.HasPrefix(it.Text, "# Memory") || strings.HasPrefix(it.Text, "# Machine Profile")) {
+			last = it.Text
+		}
+	}
+	if last == c {
+		return ""
+	}
+	return c
+}
+
+// userMessages returns what the user said in the Task so far.
+func (r *run) userMessages() []string {
+	steps, _, err := listSteps(context.Background(), r.m.cfg.DB.Read(), r.id)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, s := range steps {
+		if s.Kind == aosv1.StepKind_STEP_KIND_USER_MESSAGE {
+			out = append(out, s.Text)
+		}
+	}
+	return out
 }
 
 // requeue records the step that continues a finished Task and queues it again.
@@ -326,7 +386,7 @@ func (r *run) execute() {
 	r.task = t
 	r.setState(aosv1.TaskState_TASK_STATE_RUNNING, "")
 
-	env := &tool.Env{TaskID: t.Id, Home: cfg.Home, Interactive: t.Interactive, AskUser: r.askUser}
+	env := &tool.Env{TaskID: t.Id, Home: cfg.Home, Interactive: t.Interactive, AskUser: r.askUser, UserMessages: r.userMessages}
 	r.env = env
 	release := func() {}
 	if cfg.NewEnv != nil {

@@ -5,7 +5,6 @@ package daemon
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -33,6 +32,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/llm/fake"
 	"github.com/amantiwari/agentic-os/internal/llm/openai"
 	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/proxy"
 	"github.com/amantiwari/agentic-os/internal/sandbox"
 	"github.com/amantiwari/agentic-os/internal/session"
@@ -76,6 +76,8 @@ type Daemon struct {
 	outputs  *tool.Outputs
 	auth     *api.Auth
 	usage    *usage.Tracker
+	memories *profile.Memories
+	osName   string
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -103,14 +105,14 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if (cfg.TaskCostLimit > 0 || cfg.DailyCostLimit > 0) && !d.pricesKnown(model) {
 		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, model)
 	}
-	osName := osRelease()
-	instructions := agent.Instructions(agent.Machine{OS: osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
+	d.osName = osRelease()
+	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
 	registry := tool.NewRegistry(append(append(append(tool.SessionTools(), tool.FilesTools()...), tool.InternetTools()...), tool.CoordinationTools()...)...)
 	d.tasks, err = task.New(task.Config{
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
 		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.layout.Home,
-		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit,
+		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit, Context: d.agentContext,
 		NewEnv: d.newEnv, Protection: d.protection,
 	})
 	if err != nil {
@@ -123,7 +125,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
-		Sessions: &userSessions{d: d}, Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
+		Sessions: &userSessions{d: d}, Memories: d.memories, Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
 	}
 	handler := srv.Handler()
 
@@ -212,6 +214,7 @@ func (d *Daemon) init() error {
 		f.Close()
 	}
 	d.usage = &usage.Tracker{DB: d.db, Prices: &usage.File{Path: pricesFile}}
+	d.memories = &profile.Memories{DB: d.db, Bus: d.bus}
 	d.bus = events.New()
 	d.audit = &audit.Log{DB: d.db}
 	d.registry = session.NewRegistry()
@@ -311,7 +314,15 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	env.Outputs = d.outputs
 	env.HTTP = &http.Client{Timeout: 2 * time.Minute}
 	env.Stat = statPath
-	env.Remember = func(ctx context.Context, text string) error { return d.remember(ctx, env.TaskID, text) }
+	env.Remember = func(ctx context.Context, text string, direct bool) error {
+		var err error
+		if direct {
+			_, err = d.memories.Add(ctx, env.TaskID, text)
+		} else {
+			_, err = d.memories.Propose(ctx, env.TaskID, text)
+		}
+		return err
+	}
 	env.Files = func(widen []string) files.Runner {
 		return files.Confined{Ops: ops, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
 			p := d.agentPolicy()
@@ -360,19 +371,16 @@ func (d *Daemon) protection(taskID string) *policy.Protection {
 	return p
 }
 
-func (d *Daemon) remember(ctx context.Context, taskID, text string) error {
-	id := "m_" + randomHex(8)
-	err := d.db.Write(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO memories (id, text, status, task_id, created_at) VALUES (?, ?, 'proposed', ?, ?)`,
-			id, text, taskID, store.Millis(time.Now()))
-		return err
-	})
-	if err != nil {
-		return err
-	}
-	d.bus.Publish(&aosv1.Event{Kind: &aosv1.Event_Notification{Notification: &aosv1.Notification{
-		Title: "Remember this?", Body: text, TaskId: taskID}}})
-	return nil
+// agentContext is the message that starts every Agent's conversation: the
+// user's Memory and the Machine Profile (PLAN.md §8.5).
+func (d *Daemon) agentContext(ctx context.Context) string {
+	memory, _ := d.memories.Accepted(ctx)
+	return profile.Context(memory, d.machine())
+}
+
+// machine describes the Machine for its Profile.
+func (d *Daemon) machine() profile.Machine {
+	return profile.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1}
 }
 
 // refused records a request the Unix socket turned away (PLAN.md §7.5).

@@ -17,6 +17,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/audit"
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
+	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/task"
 )
 
@@ -55,6 +56,7 @@ type Server struct {
 	FileOps   files.Ops
 	Protected Protected
 	Sessions  Sessions
+	Memories  *profile.Memories
 	Info      func() *aosv1.InfoResponse
 	// Assets is the Desktop (ui Mode); nil serves a short note.
 	Assets fs.FS
@@ -72,6 +74,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewTrashServiceHandler(trashService{s}, opts...))
 	mux.Handle(aosv1connect.NewSessionServiceHandler(sessionService{s}, opts...))
 	mux.Handle(aosv1connect.NewSystemServiceHandler(systemService{s}, opts...))
+	mux.Handle(aosv1connect.NewSettingsServiceHandler(settingsService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	page := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -96,7 +99,7 @@ func connectError(err error) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, task.ErrNotFound), errors.Is(err, files.ErrNotExist):
+	case errors.Is(err, task.ErrNotFound), errors.Is(err, files.ErrNotExist), errors.Is(err, profile.ErrNoMemory):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, files.ErrExists):
 		return connect.NewError(connect.CodeAlreadyExists, err)
@@ -485,6 +488,48 @@ func (ss sessionService) ListSessions(context.Context, *connect.Request[aosv1.Li
 
 func (ss sessionService) CloseSession(ctx context.Context, req *connect.Request[aosv1.CloseSessionRequest]) (*connect.Response[aosv1.CloseSessionResponse], error) {
 	return connect.NewResponse(&aosv1.CloseSessionResponse{}), connectError(ss.s.Sessions.Close(req.Msg.Id))
+}
+
+// ---------------------------------------------------------------- Settings
+
+type settingsService struct{ s *Server }
+
+func (st settingsService) ListMemory(ctx context.Context, _ *connect.Request[aosv1.ListMemoryRequest]) (*connect.Response[aosv1.ListMemoryResponse], error) {
+	memories, err := st.s.Memories.List(ctx)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ListMemoryResponse{Memories: memories}), nil
+}
+
+func (st settingsService) AddMemory(ctx context.Context, req *connect.Request[aosv1.AddMemoryRequest]) (*connect.Response[aosv1.AddMemoryResponse], error) {
+	m, err := st.s.Memories.Add(ctx, "", req.Msg.Text)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	st.audit(ctx, "memory_add", m.Id, m.Text)
+	return connect.NewResponse(&aosv1.AddMemoryResponse{Memory: m}), nil
+}
+
+func (st settingsService) AcceptMemory(ctx context.Context, req *connect.Request[aosv1.AcceptMemoryRequest]) (*connect.Response[aosv1.AcceptMemoryResponse], error) {
+	m, err := st.s.Memories.Accept(ctx, req.Msg.Id)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	st.audit(ctx, "memory_accept", m.Id, m.Text)
+	return connect.NewResponse(&aosv1.AcceptMemoryResponse{Memory: m}), nil
+}
+
+func (st settingsService) ForgetMemory(ctx context.Context, req *connect.Request[aosv1.ForgetMemoryRequest]) (*connect.Response[aosv1.ForgetMemoryResponse], error) {
+	if err := st.s.Memories.Forget(ctx, req.Msg.Id); err != nil {
+		return nil, connectError(err)
+	}
+	st.audit(ctx, "memory_forget", req.Msg.Id, "")
+	return connect.NewResponse(&aosv1.ForgetMemoryResponse{}), nil
+}
+
+func (st settingsService) audit(ctx context.Context, tool, id, result string) {
+	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: tool, Arguments: `{"id":` + quote(id) + `}`, Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 }
 
 // ---------------------------------------------------------------- System
