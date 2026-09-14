@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="About This Machine">
+  <defs>
+    <linearGradient id="obg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#eef1f6"/>
+      <stop offset="1" stop-color="#c7cedb"/>
+    </linearGradient>
+    <linearGradient id="oscr" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#3aa0ff"/>
+      <stop offset="1" stop-color="#6a5cff"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#obg)"/>
+  <rect x="26" y="30" width="76" height="52" rx="7" fill="#20242c"/>
+  <rect x="31" y="35" width="66" height="42" rx="3" fill="url(#oscr)"/>
+  <rect x="52" y="82" width="24" height="10" fill="#9aa4b4"/>
+  <rect x="40" y="92" width="48" height="6" rx="3" fill="#20242c"/>
+</svg>

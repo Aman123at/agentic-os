@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Aurora dark wallpaper">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#0b1030"/>
+      <stop offset="0.5" stop-color="#171a4a"/>
+      <stop offset="1" stop-color="#2a1745"/>
+    </linearGradient>
+    <radialGradient id="auroraA" cx="0.2" cy="0.15" r="0.7">
+      <stop offset="0" stop-color="#4f7bff" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#4f7bff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraB" cx="0.82" cy="0.85" r="0.75">
+      <stop offset="0" stop-color="#c04dff" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#c04dff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="auroraC" cx="0.72" cy="0.28" r="0.5">
+      <stop offset="0" stop-color="#2ce8b6" stop-opacity="0.4"/>
+      <stop offset="1" stop-color="#2ce8b6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1600" height="1000" fill="url(#night)"/>
+  <rect width="1600" height="1000" fill="url(#auroraC)"/>
+  <rect width="1600" height="1000" fill="url(#auroraB)"/>
+  <rect width="1600" height="1000" fill="url(#auroraA)"/>
+  <g fill="#ffffff">
+    <circle cx="240" cy="140" r="1.6" opacity="0.8"/>
+    <circle cx="520" cy="90" r="1.1" opacity="0.6"/>
+    <circle cx="880" cy="180" r="1.4" opacity="0.7"/>
+    <circle cx="1180" cy="120" r="1" opacity="0.5"/>
+    <circle cx="1380" cy="240" r="1.5" opacity="0.7"/>
+    <circle cx="680" cy="300" r="1" opacity="0.5"/>
+    <circle cx="1020" cy="60" r="1.2" opacity="0.6"/>
+  </g>
+  <path d="M0 780 C 320 720 600 840 960 770 C 1240 716 1420 786 1600 748 L1600 1000 L0 1000 Z" fill="#5b7bff" opacity="0.12"/>
+</svg>

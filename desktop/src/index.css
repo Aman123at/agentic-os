@@ -117,6 +117,36 @@ button {
   z-index: 0;
 }
 
+/* The drawn wallpapers (Aurora set) layer over the gradient base; the theme
+   reveals one and hides the other, following the same rules as the palette. */
+.wallpaper__art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+.wallpaper__art--light {
+  opacity: 1;
+}
+:root[data-theme="dark"] .wallpaper__art--light,
+:root:not([data-theme="light"]) .wallpaper__art--light {
+  opacity: 0;
+}
+:root[data-theme="dark"] .wallpaper__art--dark,
+:root:not([data-theme="light"]) .wallpaper__art--dark {
+  opacity: 1;
+}
+:root[data-theme="light"] .wallpaper__art--light {
+  opacity: 1;
+}
+:root[data-theme="light"] .wallpaper__art--dark {
+  opacity: 0;
+}
+
 .windows {
   position: absolute;
   inset: 0;
@@ -303,6 +333,12 @@ button {
 .dock__icon {
   font-size: 34px;
   line-height: 1;
+}
+.dock__icon--art {
+  width: 44px;
+  height: 44px;
+  display: block;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.3));
 }
 
 .dock__dot {

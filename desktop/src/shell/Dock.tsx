@@ -1,5 +1,6 @@
 import { useRef } from "react";
 
+import { appArt } from "../assets";
 import { APPS, DOCK_APPS, type AppId } from "../apps/registry";
 import { useDesktop } from "../store";
 
@@ -52,9 +53,14 @@ export default function Dock() {
 
 function DockTile({ id, running, onOpen }: { id: AppId; running: boolean; onOpen: () => void }) {
   const app = APPS[id];
+  const art = appArt[id];
   return (
     <button className="dock__tile" title={app.name} onClick={onOpen}>
-      <span className="dock__icon">{app.icon}</span>
+      {art ? (
+        <img className="dock__icon dock__icon--art" src={art} alt="" draggable={false} />
+      ) : (
+        <span className="dock__icon">{app.icon}</span>
+      )}
       <span className={`dock__dot${running ? " dock__dot--on" : ""}`} />
     </button>
   );

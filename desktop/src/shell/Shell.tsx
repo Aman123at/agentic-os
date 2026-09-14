@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { wallpapers } from "../assets";
 import { useDesktop } from "../store";
 import Approvals from "./Approvals";
 import Dock from "./Dock";
@@ -33,7 +34,12 @@ export default function Shell() {
 
   return (
     <div className="desktop">
-      <div className="wallpaper" />
+      {/* The gradient base paints instantly; the drawn wallpapers layer over it,
+          the right one revealed by the theme (see index.css). */}
+      <div className="wallpaper">
+        <img className="wallpaper__art wallpaper__art--light" src={wallpapers.light} alt="" draggable={false} />
+        <img className="wallpaper__art wallpaper__art--dark" src={wallpapers.dark} alt="" draggable={false} />
+      </div>
       <MenuBar />
       <div className="windows">
         {windows.map((win) => (

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Finder">
+  <defs>
+    <linearGradient id="fbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4aa8ff"/>
+      <stop offset="1" stop-color="#1f6fe0"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#fbg)"/>
+  <path d="M64 20 v88" stroke="#ffffff" stroke-opacity="0.35" stroke-width="2"/>
+  <path d="M64 24 A40 40 0 0 0 24 64 A40 40 0 0 0 64 104 Z" fill="#eaf4ff"/>
+  <ellipse cx="49" cy="54" rx="4.5" ry="8" fill="#12335e"/>
+  <ellipse cx="79" cy="54" rx="4.5" ry="8" fill="#12335e"/>
+  <path d="M42 78 Q64 96 86 78" fill="none" stroke="#12335e" stroke-width="5" stroke-linecap="round"/>
+</svg>

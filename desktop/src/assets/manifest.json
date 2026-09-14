@@ -1,0 +1,15 @@
+{
+  "name": "Aurora",
+  "version": 1,
+  "description": "Original macOS-style icon and wallpaper set drawn for the Agentic OS Desktop (PLAN.md §4.3). Swappable: replace these files (and index.ts's imports) to theme the whole Desktop.",
+  "wallpapers": {
+    "light": "wallpaper-light.svg",
+    "dark": "wallpaper-dark.svg"
+  },
+  "icons": {
+    "finder": "finder.svg",
+    "terminal": "terminal.svg",
+    "tasks": "agent.svg",
+    "about": "about.svg"
+  }
+}
