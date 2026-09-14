@@ -1,6 +1,6 @@
 # Agentic OS — v1 Plan
 
-**Status:** Approved 2026-09-14 · M0 done ([findings](m0-findings.md); its decisions are folded in below) · M1 in progress
+**Status:** Approved 2026-09-14 · M0 done ([findings](m0-findings.md); its decisions are folded in below) · M1 done · M2 in progress
 **Vocabulary:** every capitalised term (Machine, Task, Agent, Tool, Session, Protected Path, Checkpoint, Replay, …) is defined in [CONTEXT.md](../CONTEXT.md).
 **Decisions:** the hard-to-reverse ones are recorded in [docs/adr/](adr/).
 
@@ -665,7 +665,7 @@ A CI run that misses any deterministic target fails.
 2. **Agent-loop tests with the `fake` provider:**
    - Recorded model conversations ("cassettes") replay deterministically, at no cost.
    - A `-record` flag re-captures them with a real key.
-3. **Container integration tests** (the real image, via testcontainers):
+3. **Container integration tests** (the real image, started by Go tests that drive the Docker CLI: `docker run` for the host check, `docker compose` for milestone acceptance in `tools/e2e`; no testcontainers dependency):
    - Landlock guard: a Python script cannot delete `~/.ssh/id_ed25519`, and `sudo` fails in Agent Sessions.
    - Trash round-trip.
    - Replay yields identical versions offline.
@@ -700,7 +700,7 @@ A CI run that misses any deterministic target fails.
 
 **Output:** a short findings note. ADR-0004's ruleset section is finalised. Windows and Linux results come from you running the host check; any failure found there is triaged before M1 starts, if it arrives by then.
 
-### M1 — `aosd` core + CLI Mode
+### M1 — `aosd` core + CLI Mode ✅ done 2026-09-14 (acceptance: `go run ./tools/ci e2e`)
 
 - **Building blocks:** `store`, `events`, `task`, `agent`, `llm/openai`, `llm/fake`, `sandbox`, `session`, `files` + Trash, `policy`, `audit`, `api` (auth, Task/Approval/Event/File/Trash/Session/System services).
 - **Tools:** Session, Files, Internet, Coordination (except Checkpoint).
