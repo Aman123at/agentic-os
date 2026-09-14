@@ -5,6 +5,7 @@ import Approvals from "./Approvals";
 import Dock from "./Dock";
 import MenuBar from "./MenuBar";
 import NotificationCenter from "./NotificationCenter";
+import Spotlight from "./Spotlight";
 import Window from "./Window";
 import { installShortcuts } from "./keyboard";
 
@@ -15,7 +16,7 @@ export default function Shell() {
 
   useEffect(() => {
     return installShortcuts({
-      spotlight: () => {}, // Spotlight arrives in M3.4
+      spotlight: () => useDesktop.getState().toggleSpotlight(),
       closeWindow: () => {
         const s = useDesktop.getState();
         if (s.focused) s.closeWindow(s.focused);
@@ -40,6 +41,7 @@ export default function Shell() {
         ))}
       </div>
       <Dock />
+      <Spotlight />
       <NotificationCenter />
       <Approvals />
     </div>

@@ -9,6 +9,7 @@ import { ConnectError, Code } from "@connectrpc/connect";
 
 import { files, tasks, trash } from "../api/client";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
+import { useDesktop } from "../store";
 import {
   PLACES,
   basename,
@@ -52,6 +53,7 @@ export default function Finder() {
   const [busy, setBusy] = useState("");
   const [dropping, setDropping] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
+  const revealRef = useRef<string>(""); // a path Spotlight asked us to select once loaded
 
   const [history, setHistory] = useState<string[]>(["~"]);
   const [at, setAt] = useState(0);
@@ -67,6 +69,10 @@ export default function Finder() {
       } else {
         setEntries((await files.list({ path: loc })).entries);
         setTrashItems([]);
+        if (revealRef.current) {
+          setSelected(revealRef.current);
+          revealRef.current = "";
+        }
       }
     } catch (err) {
       setError(ConnectError.from(err).message);
@@ -95,6 +101,22 @@ export default function Finder() {
     () => at < history.length - 1 && (setAt(at + 1), setDir(history[at + 1])),
     [at, history],
   );
+
+  // Spotlight can ask the Finder to reveal a file: jump to its folder (or just
+  // select it if we are already there) and clear the request.
+  const finderJump = useDesktop((s) => s.finderJump);
+  const clearFinderJump = useDesktop((s) => s.clearFinderJump);
+  useEffect(() => {
+    if (!finderJump) return;
+    const { dir: jdir, select } = finderJump;
+    clearFinderJump();
+    if (jdir === dir) {
+      setSelected(select);
+    } else {
+      revealRef.current = select;
+      go(jdir);
+    }
+  }, [finderJump, dir, go, clearFinderJump]);
 
   // Folders are entered by their logical path (so a Home-rooted walk stays
   // "~/…" rather than flipping to an absolute path); files open Quick Look.

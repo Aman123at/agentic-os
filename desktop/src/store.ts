@@ -58,6 +58,10 @@ interface DesktopState {
   steps: TaskStep[];
   spotlight: boolean;
   notifCenter: boolean;
+  // A file for the Finder to reveal, set by Spotlight; the Finder consumes and
+  // clears it. `dir` is the Finder's own logical folder (e.g. "~"), `select` the
+  // entry's absolute path.
+  finderJump: { dir: string; select: string } | null;
 
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
@@ -79,6 +83,8 @@ interface DesktopState {
   stopAll: () => Promise<void>;
   toggleSpotlight: (open?: boolean) => void;
   toggleNotifCenter: (open?: boolean) => void;
+  revealInFinder: (dir: string, select: string) => void;
+  clearFinderJump: () => void;
 }
 
 let nextId = 1;
@@ -109,6 +115,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   steps: [],
   spotlight: false,
   notifCenter: false,
+  finderJump: null,
 
   boot: async () => {
     try {
@@ -279,6 +286,12 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
   toggleSpotlight: (open) => set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false })),
   toggleNotifCenter: (open) => set((s) => ({ notifCenter: open ?? !s.notifCenter, spotlight: false })),
+
+  revealInFinder: (dir, select) => {
+    set({ finderJump: { dir, select }, spotlight: false });
+    get().openApp("finder");
+  },
+  clearFinderJump: () => set({ finderJump: null }),
 }));
 
 // ---------------------------------------------------------------- event stream
