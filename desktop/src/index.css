@@ -357,3 +357,330 @@ button {
   margin: 0;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------------------------------------------------------------- finder */
+.finder {
+  display: flex;
+  height: 100%;
+  font-size: 13px;
+  color: var(--text);
+}
+.finder__sidebar {
+  width: 160px;
+  flex: none;
+  padding: 8px 6px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+.finder__group {
+  padding: 4px 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.finder__place {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 7px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.finder__place:hover {
+  background: var(--border);
+}
+.finder__place--on {
+  background: var(--accent);
+  color: #fff;
+}
+.finder__place-icon {
+  width: 18px;
+  text-align: center;
+}
+.finder__main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+.finder__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.finder__nav,
+.finder__views {
+  display: flex;
+  gap: 2px;
+  flex: none;
+}
+.finder__btn {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--window-bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.finder__btn:hover:not(:disabled) {
+  background: var(--border);
+}
+.finder__btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.finder__btn--on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.finder__crumbs {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.finder__crumb {
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  border-radius: 5px;
+}
+.finder__crumb:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.finder__crumb--on {
+  color: var(--text);
+  font-weight: 600;
+}
+.finder__sep {
+  color: var(--muted);
+  opacity: 0.6;
+}
+.finder__body {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.finder__empty {
+  display: grid;
+  place-content: center;
+  height: 100%;
+  color: var(--muted);
+  padding: 20px;
+  text-align: center;
+}
+.finder__empty--error {
+  color: var(--error);
+}
+.finder__list {
+  height: 100%;
+  overflow-y: auto;
+  position: relative;
+}
+.finder__list-head {
+  position: sticky;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  background: var(--panel-strong);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  z-index: 1;
+}
+.finder__list-head--static {
+  position: sticky;
+  top: 0;
+}
+.finder__row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  cursor: default;
+}
+.finder__row--static {
+  position: static;
+}
+.finder__row:hover {
+  background: var(--border);
+}
+.finder__row--on,
+.finder__row--on:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.finder__col-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+.finder__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finder__lock {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.finder__col-size {
+  width: 84px;
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.finder__col-when {
+  width: 130px;
+  flex: none;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.finder__icon {
+  width: 18px;
+  text-align: center;
+  flex: none;
+}
+.finder__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 6px;
+  padding: 12px;
+  height: 100%;
+  overflow-y: auto;
+  align-content: start;
+}
+.finder__tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: default;
+}
+.finder__tile:hover {
+  background: var(--border);
+}
+.finder__tile--on {
+  background: var(--accent);
+  color: #fff;
+}
+.finder__tile-icon {
+  font-size: 40px;
+  line-height: 1;
+}
+.finder__tile-name {
+  width: 100%;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.finder__tile-lock {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 12px;
+}
+.finder__status {
+  flex: none;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* ---------------------------------------------------------------- quick look */
+.quicklook {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 10;
+}
+.quicklook__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(78%, 620px);
+  max-height: 86%;
+  background: var(--window-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+.quicklook__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.quicklook__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.quicklook__close {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+}
+.quicklook__body {
+  overflow: auto;
+  padding: 12px;
+}
+.quicklook__image {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  border-radius: 6px;
+}
+.quicklook__text {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

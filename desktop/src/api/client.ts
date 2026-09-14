@@ -7,8 +7,11 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   AuthService,
   EventService,
+  FileService,
   SettingsService,
   SystemService,
+  TaskService,
+  TrashService,
 } from "../gen/aos/v1/services_pb";
 
 const transport = createConnectTransport({
@@ -25,3 +28,6 @@ export const auth = client(AuthService);
 export const system = client(SystemService);
 export const settings = client(SettingsService);
 export const events = client(EventService);
+export const files = client(FileService);
+export const trash = client(TrashService);
+export const tasks = client(TaskService);
