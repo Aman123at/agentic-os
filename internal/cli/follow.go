@@ -203,6 +203,9 @@ func (f *follower) step(s *aosv1.TaskStep, live bool) {
 			return
 		}
 		f.printf("%s> %s%s\n", f.st.bold, s.Text, f.st.reset)
+	case aosv1.StepKind_STEP_KIND_NOTE:
+		// What AOS says, such as that the Task resumed after a restart.
+		f.printf("%s— %s%s\n", f.st.dim, s.Text, f.st.reset)
 	}
 }
 
