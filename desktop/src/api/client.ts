@@ -4,7 +4,12 @@
 import { createClient, type Client } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
-import { AuthService, SystemService } from "../gen/aos/v1/services_pb";
+import {
+  AuthService,
+  EventService,
+  SettingsService,
+  SystemService,
+} from "../gen/aos/v1/services_pb";
 
 const transport = createConnectTransport({
   baseUrl: window.location.origin,
@@ -18,3 +23,5 @@ export function client<T extends Parameters<typeof createClient>[0]>(service: T)
 
 export const auth = client(AuthService);
 export const system = client(SystemService);
+export const settings = client(SettingsService);
+export const events = client(EventService);
