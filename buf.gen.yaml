@@ -1,0 +1,9 @@
+version: v2
+# Local plugins pinned in go.mod (`tool` directives); TypeScript clients arrive with the Desktop (M3).
+plugins:
+  - local: ["go", "tool", "protoc-gen-go"]
+    out: gen/go
+    opt: paths=source_relative
+  - local: ["go", "tool", "protoc-gen-connect-go"]
+    out: gen/go
+    opt: paths=source_relative

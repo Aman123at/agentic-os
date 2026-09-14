@@ -1,0 +1,384 @@
+syntax = "proto3";
+
+package aos.v1;
+
+import "aos/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1";
+
+// ---------------------------------------------------------------- Auth (ADR-0007)
+
+service AuthService {
+  // Exchanges a one-time code from `aos desktop-url` for the session cookie.
+  rpc ExchangeLoginCode(ExchangeLoginCodeRequest) returns (ExchangeLoginCodeResponse);
+  // Creates a one-time code. Only callers on the Unix socket may do this.
+  rpc CreateLoginCode(CreateLoginCodeRequest) returns (CreateLoginCodeResponse);
+}
+
+message ExchangeLoginCodeRequest {
+  string code = 1;
+}
+message ExchangeLoginCodeResponse {}
+
+message CreateLoginCodeRequest {}
+message CreateLoginCodeResponse {
+  string code = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+// ---------------------------------------------------------------- Tasks
+
+service TaskService {
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  rpc ListTasks(ListTasksRequest) returns (ListTasksResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc SendFollowUp(SendFollowUpRequest) returns (SendFollowUpResponse);
+  // Answers the question of a Task awaiting the user after ask_user.
+  rpc AnswerQuestion(AnswerQuestionRequest) returns (AnswerQuestionResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+  rpc ResumeTask(ResumeTaskRequest) returns (ResumeTaskResponse);
+  rpc StopAll(StopAllRequest) returns (StopAllResponse);
+}
+
+message CreateTaskRequest {
+  string prompt = 1;
+  // Unspecified uses the configured Autonomy.
+  Autonomy autonomy = 2;
+  bool interactive = 3;
+}
+message CreateTaskResponse {
+  Task task = 1;
+}
+
+message ListTasksRequest {
+  int32 limit = 1;
+}
+message ListTasksResponse {
+  repeated Task tasks = 1;
+}
+
+message GetTaskRequest {
+  string id = 1;
+}
+message GetTaskResponse {
+  Task task = 1;
+  repeated TaskStep steps = 2;
+  repeated Approval approvals = 3;
+}
+
+message SendFollowUpRequest {
+  string id = 1;
+  string text = 2;
+}
+message SendFollowUpResponse {
+  Task task = 1;
+}
+
+message AnswerQuestionRequest {
+  string id = 1;
+  string text = 2;
+}
+message AnswerQuestionResponse {}
+
+message CancelTaskRequest {
+  string id = 1;
+}
+message CancelTaskResponse {}
+
+message ResumeTaskRequest {
+  string id = 1;
+}
+message ResumeTaskResponse {
+  Task task = 1;
+}
+
+message StopAllRequest {}
+message StopAllResponse {
+  int32 cancelled = 1;
+}
+
+// ---------------------------------------------------------------- Approvals
+
+service ApprovalService {
+  rpc ListPending(ListPendingRequest) returns (ListPendingResponse);
+  rpc Decide(DecideRequest) returns (DecideResponse);
+}
+
+message ListPendingRequest {
+  // Empty lists pending Approvals of every Task.
+  string task_id = 1;
+}
+message ListPendingResponse {
+  repeated Approval approvals = 1;
+}
+
+message DecideRequest {
+  string approval_id = 1;
+  ApprovalDecision decision = 2;
+}
+message DecideResponse {
+  Approval approval = 1;
+}
+
+// ---------------------------------------------------------------- Events
+
+service EventService {
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+}
+
+message SubscribeRequest {
+  // Empty subscribes to every Task.
+  string task_id = 1;
+}
+
+message SubscribeResponse {
+  Event event = 1;
+}
+
+message Event {
+  google.protobuf.Timestamp time = 1;
+  oneof kind {
+    TaskChanged task_changed = 2;
+    TaskStepChanged task_step = 3;
+    TextDelta text_delta = 4;
+    ApprovalChanged approval = 5;
+    DownloadProgress download_progress = 6;
+    Notification notification = 7;
+  }
+}
+
+message TaskChanged {
+  Task task = 1;
+}
+
+message TaskStepChanged {
+  TaskStep step = 1;
+}
+
+message TextDelta {
+  string task_id = 1;
+  string step_id = 2;
+  string delta = 3;
+}
+
+message ApprovalChanged {
+  Approval approval = 1;
+}
+
+message DownloadProgress {
+  string task_id = 1;
+  string step_id = 2;
+  string url = 3;
+  string path = 4;
+  int64 bytes = 5;
+  // -1 when unknown.
+  int64 total = 6;
+}
+
+message Notification {
+  string title = 1;
+  string body = 2;
+  string task_id = 3;
+}
+
+// ---------------------------------------------------------------- Files and Trash
+
+service FileService {
+  rpc List(ListRequest) returns (ListResponse);
+  rpc Stat(StatRequest) returns (StatResponse);
+  rpc Read(ReadRequest) returns (ReadResponse);
+  rpc Write(WriteRequest) returns (WriteResponse);
+  rpc Move(MoveRequest) returns (MoveResponse);
+  rpc Copy(CopyRequest) returns (CopyResponse);
+  // Moves to the Trash.
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Protect(ProtectRequest) returns (ProtectResponse);
+  rpc Unprotect(UnprotectRequest) returns (UnprotectResponse);
+  rpc ListProtected(ListProtectedRequest) returns (ListProtectedResponse);
+}
+
+message FileInfo {
+  string path = 1;
+  string name = 2;
+  bool dir = 3;
+  bool symlink = 4;
+  string link_target = 5;
+  int64 size = 6;
+  uint32 mode = 7;
+  google.protobuf.Timestamp modified_at = 8;
+  bool protected = 9;
+}
+
+message ListRequest {
+  string path = 1;
+}
+message ListResponse {
+  repeated FileInfo entries = 1;
+}
+
+message StatRequest {
+  string path = 1;
+}
+message StatResponse {
+  FileInfo info = 1;
+}
+
+message ReadRequest {
+  string path = 1;
+  int64 offset = 2;
+  // 0 reads up to 1 MiB.
+  int64 limit = 3;
+}
+message ReadResponse {
+  bytes content = 1;
+  bool eof = 2;
+}
+
+message WriteRequest {
+  string path = 1;
+  bytes content = 2;
+  bool overwrite = 3;
+}
+message WriteResponse {}
+
+message MoveRequest {
+  string source = 1;
+  string destination = 2;
+  bool overwrite = 3;
+}
+message MoveResponse {}
+
+message CopyRequest {
+  string source = 1;
+  string destination = 2;
+  bool overwrite = 3;
+}
+message CopyResponse {}
+
+message DeleteRequest {
+  string path = 1;
+}
+message DeleteResponse {
+  TrashItem item = 1;
+}
+
+message ProtectRequest {
+  string path = 1;
+}
+message ProtectResponse {}
+
+message UnprotectRequest {
+  string path = 1;
+}
+message UnprotectResponse {}
+
+message ListProtectedRequest {}
+message ListProtectedResponse {
+  message Entry {
+    string path = 1;
+    // default | user | pattern
+    string source = 2;
+    // Whether Landlock enforces it, or policy checks only.
+    bool kernel = 3;
+  }
+  repeated Entry entries = 1;
+}
+
+service TrashService {
+  rpc ListTrash(ListTrashRequest) returns (ListTrashResponse);
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+  // Only the user can empty the Trash: refused for Agent callers.
+  rpc Empty(EmptyRequest) returns (EmptyResponse);
+}
+
+message TrashItem {
+  // Opaque id: the Trash folder plus the entry name.
+  string id = 1;
+  string original_path = 2;
+  google.protobuf.Timestamp deleted_at = 3;
+  int64 size = 4;
+  bool dir = 5;
+}
+
+message ListTrashRequest {}
+message ListTrashResponse {
+  repeated TrashItem items = 1;
+}
+
+message RestoreRequest {
+  string id = 1;
+}
+message RestoreResponse {
+  string path = 1;
+}
+
+message EmptyRequest {}
+message EmptyResponse {
+  int32 removed = 1;
+}
+
+// ---------------------------------------------------------------- Sessions (I/O over /ws/session/<id>)
+
+service SessionService {
+  // Creates a User Session: unconfined, as aos.
+  rpc CreateSession(CreateSessionRequest) returns (CreateSessionResponse);
+  rpc ListSessions(ListSessionsRequest) returns (ListSessionsResponse);
+  rpc CloseSession(CloseSessionRequest) returns (CloseSessionResponse);
+}
+
+message SessionInfo {
+  string id = 1;
+  // Empty for User Sessions.
+  string task_id = 2;
+  bool agent = 3;
+  int32 pid = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message CreateSessionRequest {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+message CreateSessionResponse {
+  SessionInfo session = 1;
+}
+
+message ListSessionsRequest {}
+message ListSessionsResponse {
+  repeated SessionInfo sessions = 1;
+}
+
+message CloseSessionRequest {
+  string id = 1;
+}
+message CloseSessionResponse {}
+
+// ---------------------------------------------------------------- System
+
+service SystemService {
+  rpc Info(InfoRequest) returns (InfoResponse);
+  rpc Audit(AuditRequest) returns (AuditResponse);
+}
+
+message InfoRequest {}
+message InfoResponse {
+  string mode = 1;
+  string version = 2;
+  int32 landlock_abi = 3;
+  // present | empty | missing
+  string api_key = 4;
+  string model = 5;
+  Autonomy autonomy = 6;
+  int32 max_tasks = 7;
+}
+
+message AuditRequest {
+  string task_id = 1;
+  int32 limit = 2;
+  // Entries with id < before_id; 0 starts at the newest.
+  int64 before_id = 3;
+}
+message AuditResponse {
+  repeated AuditEntry entries = 1;
+}

@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package aos.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1";
+
+// Autonomy is how much an Agent may do without asking (CONTEXT.md).
+enum Autonomy {
+  AUTONOMY_UNSPECIFIED = 0;
+  AUTONOMY_AUTO = 1;
+  AUTONOMY_CONFIRM_RISKY = 2;
+  AUTONOMY_CONFIRM_ALL = 3;
+}
+
+enum TaskState {
+  TASK_STATE_UNSPECIFIED = 0;
+  TASK_STATE_QUEUED = 1;
+  TASK_STATE_RUNNING = 2;
+  TASK_STATE_AWAITING_USER = 3;
+  TASK_STATE_SUCCEEDED = 4;
+  TASK_STATE_FAILED = 5;
+  TASK_STATE_CANCELLED = 6;
+  TASK_STATE_INTERRUPTED = 7;
+}
+
+message Usage {
+  int64 input_tokens = 1;
+  int64 cached_input_tokens = 2;
+  int64 output_tokens = 3;
+  int64 reasoning_tokens = 4;
+}
+
+// Awaiting says what a Task in TASK_STATE_AWAITING_USER waits for.
+message Awaiting {
+  // Set when the Task waits for an Approval decision.
+  string approval_id = 1;
+  // Set when the Agent asked the user a question (ask_user).
+  string question = 2;
+}
+
+message Task {
+  string id = 1;
+  string title = 2;
+  string prompt = 3;
+  TaskState state = 4;
+  Autonomy autonomy = 5;
+  // False for Tasks started without anyone to ask (`aos run` without a TTY):
+  // calls that would need an Approval are denied instead.
+  bool interactive = 6;
+  // The Agent's final answer, or the reason it failed.
+  string summary = 7;
+  Usage usage = 8;
+  Awaiting awaiting = 9;
+  string model = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp finished_at = 13;
+}
+
+enum StepKind {
+  STEP_KIND_UNSPECIFIED = 0;
+  // The Task prompt, a Follow-up or an answer to ask_user.
+  STEP_KIND_USER_MESSAGE = 1;
+  STEP_KIND_AGENT_TEXT = 2;
+  STEP_KIND_TOOL_CALL = 3;
+  // Something AOS tells the user or the Agent, e.g. "the user typed into the Session".
+  STEP_KIND_NOTE = 4;
+}
+
+enum ToolCallStatus {
+  TOOL_CALL_STATUS_UNSPECIFIED = 0;
+  TOOL_CALL_STATUS_PENDING = 1;
+  TOOL_CALL_STATUS_AWAITING_APPROVAL = 2;
+  TOOL_CALL_STATUS_RUNNING = 3;
+  TOOL_CALL_STATUS_SUCCEEDED = 4;
+  TOOL_CALL_STATUS_FAILED = 5;
+  TOOL_CALL_STATUS_DENIED = 6;
+  TOOL_CALL_STATUS_CANCELLED = 7;
+}
+
+message ToolCall {
+  string call_id = 1;
+  string tool = 2;
+  string arguments_json = 3;
+  ToolCallStatus status = 4;
+  // The result as returned to the model (shaped, e.g. first 2 KB + last 6 KB).
+  string result = 5;
+  // Reference for read_output / the full output file, if any.
+  string output_ref = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp finished_at = 8;
+}
+
+message TaskStep {
+  string id = 1;
+  string task_id = 2;
+  int64 seq = 3;
+  StepKind kind = 4;
+  string text = 5;
+  ToolCall tool_call = 6;
+  google.protobuf.Timestamp created_at = 7;
+}
+
+enum ApprovalDecision {
+  APPROVAL_DECISION_UNSPECIFIED = 0;
+  APPROVAL_DECISION_ALLOW_ONCE = 1;
+  // "Allow for the rest of this Task": same Tool, same folder. Never offered for Protected Paths.
+  APPROVAL_DECISION_ALLOW_FOR_TASK = 2;
+  APPROVAL_DECISION_DENY = 3;
+}
+
+message Approval {
+  string id = 1;
+  string task_id = 2;
+  string step_id = 3;
+  string tool = 4;
+  // What will happen, in plain words: "Delete ~/.ssh/old_key".
+  string summary = 5;
+  repeated string reasons = 6;
+  // Protected Paths this one call may change if allowed (PLAN.md §7.4).
+  repeated string protected_paths = 7;
+  bool grantable = 8;
+  ApprovalDecision decision = 9;
+  string decided_by = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp decided_at = 12;
+}
+
+message AuditEntry {
+  int64 id = 1;
+  string task_id = 2;
+  string step_id = 3;
+  string tool = 4;
+  // Arguments with secrets redacted.
+  string arguments_json = 5;
+  // allow | ask | deny
+  string decision = 6;
+  // autonomy | grant | user:<client> | policy
+  string decided_by = 7;
+  string result_summary = 8;
+  int64 duration_ms = 9;
+  string actor = 10;
+  google.protobuf.Timestamp time = 11;
+}
