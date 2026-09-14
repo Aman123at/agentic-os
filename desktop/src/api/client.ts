@@ -8,6 +8,7 @@ import {
   AuthService,
   EventService,
   FileService,
+  SessionService,
   SettingsService,
   SystemService,
   TaskService,
@@ -31,3 +32,4 @@ export const events = client(EventService);
 export const files = client(FileService);
 export const trash = client(TrashService);
 export const tasks = client(TaskService);
+export const sessions = client(SessionService);
