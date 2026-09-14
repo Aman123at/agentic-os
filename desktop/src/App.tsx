@@ -1,16 +1,18 @@
 import { useEffect } from "react";
 
+import Shell from "./shell/Shell";
 import { useDesktop } from "./store";
 
-// App is the M3.0 foundation screen: it signs in, reads the machine Info over
-// Connect-RPC, and shows it. The full shell (menu bar, Dock, window manager)
-// lands in M3.1 and mounts in place of this splash.
+// App boots the Desktop: sign in, load Info and the saved layout, then show the
+// shell. Until then (or on failure) it shows a small boot card.
 export default function App() {
-  const { phase, error, info, boot } = useDesktop();
+  const { phase, error, boot } = useDesktop();
 
   useEffect(() => {
     void boot();
   }, [boot]);
+
+  if (phase === "ready") return <Shell />;
 
   return (
     <main className="boot">
@@ -23,17 +25,6 @@ export default function App() {
           </p>
         )}
         {phase === "error" && <p className="boot__error">{error}</p>}
-        {phase === "ready" && info && (
-          <dl className="boot__facts">
-            <dt>Mode</dt>
-            <dd>{info.mode}</dd>
-            <dt>Version</dt>
-            <dd>{info.version || "dev"}</dd>
-            <dt>Model</dt>
-            <dd>{info.model}</dd>
-          </dl>
-        )}
-        <p className="boot__note">The Desktop is being built across M3.</p>
       </div>
     </main>
   );
