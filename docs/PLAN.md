@@ -1,6 +1,6 @@
 # Agentic OS — v1 Plan
 
-**Status:** Approved 2026-09-14 · M0 done ([findings](m0-findings.md); its decisions are folded in below) · M1 done · M2 in progress
+**Status:** Approved 2026-09-14 · M0 done ([findings](m0-findings.md); its decisions are folded in below) · M1 done · M2 done · M3 in progress
 **Vocabulary:** every capitalised term (Machine, Task, Agent, Tool, Session, Protected Path, Checkpoint, Replay, …) is defined in [CONTEXT.md](../CONTEXT.md).
 **Decisions:** the hard-to-reverse ones are recorded in [docs/adr/](adr/).
 
@@ -723,7 +723,7 @@ A CI run that misses any deterministic target fails.
 - The Audit Log shows every step.
 - Integration tests for the above pass.
 
-### M2 — Machine features
+### M2 — Machine features ✅ done 2026-09-14 (acceptance: `go run ./tools/ci e2e`)
 
 - Install Ledger, Checkpoints, Restore, Replay.
 - Services, port discovery, forwarding.
@@ -746,6 +746,13 @@ A CI run that misses any deterministic target fails.
 - Light and dark themes; Host-aware shortcuts.
 - Finder and Terminal (User Sessions + Watch).
 - Approval pop-ups.
+
+**Scope (agreed 2026-09-14):** M3 is the shell plus Finder, Terminal, approval
+pop-ups and a *minimal* in-shell task surface (start a Task from Spotlight, watch
+its steps, answer Approvals and Follow-ups). The rich dedicated apps stay in M4.
+The perf + Playwright gate is wired into `go run ./tools/ci` from the start.
+Built in phases (M3.0 foundation done: Vite/React/Zustand app, TypeScript client
+codegen, `ui`/`playwright` CI stages).
 
 **Accepted when:**
 - Everything from M1/M2 can be driven from the Desktop.
