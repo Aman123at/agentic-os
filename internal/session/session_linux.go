@@ -44,6 +44,8 @@ type Options struct {
 	Confine *sandbox.Ruleset
 	// Env is appended to the base environment.
 	Env []string
+	// PathPrefix is put in front of PATH (the Agent's rm shim).
+	PathPrefix string
 }
 
 // Session is a persistent bash on a PTY.
@@ -141,7 +143,7 @@ func baseEnv(opts Options) []string {
 		"HOME=" + opts.Home,
 		"USER=aos", "LOGNAME=aos", "SHELL=/bin/bash",
 		// System directories first, so nothing written to ~/.local/bin can shadow sudo or other system tools.
-		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + opts.Home + "/.local/bin",
+		"PATH=" + opts.PathPrefix + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + opts.Home + "/.local/bin",
 		"LANG=C.UTF-8", "TERM=xterm-256color",
 		"DEBIAN_FRONTEND=noninteractive", "GIT_TERMINAL_PROMPT=0", "PIP_NO_INPUT=1",
 		"npm_config_yes=true", "PAGER=cat",

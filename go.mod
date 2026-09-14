@@ -9,8 +9,10 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/landlock-lsm/go-landlock v0.10.1
+	github.com/openai/openai-go/v3 v3.61.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.48.0
+	golang.org/x/term v0.46.0
 	google.golang.org/protobuf v1.36.12
 	modernc.org/sqlite v1.58.0
 	mvdan.cc/sh/v3 v3.14.1
@@ -29,8 +31,12 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
+	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/pretty v1.2.1 // indirect
+	github.com/tidwall/sjson v1.2.5 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.77 // indirect
 	modernc.org/libc v1.75.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

@@ -30,9 +30,11 @@ type AgentConfig struct {
 	Policy func() sandbox.Policy
 	// Confine is false on Hosts without Landlock: commands still run with no_new_privs.
 	Confine bool
-	// Env is appended to the Session environment (e.g. PATH with the rm shim first).
-	Env     []string
-	Outputs *tool.Outputs
+	// Env is appended to the Session environment.
+	Env []string
+	// PathPrefix goes in front of PATH, e.g. "/usr/local/lib/aos/agent-bin:" for the rm shim.
+	PathPrefix string
+	Outputs    *tool.Outputs
 	// Registry, if set, lists the Session for viewers while it runs.
 	Registry *Registry
 }
@@ -117,7 +119,7 @@ func (a *Agent) shell() (*Session, []string, error) {
 	if err != nil {
 		return nil, notes, err
 	}
-	opts := Options{Dir: a.cfg.Dir, UID: a.cfg.UID, GID: a.cfg.GID, Home: a.cfg.Home, Confine: &rs, Env: a.cfg.Env}
+	opts := Options{Dir: a.cfg.Dir, UID: a.cfg.UID, GID: a.cfg.GID, Home: a.cfg.Home, Confine: &rs, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}
 	if restore != "" {
 		opts.Env = append(append([]string{}, opts.Env...), "AOS_RESTORE="+restore)
 	}
@@ -127,7 +129,7 @@ func (a *Agent) shell() (*Session, []string, error) {
 	}
 	a.sh, a.rs, a.started = sh, rs, time.Now()
 	if a.cfg.Registry != nil {
-		a.cfg.Registry.add(&Entry{ID: a.cfg.TaskID, TaskID: a.cfg.TaskID, Agent: true, Session: sh, Created: a.started, input: a.userTyped})
+		a.cfg.Registry.Add(&Entry{ID: a.cfg.TaskID, TaskID: a.cfg.TaskID, Agent: true, Session: sh, Created: a.started, input: a.userTyped})
 	}
 	return sh, notes, nil
 }
@@ -137,7 +139,7 @@ func (a *Agent) closeShell() {
 		return
 	}
 	if a.cfg.Registry != nil {
-		a.cfg.Registry.remove(a.cfg.TaskID, a.sh)
+		a.cfg.Registry.Remove(a.cfg.TaskID, a.sh)
 	}
 	_ = a.sh.Close()
 	a.sh, a.current = nil, nil
@@ -259,7 +261,7 @@ func (a *Agent) RunIsolated(ctx context.Context, command string, widen []string,
 	if err != nil {
 		return tool.CommandResult{}, err
 	}
-	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env}), "bash", "-c", command)
+	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
 	if err != nil {
 		return tool.CommandResult{}, err
 	}
@@ -345,7 +347,7 @@ func (a *Agent) Start(ctx context.Context, command string) (tool.Process, error)
 	if err != nil {
 		return tool.Process{}, err
 	}
-	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env}), "bash", "-c", command)
+	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
 	if err != nil {
 		f.Close()
 		return tool.Process{}, err

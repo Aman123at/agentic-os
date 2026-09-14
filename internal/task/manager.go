@@ -42,8 +42,8 @@ type Config struct {
 	Home     string
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
 	NewEnv func(env *tool.Env) (release func(), err error)
-	// Protection returns the current Protected Paths.
-	Protection func() *policy.Protection
+	// Protection returns the current Protected Paths for a Task.
+	Protection func(taskID string) *policy.Protection
 	Now        func() time.Time
 }
 
@@ -402,7 +402,7 @@ func (r *run) Decide(c policy.Call) policy.Decision {
 	cfg := r.m.cfg
 	protection := policy.NewProtection(cfg.Home, nil)
 	if cfg.Protection != nil {
-		protection = cfg.Protection()
+		protection = cfg.Protection(r.id)
 	}
 	r.mu.Lock()
 	grants := append([]policy.Grant{}, r.grants...)

@@ -74,13 +74,20 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSystemServiceHandler(systemService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	page := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("Agentic OS is running in cli Mode: docker compose exec aos aos\n"))
+	}))
 	if s.Assets != nil {
-		mux.Handle("GET /", http.FileServerFS(s.Assets))
-	} else {
-		mux.HandleFunc("GET /", func(w http.ResponseWriter, _ *http.Request) {
-			_, _ = w.Write([]byte("Agentic OS is running in cli Mode: docker compose exec aos aos\n"))
-		})
+		page = http.FileServerFS(s.Assets)
 	}
+	// "/" without a method: a method pattern would conflict with the service prefixes.
+	mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		page.ServeHTTP(w, r)
+	}))
 	return mux
 }
 
@@ -217,6 +224,11 @@ type eventService struct{ s *Server }
 
 func (e eventService) Subscribe(ctx context.Context, req *connect.Request[aosv1.SubscribeRequest], stream *connect.ServerStream[aosv1.SubscribeResponse]) error {
 	ch := e.s.Bus.Subscribe(ctx, req.Msg.TaskId)
+	// An empty first message tells the client it is subscribed: state it reads
+	// after this cannot miss an event.
+	if err := stream.Send(&aosv1.SubscribeResponse{}); err != nil {
+		return err
+	}
 	for {
 		select {
 		case ev, ok := <-ch:

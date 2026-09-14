@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -97,27 +98,89 @@ func Calls(text string, calls ...Call) Turn {
 	}
 }
 
-// Cassette is a recorded conversation: one entry per model turn.
-type Cassette []struct {
-	Text  string `json:"text,omitempty"`
-	Calls []Call `json:"calls,omitempty"`
+// Cassette is a recorded conversation for a Task prompt: one entry per model turn.
+type Cassette struct {
+	// Prompt selects the cassette: a Task whose prompt contains it plays these turns.
+	Prompt string `json:"prompt"`
+	Turns  []struct {
+		Text  string `json:"text,omitempty"`
+		Calls []Call `json:"calls,omitempty"`
+	} `json:"turns"`
 }
 
-// Load reads a cassette file.
-func Load(path string) (*Provider, error) {
-	b, err := os.ReadFile(path)
+// Library plays cassettes from a folder of JSON files, choosing one per Task by
+// its prompt, so one aosd can replay many scenarios. Files are read when a Task
+// starts, so cassettes can be added while aosd runs.
+type Library struct {
+	Dir string
+
+	mu   sync.Mutex
+	next map[string]libraryTurn // response id → the cassette and turn that follow
+	n    int
+}
+
+type libraryTurn struct {
+	cassette *Cassette
+	turn     int
+}
+
+// Respond implements llm.Provider.
+func (l *Library) Respond(ctx context.Context, req llm.Request, onText func(string)) (llm.Response, error) {
+	l.mu.Lock()
+	if l.next == nil {
+		l.next = map[string]libraryTurn{}
+	}
+	pos, ok := l.next[req.PreviousResponseID]
+	l.mu.Unlock()
+	if req.PreviousResponseID == "" || !ok {
+		prompt := ""
+		for _, it := range req.Input {
+			if it.Type == llm.Message && it.Role == "user" {
+				prompt = it.Text
+				break
+			}
+		}
+		c, err := l.find(prompt)
+		if err != nil {
+			return llm.Response{}, err
+		}
+		pos = libraryTurn{cassette: c}
+	}
+	if pos.turn >= len(pos.cassette.Turns) {
+		return llm.Response{}, fmt.Errorf("fake provider: cassette %q has no turn %d", pos.cassette.Prompt, pos.turn+1)
+	}
+	t := pos.cassette.Turns[pos.turn]
+	resp, err := New(Calls(t.Text, t.Calls...)).Respond(ctx, req, onText)
+	if err != nil {
+		return resp, err
+	}
+	l.mu.Lock()
+	l.n++
+	resp.ID = fmt.Sprintf("resp_cassette_%d", l.n)
+	l.next[resp.ID] = libraryTurn{cassette: pos.cassette, turn: pos.turn + 1}
+	l.mu.Unlock()
+	return resp, nil
+}
+
+func (l *Library) find(prompt string) (*Cassette, error) {
+	paths, err := filepath.Glob(filepath.Join(l.Dir, "*.json"))
 	if err != nil {
 		return nil, err
 	}
-	var c Cassette
-	if err := json.Unmarshal(b, &c); err != nil {
-		return nil, fmt.Errorf("cassette %s: %w", path, err)
+	for _, p := range paths {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		var c Cassette
+		if err := json.Unmarshal(b, &c); err != nil {
+			return nil, fmt.Errorf("cassette %s: %w", p, err)
+		}
+		if c.Prompt != "" && strings.Contains(prompt, c.Prompt) {
+			return &c, nil
+		}
 	}
-	turns := make([]Turn, len(c))
-	for i, t := range c {
-		turns[i] = Calls(t.Text, t.Calls...)
-	}
-	return New(turns...), nil
+	return nil, fmt.Errorf("fake provider: no cassette in %s matches the Task %q", l.Dir, prompt)
 }
 
 // LastOutputs returns the function call outputs in a request, by call id.

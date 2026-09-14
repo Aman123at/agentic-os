@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
+	"syscall"
 
 	"github.com/amantiwari/agentic-os/internal/sandbox"
 )
@@ -37,8 +39,29 @@ func (c Confined) Run(ctx context.Context, op string, args, result any, progress
 	if err != nil {
 		return err
 	}
+	return runWorker(ctx, cmd, c.Ops, op, args, result, progress)
+}
+
+// AsUser runs each operation in a worker process as the aos user, unconfined:
+// the user's own file operations from the Desktop and the CLI.
+type AsUser struct {
+	Ops      Ops
+	UID, GID uint32
+	Exe      string
+	Env      []string
+}
+
+// Run implements Runner.
+func (u AsUser) Run(ctx context.Context, op string, args, result any, progress func(n, total int64)) error {
+	cmd := exec.Command(u.Exe, WorkerArg)
+	cmd.Env = u.Env
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: u.UID, Gid: u.GID, Groups: []uint32{}}}
+	return runWorker(ctx, cmd, u.Ops, op, args, result, progress)
+}
+
+func runWorker(ctx context.Context, cmd *exec.Cmd, ops Ops, op string, args, result any, progress func(n, total int64)) error {
 	var req bytes.Buffer
-	if err := WriteRequest(&req, c.Ops, op, args); err != nil {
+	if err := WriteRequest(&req, ops, op, args); err != nil {
 		return err
 	}
 	cmd.Stdin = &req

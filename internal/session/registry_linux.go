@@ -28,14 +28,15 @@ func NewRegistry() *Registry {
 	return &Registry{entries: map[string]*Entry{}}
 }
 
-func (r *Registry) add(e *Entry) {
+// Add lists a Session.
+func (r *Registry) Add(e *Entry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.entries[e.ID] = e
 }
 
-// remove removes id if it still refers to s.
-func (r *Registry) remove(id string, s *Session) {
+// Remove removes id if it still refers to s.
+func (r *Registry) Remove(id string, s *Session) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if e, ok := r.entries[id]; ok && e.Session == s {

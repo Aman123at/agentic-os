@@ -21,6 +21,7 @@ FROM --platform=$BUILDPLATFORM golang:${GO_VERSION}-bookworm AS go-base
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
+COPY gen/ gen/
 COPY cmd/ cmd/
 COPY internal/ internal/
 COPY tools/ tools/
