@@ -90,6 +90,8 @@ type Env struct {
 	TaskTitle string
 	// Software runs the Privileged Tools; nil where they are unavailable.
 	Software Software
+	// Services manages the Machine's Services; nil where they are unavailable.
+	Services Services
 	// SetCheckpoint records the Checkpoint taken before the Task's first software change.
 	SetCheckpoint func(id string)
 }
