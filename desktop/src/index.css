@@ -632,8 +632,10 @@ button {
 .quicklook {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
   background: rgba(0, 0, 0, 0.35);
   z-index: 10;
 }

@@ -96,7 +96,9 @@ export default function Finder() {
     [at, history],
   );
 
-  const open = useCallback((e: FileInfo) => (e.dir ? go(e.path) : setQuick(e)), [go]);
+  // Folders are entered by their logical path (so a Home-rooted walk stays
+  // "~/…" rather than flipping to an absolute path); files open Quick Look.
+  const open = useCallback((e: FileInfo) => (e.dir ? go(join(dir, e.name)) : setQuick(e)), [go, dir]);
 
   // run wraps a mutation: it reports failures in the status bar and reloads.
   const run = useCallback(
@@ -157,6 +159,12 @@ export default function Finder() {
     void run("Starting Task…", () => tasks.createTask({ prompt }));
   };
 
+  // act runs a context-menu choice and closes the menu.
+  const act = (fn: () => void) => {
+    setMenu(null);
+    fn();
+  };
+
   useEffect(() => {
     if (!menu) return;
     const close = () => setMenu(null);
@@ -170,6 +178,10 @@ export default function Finder() {
 
   const up = parent(dir);
   const inTrash = dir === TRASH;
+  // The active place is the most specific one containing the current folder, so
+  // Home does not also light up while inside ~/Downloads.
+  const onPlace = (p: string) => dir === p || (p !== "" && p !== "/" && dir.startsWith(`${p}/`));
+  const activePlace = [...PLACES].filter((p) => onPlace(p.path)).sort((a, b) => b.path.length - a.path.length)[0];
 
   return (
     <div
@@ -196,7 +208,7 @@ export default function Finder() {
         {PLACES.map((p) => (
           <button
             key={p.id}
-            className={`finder__place${dir === p.path ? " finder__place--on" : ""}`}
+            className={`finder__place${p.id === activePlace?.id ? " finder__place--on" : ""}`}
             onClick={() => go(p.path)}
           >
             <span className="finder__place-icon">{p.icon}</span>
@@ -230,7 +242,7 @@ export default function Finder() {
                   >
                     {c.name}
                   </button>
-                  {i < all.length - 1 && <span className="finder__sep">/</span>}
+                  {i < all.length - 1 && c.path !== "/" && <span className="finder__sep">/</span>}
                 </span>
               ))
             )}
@@ -319,22 +331,22 @@ export default function Finder() {
       {menu?.file && (
         <ContextMenu x={menu.x} y={menu.y}>
           {menu.file.dir ? (
-            <MenuItem label="Open" onClick={() => open(menu.file!)} />
+            <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
           ) : (
             <>
-              <MenuItem label="Quick Look" onClick={() => setQuick(menu.file!)} />
-              <MenuItem label="Download…" onClick={() => doDownload(menu.file!)} />
+              <MenuItem label="Quick Look" onClick={() => act(() => setQuick(menu.file!))} />
+              <MenuItem label="Download…" onClick={() => act(() => doDownload(menu.file!))} />
             </>
           )}
-          <MenuItem label={menu.file.protected ? "Unprotect" : "🔒 Protect"} onClick={() => doProtect(menu.file!)} />
-          <MenuItem label="Ask Agent…" onClick={() => setAsk(menu.file!)} />
+          <MenuItem label={menu.file.protected ? "Unprotect" : "🔒 Protect"} onClick={() => act(() => doProtect(menu.file!))} />
+          <MenuItem label="Ask Agent…" onClick={() => act(() => setAsk(menu.file!))} />
           <div className="menu__sep" />
-          <MenuItem label="Move to Trash" danger onClick={() => doDelete(menu.file!)} />
+          <MenuItem label="Move to Trash" danger onClick={() => act(() => doDelete(menu.file!))} />
         </ContextMenu>
       )}
       {menu?.item && (
         <ContextMenu x={menu.x} y={menu.y}>
-          <MenuItem label="Put Back" onClick={() => doRestore(menu.item!)} />
+          <MenuItem label="Put Back" onClick={() => act(() => doRestore(menu.item!))} />
         </ContextMenu>
       )}
 

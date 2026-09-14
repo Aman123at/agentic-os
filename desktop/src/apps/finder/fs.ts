@@ -59,9 +59,11 @@ export function crumbs(dir: string): Array<{ name: string; path: string }> {
     }
     return out;
   }
-  const out = [{ name: "/", path: "/" }];
-  let at = "";
-  for (const seg of dir.split("/").filter(Boolean)) {
+  // "/shared" reads as "Shared"; other absolute paths keep a single "/" root.
+  const out = [{ name: dir.startsWith("/shared") ? "Shared" : "/", path: dir.startsWith("/shared") ? "/shared" : "/" }];
+  const rest = dir.startsWith("/shared") ? dir.slice("/shared".length) : dir;
+  let at = out[0].path === "/" ? "" : "/shared";
+  for (const seg of rest.split("/").filter(Boolean)) {
     at = `${at}/${seg}`;
     out.push({ name: seg, path: at });
   }
