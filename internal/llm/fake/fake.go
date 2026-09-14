@@ -144,7 +144,9 @@ func (l *Library) Respond(ctx context.Context, req llm.Request, onText func(stri
 		if err != nil {
 			return llm.Response{}, err
 		}
-		pos = libraryTurn{cassette: c}
+		// A whole transcript (a Follow-up or Resume) continues after the
+		// responses it already holds.
+		pos = libraryTurn{cassette: c, turn: responsesIn(req.Input)}
 	}
 	if pos.turn >= len(pos.cassette.Turns) {
 		return llm.Response{}, fmt.Errorf("fake provider: cassette %q has no turn %d", pos.cassette.Prompt, pos.turn+1)
@@ -181,6 +183,20 @@ func (l *Library) find(prompt string) (*Cassette, error) {
 		}
 	}
 	return nil, fmt.Errorf("fake provider: no cassette in %s matches the Task %q", l.Dir, prompt)
+}
+
+// responsesIn counts the model responses in a transcript: runs of assistant
+// messages, function calls and opaque items.
+func responsesIn(items []llm.Item) int {
+	n, inResponse := 0, false
+	for _, it := range items {
+		model := it.Type == llm.FunctionCall || it.Type == llm.Opaque || it.Type == llm.Message && it.Role == "assistant"
+		if model && !inResponse {
+			n++
+		}
+		inResponse = model
+	}
+	return n
 }
 
 // LastOutputs returns the function call outputs in a request, by call id.

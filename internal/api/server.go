@@ -163,8 +163,21 @@ func (t taskService) GetTask(ctx context.Context, req *connect.Request[aosv1.Get
 	return connect.NewResponse(&aosv1.GetTaskResponse{Task: task, Steps: steps, Approvals: approvals}), nil
 }
 
-func (t taskService) SendFollowUp(context.Context, *connect.Request[aosv1.SendFollowUpRequest]) (*connect.Response[aosv1.SendFollowUpResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("follow-ups arrive in milestone M2"))
+func (t taskService) SendFollowUp(ctx context.Context, req *connect.Request[aosv1.SendFollowUpRequest]) (*connect.Response[aosv1.SendFollowUpResponse], error) {
+	continued, err := t.s.Tasks.FollowUp(ctx, req.Msg.Id, req.Msg.Text, req.Msg.Interactive)
+	if err != nil {
+		return nil, stateError(err)
+	}
+	_ = t.s.Audit.Record(ctx, audit.Entry{TaskID: continued.Id, Tool: "follow_up", Result: req.Msg.Text, Actor: ActorFrom(ctx), Decision: "allow", DecidedBy: ActorFrom(ctx)})
+	return connect.NewResponse(&aosv1.SendFollowUpResponse{Task: continued}), nil
+}
+
+// stateError maps an error from changing a Task: unknown, or not in a state that allows it.
+func stateError(err error) error {
+	if errors.Is(err, task.ErrNotFound) {
+		return connectError(err)
+	}
+	return connect.NewError(connect.CodeFailedPrecondition, err)
 }
 
 func (t taskService) AnswerQuestion(ctx context.Context, req *connect.Request[aosv1.AnswerQuestionRequest]) (*connect.Response[aosv1.AnswerQuestionResponse], error) {
@@ -185,8 +198,13 @@ func (t taskService) CancelTask(ctx context.Context, req *connect.Request[aosv1.
 	return connect.NewResponse(&aosv1.CancelTaskResponse{}), nil
 }
 
-func (t taskService) ResumeTask(context.Context, *connect.Request[aosv1.ResumeTaskRequest]) (*connect.Response[aosv1.ResumeTaskResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("resuming Tasks arrives in milestone M2"))
+func (t taskService) ResumeTask(ctx context.Context, req *connect.Request[aosv1.ResumeTaskRequest]) (*connect.Response[aosv1.ResumeTaskResponse], error) {
+	resumed, err := t.s.Tasks.Resume(ctx, req.Msg.Id, req.Msg.Interactive)
+	if err != nil {
+		return nil, stateError(err)
+	}
+	_ = t.s.Audit.Record(ctx, audit.Entry{TaskID: resumed.Id, Tool: "resume_task", Actor: ActorFrom(ctx), Decision: "allow", DecidedBy: ActorFrom(ctx)})
+	return connect.NewResponse(&aosv1.ResumeTaskResponse{Task: resumed}), nil
 }
 
 func (t taskService) StopAll(ctx context.Context, _ *connect.Request[aosv1.StopAllRequest]) (*connect.Response[aosv1.StopAllResponse], error) {

@@ -23,7 +23,7 @@ const (
 type Item struct {
 	Type ItemType `json:"type"`
 	// Message
-	Role string `json:"role,omitempty"` // user | assistant
+	Role string `json:"role,omitempty"` // user | assistant | developer
 	Text string `json:"text,omitempty"`
 	// FunctionCall and FunctionCallOutput
 	CallID    string `json:"call_id,omitempty"`
@@ -36,6 +36,10 @@ type Item struct {
 
 // UserMessage returns a user message item.
 func UserMessage(text string) Item { return Item{Type: Message, Role: "user", Text: text} }
+
+// DeveloperMessage returns a message from AOS to the model, such as the
+// Machine Profile or the note that AOS restarted.
+func DeveloperMessage(text string) Item { return Item{Type: Message, Role: "developer", Text: text} }
 
 // ToolSpec describes a Tool to the model.
 type ToolSpec struct {

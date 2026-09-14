@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -118,8 +119,14 @@ func (m *Manager) recover() error {
 			WHERE decision = 0`, int32(aosv1.ApprovalDecision_APPROVAL_DECISION_DENY), at); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, summary = 'AOS stopped while the Task was running.',
-			awaiting_approval_id = '', awaiting_question = '', updated_at = ?, finished_at = ? WHERE state IN (?, ?)`,
+		if _, err := tx.ExecContext(ctx, `UPDATE task_steps SET status = ?, result = 'AOS stopped while this call was running.', finished_at = ?
+			WHERE status IN (?, ?, ?)`, int32(aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED), at,
+			int32(aosv1.ToolCallStatus_TOOL_CALL_STATUS_PENDING), int32(aosv1.ToolCallStatus_TOOL_CALL_STATUS_AWAITING_APPROVAL),
+			int32(aosv1.ToolCallStatus_TOOL_CALL_STATUS_RUNNING)); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, summary = 'AOS stopped while the Task was running; aos resume continues it.',
+			awaiting_approval_id = '', awaiting_question = '', awaiting_kind = 0, updated_at = ?, finished_at = ? WHERE state IN (?, ?)`,
 			int32(aosv1.TaskState_TASK_STATE_INTERRUPTED), at, at,
 			int32(aosv1.TaskState_TASK_STATE_RUNNING), int32(aosv1.TaskState_TASK_STATE_AWAITING_USER))
 		return err
@@ -173,6 +180,75 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 	m.mu.Unlock()
 	m.schedule()
 	return t, nil
+}
+
+// FollowUp continues a finished Task with a further instruction, with the
+// conversation so far (a Follow-up).
+func (m *Manager) FollowUp(ctx context.Context, id, text string, interactive bool) (*aosv1.Task, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, errors.New("the Follow-up is empty")
+	}
+	t, err := getTask(ctx, m.cfg.DB.Read(), id)
+	if err != nil {
+		return nil, err
+	}
+	if !finished(t.State) {
+		return nil, fmt.Errorf("task %s is %s; a Follow-up continues a finished Task", id, stateName(t.State))
+	}
+	var items []llm.Item
+	if t.State == aosv1.TaskState_TASK_STATE_INTERRUPTED {
+		items = append(items, llm.DeveloperMessage(restartNote))
+	}
+	items = append(items, llm.UserMessage(text))
+	return m.requeue(ctx, t, interactive, &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: text}, items)
+}
+
+// Resume continues a Task that AOS stopping interrupted (PLAN.md §8.1).
+func (m *Manager) Resume(ctx context.Context, id string, interactive bool) (*aosv1.Task, error) {
+	t, err := getTask(ctx, m.cfg.DB.Read(), id)
+	if err != nil {
+		return nil, err
+	}
+	if t.State != aosv1.TaskState_TASK_STATE_INTERRUPTED {
+		return nil, fmt.Errorf("task %s is %s; only Interrupted Tasks can be resumed", id, stateName(t.State))
+	}
+	step := &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_NOTE, Text: "Resumed after AOS restarted."}
+	return m.requeue(ctx, t, interactive, step, []llm.Item{llm.DeveloperMessage(restartNote)})
+}
+
+// requeue records the step that continues a finished Task and queues it again.
+func (m *Manager) requeue(ctx context.Context, t *aosv1.Task, interactive bool, step *aosv1.TaskStep, items []llm.Item) (*aosv1.Task, error) {
+	m.mu.Lock()
+	if _, ok := m.running[t.Id]; ok || slices.Contains(m.queue, t.Id) {
+		m.mu.Unlock()
+		return nil, fmt.Errorf("task %s is already continuing", t.Id)
+	}
+	at := timestamppb.New(now(m.cfg))
+	step.Id, step.TaskId, step.CreatedAt = newID("s_"), t.Id, at
+	raw, _ := json.Marshal(items)
+	t.State, t.Summary, t.FinishedAt, t.Awaiting, t.Interactive, t.UpdatedAt = aosv1.TaskState_TASK_STATE_QUEUED, "", nil, nil, interactive, at
+	err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error {
+		if err := insertStep(ctx, tx, step, string(raw)); err != nil {
+			return err
+		}
+		return saveTask(ctx, tx, t)
+	})
+	if err == nil {
+		m.queue = append(m.queue, t.Id)
+	}
+	m.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TaskStep{TaskStep: &aosv1.TaskStepChanged{Step: step}}})
+	m.publishTask(t)
+	m.schedule()
+	return t, nil
+}
+
+func stateName(s aosv1.TaskState) string {
+	return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s.String(), "TASK_STATE_")), "_", " ")
 }
 
 // Get returns a Task with its steps and Approvals.
@@ -261,7 +337,12 @@ func (r *run) execute() {
 	}
 	defer release()
 
-	transcript := []llm.Item{llm.UserMessage(t.Prompt)}
+	_, stored, err := listSteps(r.ctx, cfg.DB.Read(), t.Id)
+	if err != nil {
+		r.setState(aosv1.TaskState_TASK_STATE_FAILED, "could not read the Task: "+err.Error())
+		return
+	}
+	transcript := buildTranscript(stored)
 	ac := agent.Config{Provider: cfg.Provider, Tools: cfg.Tools, Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort, Instructions: cfg.Instructions, MaxRetries: cfg.MaxRetries}
 	final, err := agent.Run(r.ctx, ac, r, transcript)
 	r.mu.Lock()
