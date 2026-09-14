@@ -37,39 +37,45 @@ func runCmd() *cobra.Command {
 			}
 			interactive := isTTY(os.Stdin) && isTTY(os.Stdout) && !asJSON
 			c := newClient()
-			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-			created, err := c.tasks.CreateTask(ctx, connect.NewRequest(&aosv1.CreateTaskRequest{Prompt: strings.Join(args, " "), Autonomy: a, Interactive: interactive}))
+			created, err := c.tasks.CreateTask(cmd.Context(), connect.NewRequest(&aosv1.CreateTaskRequest{Prompt: strings.Join(args, " "), Autonomy: a, Interactive: interactive}))
 			if err != nil {
 				return explain(err)
 			}
-			id := created.Msg.Task.Id
-			st := newStyles(isTTY(os.Stdout) && !asJSON)
-			if !asJSON {
-				fmt.Fprintf(os.Stderr, "%sTask %s%s\n", st.dim, id, st.reset)
-			}
-			f := newFollower(c, id, os.Stdout, st, isTTY(os.Stdout))
-			f.json = asJSON
-			if interactive {
-				f.decide = promptDecision
-				f.answer = promptAnswer
-			}
-			task, err := f.run(ctx)
-			if ctx.Err() != nil {
-				// Ctrl-C: cancel the Task, then report how it ended.
-				_, _ = c.tasks.CancelTask(context.Background(), connect.NewRequest(&aosv1.CancelTaskRequest{Id: id}))
-				fmt.Fprintf(os.Stderr, "\nCancelling %s…\n", id)
-				task, err = waitFinished(c, id)
-			}
-			if err != nil {
-				return err
-			}
-			return report(task, st, asJSON)
+			return followTask(cmd.Context(), c, created.Msg.Task.Id, interactive, asJSON)
 		},
 	}
 	cmd.Flags().StringVar(&autonomy, "autonomy", "", "auto, confirm-risky or confirm-all for this Task (default: the configured Autonomy)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print events and the final Task as JSON lines")
 	return cmd
+}
+
+// followTask follows a Task until it finishes, answering Approvals and
+// questions in the terminal when interactive, and reports how it ended.
+// Ctrl-C cancels the Task.
+func followTask(parent context.Context, c *client, id string, interactive, asJSON bool) error {
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	st := newStyles(isTTY(os.Stdout) && !asJSON)
+	if !asJSON {
+		fmt.Fprintf(os.Stderr, "%sTask %s%s\n", st.dim, id, st.reset)
+	}
+	f := newFollower(c, id, os.Stdout, st, isTTY(os.Stdout))
+	f.json = asJSON
+	if interactive {
+		f.decide = promptDecision
+		f.answer = promptAnswer
+	}
+	task, err := f.run(ctx)
+	if ctx.Err() != nil {
+		// Ctrl-C: cancel the Task, then report how it ended.
+		_, _ = c.tasks.CancelTask(context.Background(), connect.NewRequest(&aosv1.CancelTaskRequest{Id: id}))
+		fmt.Fprintf(os.Stderr, "\nCancelling %s…\n", id)
+		task, err = waitFinished(c, id)
+	}
+	if err != nil {
+		return err
+	}
+	return report(task, st, asJSON)
 }
 
 func parseAutonomy(s string) (aosv1.Autonomy, error) {
@@ -231,6 +237,9 @@ func showCmd() *cobra.Command {
 			}
 			if u := usageLine(t); u != "" {
 				fmt.Printf("%s%s%s\n", st.dim, u, st.reset)
+			}
+			if t.CheckpointId != "" {
+				fmt.Printf("%sCheckpoint before its software changes: %s (aos checkpoint restore %s undoes them)%s\n", st.dim, t.CheckpointId, t.CheckpointId, st.reset)
 			}
 			return nil
 		}}

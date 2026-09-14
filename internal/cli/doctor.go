@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -35,6 +36,17 @@ func doctorCmd() *cobra.Command {
 				fmt.Fprintf(w, "Model:     %s\n", i.Model)
 				fmt.Fprintf(w, "Autonomy:  %s, up to %d Tasks at once\n", autonomyName(i.Autonomy), i.MaxTasks)
 				fmt.Fprintf(w, "API key:   %s\n", map[string]string{"present": "present", "empty": "empty (OPENAI_API_KEY is empty on the Host)", "missing": "not provided"}[i.ApiKey])
+				fmt.Fprintf(w, "Retries:   %d (AOS_MAX_RETRIES)\n", i.MaxRetries)
+				if t := i.Today; t != nil {
+					fmt.Fprintf(w, "Today:     %d input tokens (%d cached), %d output tokens, %s\n", t.InputTokens, t.CachedInputTokens, t.OutputTokens, costText(t))
+				}
+				fmt.Fprintf(w, "Limits:    per Task %s, per day %s\n", limitText(i.TaskCostLimitUsd), limitText(i.DailyCostLimitUsd))
+				if !i.PricesKnown {
+					fmt.Fprintf(w, "Prices:    none for %s in /var/lib/aos/prices.yaml: costs are unknown and Cost Limits can't apply\n", i.Model)
+				}
+				if r := i.Replay; r != nil && r.State != aosv1.ReplayState_REPLAY_STATE_UNSPECIFIED {
+					fmt.Fprintf(w, "Replay:    %s\n", replayText(r))
+				}
 			}
 			fmt.Fprintf(w, "Platform:  %s/%s\n", runtime.GOOS, runtime.GOARCH)
 			if abi := sandbox.ABI(); abi > 0 {
@@ -61,6 +73,24 @@ func doctorCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&hostCheck, "host-check", false, "run the M0 prototype checks and print a pass/fail report")
 	return cmd
+}
+
+func limitText(usd float64) string {
+	if usd <= 0 {
+		return "none"
+	}
+	return dollars(usd)
+}
+
+// replayText describes Replay's progress in one line, notes after it.
+func replayText(r *aosv1.ReplayStatus) string {
+	switch r.State {
+	case aosv1.ReplayState_REPLAY_STATE_RUNNING:
+		return fmt.Sprintf("in progress (%d of %d): %s", r.Done, r.Total, r.Message)
+	case aosv1.ReplayState_REPLAY_STATE_FAILED:
+		return r.Message
+	}
+	return strings.ReplaceAll(r.Message, "\n", "\n           ")
 }
 
 func autonomyName(a aosv1.Autonomy) string {

@@ -116,5 +116,20 @@ func usageLine(t *aosv1.Task) string {
 	if u.GetInputTokens() == 0 && u.GetOutputTokens() == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d input tokens (%d cached), %d output tokens", u.InputTokens, u.CachedInputTokens, u.OutputTokens)
+	return fmt.Sprintf("%d input tokens (%d cached), %d output tokens, %s", u.InputTokens, u.CachedInputTokens, u.OutputTokens, costText(u))
+}
+
+// costText is the estimated cost, or says prices.yaml doesn't price the model.
+func costText(u *aosv1.Usage) string {
+	if !u.GetCostKnown() {
+		return "cost unknown (no price in /var/lib/aos/prices.yaml)"
+	}
+	return "about " + dollars(u.GetCostUsd())
+}
+
+func dollars(v float64) string {
+	if v > 0 && v < 0.01 {
+		return fmt.Sprintf("$%.4f", v)
+	}
+	return fmt.Sprintf("$%.2f", v)
 }

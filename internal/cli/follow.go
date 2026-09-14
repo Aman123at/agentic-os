@@ -95,6 +95,8 @@ func (f *follower) follow(ctx context.Context) (*aosv1.Task, error) {
 			f.approval(ctx, k.Approval.Approval)
 		case *aosv1.Event_DownloadProgress:
 			f.progress(k.DownloadProgress)
+		case *aosv1.Event_Notification:
+			f.notify(k.Notification)
 		case *aosv1.Event_TaskChanged:
 			if f.taskChanged(ctx, k.TaskChanged.Task) {
 				return k.TaskChanged.Task, nil
@@ -105,6 +107,20 @@ func (f *follower) follow(ctx context.Context) (*aosv1.Task, error) {
 		return nil, explain(err)
 	}
 	return nil, ctx.Err()
+}
+
+// notify shows a Notification of the Task, such as an Agent's Memory proposal.
+func (f *follower) notify(n *aosv1.Notification) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.json {
+		return
+	}
+	line := fmt.Sprintf("%s• %s%s %s", f.st.cyan, n.Title, f.st.reset, n.Body)
+	if n.MemoryId != "" {
+		line += fmt.Sprintf(" %s(aos memory accept %s)%s", f.st.dim, n.MemoryId, f.st.reset)
+	}
+	f.printf("%s\n", line)
 }
 
 // endLine ends streamed text or a progress line that has no newline yet.

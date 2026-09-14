@@ -47,15 +47,10 @@ func rootCmd() *cobra.Command {
 		Args:          cobra.NoArgs,
 		RunE:          func(cmd *cobra.Command, _ []string) error { return chat(cmd.Context()) },
 	}
-	root.AddCommand(runCmd(), tasksCmd(), showCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
-		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), auditCmd(), desktopURLCmd(), doctorCmd(), laterCmd("follow-up"), laterCmd("resume"))
+	root.AddCommand(runCmd(), tasksCmd(), showCmd(), followUpCmd(), resumeCmd(), replyCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
+		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), softwareCmd(), checkpointCmd(), serviceCmd(), memoryCmd(),
+		auditCmd(), desktopURLCmd(), doctorCmd())
 	return root
-}
-
-// laterCmd is a command of a later milestone.
-func laterCmd(name string) *cobra.Command {
-	return &cobra.Command{Use: name + " <id>", Short: "Arrives in milestone M2", Hidden: true,
-		RunE: func(*cobra.Command, []string) error { return fmt.Errorf("aos %s arrives in milestone M2", name) }}
 }
 
 // rmShim moves rm's operands to the Trash (PLAN.md §7.8).

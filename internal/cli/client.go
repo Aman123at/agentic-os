@@ -19,15 +19,18 @@ var socketPath = envOr("AOS_SOCKET", "/run/aos/aosd.sock")
 
 // client talks to aosd over its Unix socket.
 type client struct {
-	http      *http.Client
-	auth      aosv1connect.AuthServiceClient
-	tasks     aosv1connect.TaskServiceClient
-	approvals aosv1connect.ApprovalServiceClient
-	events    aosv1connect.EventServiceClient
-	files     aosv1connect.FileServiceClient
-	trash     aosv1connect.TrashServiceClient
-	sessions  aosv1connect.SessionServiceClient
-	system    aosv1connect.SystemServiceClient
+	http       *http.Client
+	auth       aosv1connect.AuthServiceClient
+	tasks      aosv1connect.TaskServiceClient
+	approvals  aosv1connect.ApprovalServiceClient
+	events     aosv1connect.EventServiceClient
+	files      aosv1connect.FileServiceClient
+	trash      aosv1connect.TrashServiceClient
+	sessions   aosv1connect.SessionServiceClient
+	system     aosv1connect.SystemServiceClient
+	software   aosv1connect.SoftwareServiceClient
+	supervisor aosv1connect.SupervisorServiceClient
+	settings   aosv1connect.SettingsServiceClient
 }
 
 const baseURL = "http://aosd"
@@ -40,15 +43,18 @@ func newClient() *client {
 		},
 	}}
 	return &client{
-		http:      hc,
-		auth:      aosv1connect.NewAuthServiceClient(hc, baseURL),
-		tasks:     aosv1connect.NewTaskServiceClient(hc, baseURL),
-		approvals: aosv1connect.NewApprovalServiceClient(hc, baseURL),
-		events:    aosv1connect.NewEventServiceClient(hc, baseURL),
-		files:     aosv1connect.NewFileServiceClient(hc, baseURL),
-		trash:     aosv1connect.NewTrashServiceClient(hc, baseURL),
-		sessions:  aosv1connect.NewSessionServiceClient(hc, baseURL),
-		system:    aosv1connect.NewSystemServiceClient(hc, baseURL),
+		http:       hc,
+		auth:       aosv1connect.NewAuthServiceClient(hc, baseURL),
+		tasks:      aosv1connect.NewTaskServiceClient(hc, baseURL),
+		approvals:  aosv1connect.NewApprovalServiceClient(hc, baseURL),
+		events:     aosv1connect.NewEventServiceClient(hc, baseURL),
+		files:      aosv1connect.NewFileServiceClient(hc, baseURL),
+		trash:      aosv1connect.NewTrashServiceClient(hc, baseURL),
+		sessions:   aosv1connect.NewSessionServiceClient(hc, baseURL),
+		system:     aosv1connect.NewSystemServiceClient(hc, baseURL),
+		software:   aosv1connect.NewSoftwareServiceClient(hc, baseURL),
+		supervisor: aosv1connect.NewSupervisorServiceClient(hc, baseURL),
+		settings:   aosv1connect.NewSettingsServiceClient(hc, baseURL),
 	}
 }
 
