@@ -15,8 +15,8 @@ import (
 	"time"
 )
 
-// DownloadRequest downloads URL to Path: a file path, or an existing folder in
-// which the file is named after the response.
+// DownloadRequest downloads URL to Path: a file path, or a folder in which the
+// file is named after the response. A Path ending in "/" is a folder, created if missing.
 type DownloadRequest struct {
 	URL       string `json:"url"`
 	Path      string `json:"path"`
@@ -38,6 +38,11 @@ func (o Ops) Download(ctx context.Context, req DownloadRequest, progress func(n,
 		progress = func(int64, int64) {}
 	}
 	target := req.Path
+	if strings.HasSuffix(req.Path, "/") {
+		if err := os.MkdirAll(req.Path, 0o755); err != nil {
+			return DownloadResult{}, err
+		}
+	}
 	var first *http.Response
 	if fi, err := os.Stat(req.Path); err == nil && fi.IsDir() {
 		resp, err := get(ctx, req.URL, 0)
