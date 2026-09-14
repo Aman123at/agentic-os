@@ -40,25 +40,25 @@ func millisOf(t *timestamppb.Timestamp) sql.NullInt64 {
 	return sql.NullInt64{Int64: store.Millis(t.AsTime()), Valid: true}
 }
 
-const taskColumns = `id, title, prompt, state, autonomy, interactive, summary, model, awaiting_approval_id, awaiting_question,
-	input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, created_at, updated_at, finished_at`
+const taskColumns = `id, title, prompt, state, autonomy, interactive, summary, model, awaiting_approval_id, awaiting_question, awaiting_kind,
+	input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, cost_usd, cost_known, checkpoint_id, created_at, updated_at, finished_at`
 
 func scanTask(row interface{ Scan(...any) error }) (*aosv1.Task, error) {
 	t := &aosv1.Task{Usage: &aosv1.Usage{}, Awaiting: &aosv1.Awaiting{}}
-	var state, autonomy int32
+	var state, autonomy, kind int32
 	var created, updated int64
 	var finished sql.NullInt64
 	err := row.Scan(&t.Id, &t.Title, &t.Prompt, &state, &autonomy, &t.Interactive, &t.Summary, &t.Model,
-		&t.Awaiting.ApprovalId, &t.Awaiting.Question,
+		&t.Awaiting.ApprovalId, &t.Awaiting.Question, &kind,
 		&t.Usage.InputTokens, &t.Usage.CachedInputTokens, &t.Usage.OutputTokens, &t.Usage.ReasoningTokens,
-		&created, &updated, &finished)
+		&t.Usage.CostUsd, &t.Usage.CostKnown, &t.CheckpointId, &created, &updated, &finished)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
-	t.State, t.Autonomy = aosv1.TaskState(state), aosv1.Autonomy(autonomy)
+	t.State, t.Autonomy, t.Awaiting.Kind = aosv1.TaskState(state), aosv1.Autonomy(autonomy), aosv1.AwaitingKind(kind)
 	t.CreatedAt, t.UpdatedAt, t.FinishedAt = ts(created), ts(updated), nullTS(finished)
 	if t.Awaiting.ApprovalId == "" && t.Awaiting.Question == "" {
 		t.Awaiting = nil
@@ -76,10 +76,11 @@ func insertTask(ctx context.Context, tx *sql.Tx, t *aosv1.Task) error {
 
 func saveTask(ctx context.Context, tx *sql.Tx, t *aosv1.Task) error {
 	u := t.GetUsage()
-	_, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, summary = ?, awaiting_approval_id = ?, awaiting_question = ?,
-		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, reasoning_tokens = ?, updated_at = ?, finished_at = ? WHERE id = ?`,
-		int32(t.State), t.Summary, t.GetAwaiting().GetApprovalId(), t.GetAwaiting().GetQuestion(),
-		u.GetInputTokens(), u.GetCachedInputTokens(), u.GetOutputTokens(), u.GetReasoningTokens(),
+	_, err := tx.ExecContext(ctx, `UPDATE tasks SET state = ?, summary = ?, interactive = ?, awaiting_approval_id = ?, awaiting_question = ?, awaiting_kind = ?,
+		input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, reasoning_tokens = ?, cost_usd = ?, cost_known = ?, checkpoint_id = ?,
+		updated_at = ?, finished_at = ? WHERE id = ?`,
+		int32(t.State), t.Summary, t.Interactive, t.GetAwaiting().GetApprovalId(), t.GetAwaiting().GetQuestion(), int32(t.GetAwaiting().GetKind()),
+		u.GetInputTokens(), u.GetCachedInputTokens(), u.GetOutputTokens(), u.GetReasoningTokens(), u.GetCostUsd(), u.GetCostKnown(), t.CheckpointId,
 		store.Millis(t.UpdatedAt.AsTime()), millisOf(t.FinishedAt), t.Id)
 	return err
 }

@@ -135,7 +135,7 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 	}
 	at := timestamppb.New(now(m.cfg))
 	t := &aosv1.Task{Id: newID("t_"), Title: title(prompt), Prompt: prompt, State: aosv1.TaskState_TASK_STATE_QUEUED,
-		Autonomy: autonomy, Interactive: interactive, Model: m.cfg.Model, CreatedAt: at, UpdatedAt: at}
+		Autonomy: autonomy, Interactive: interactive, Model: m.cfg.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at}
 	step := &aosv1.TaskStep{Id: newID("s_"), TaskId: t.Id, Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: prompt, CreatedAt: at}
 	items, _ := json.Marshal([]llm.Item{llm.UserMessage(prompt)})
 	err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error {

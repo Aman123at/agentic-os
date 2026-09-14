@@ -30,14 +30,33 @@ message Usage {
   int64 cached_input_tokens = 2;
   int64 output_tokens = 3;
   int64 reasoning_tokens = 4;
+  // Estimated from /var/lib/aos/prices.yaml (PLAN.md §8.4).
+  double cost_usd = 5;
+  // False when prices.yaml has no prices for a model that was used.
+  bool cost_known = 6;
+}
+
+// AwaitingKind says why a Task waits for the user.
+enum AwaitingKind {
+  AWAITING_KIND_UNSPECIFIED = 0;
+  AWAITING_KIND_APPROVAL = 1;
+  // The Agent asked a question (ask_user); the answer goes to the Agent.
+  AWAITING_KIND_QUESTION = 2;
+  // A step failed or repeated too often (AOS_MAX_RETRIES), or the model API
+  // kept failing. The reply is a hint for the Agent, such as "try another way".
+  AWAITING_KIND_RETRIES = 3;
+  // A Cost Limit was reached; replying continues the Task.
+  AWAITING_KIND_COST_LIMIT = 4;
 }
 
 // Awaiting says what a Task in TASK_STATE_AWAITING_USER waits for.
 message Awaiting {
   // Set when the Task waits for an Approval decision.
   string approval_id = 1;
-  // Set when the Agent asked the user a question (ask_user).
+  // The question for QUESTION; what happened for RETRIES and COST_LIMIT.
+  // Answered with TaskService.AnswerQuestion.
   string question = 2;
+  AwaitingKind kind = 3;
 }
 
 message Task {
@@ -57,6 +76,8 @@ message Task {
   google.protobuf.Timestamp created_at = 11;
   google.protobuf.Timestamp updated_at = 12;
   google.protobuf.Timestamp finished_at = 13;
+  // The Checkpoint taken before the Task's first software change, if any.
+  string checkpoint_id = 14;
 }
 
 enum StepKind {
@@ -143,4 +164,135 @@ message AuditEntry {
   int64 duration_ms = 9;
   string actor = 10;
   google.protobuf.Timestamp time = 11;
+}
+
+// ---------------------------------------------------------------- Software (PLAN.md §11)
+
+// LedgerOp is one operation in the Install Ledger: an install, a removal, a
+// command run as root, a Service change or a Restore, with what it changed.
+message LedgerOp {
+  int64 id = 1;
+  google.protobuf.Timestamp time = 2;
+  string task_id = 3;
+  // install | remove | command | service | restore
+  string action = 4;
+  string summary = 5;
+  // Who asked: agent, user:cli, …
+  string actor = 6;
+  repeated LedgerChange changes = 7;
+}
+
+message LedgerChange {
+  // package | file | service
+  string kind = 1;
+  // apt | pipx | npm, for packages
+  string manager = 2;
+  // A package (name:arch for apt), a path under /etc, or a Service name.
+  string name = 3;
+  // The state before and after, in short; empty means absent.
+  string before = 4;
+  string after = 5;
+}
+
+// Package is software the Install Ledger says the Machine has.
+message Package {
+  string manager = 1;
+  string name = 2;
+  string version = 3;
+  // Installed as a dependency of another package.
+  bool auto = 4;
+  // The Ledger operation that installed this version.
+  int64 ledger_id = 5;
+}
+
+message Checkpoint {
+  string id = 1;
+  string name = 2;
+  // The last Ledger operation it includes.
+  int64 ledger_id = 3;
+  string task_id = 4;
+  // Taken automatically before a Task's first software change, or before a Restore.
+  bool automatic = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+enum ReplayState {
+  REPLAY_STATE_UNSPECIFIED = 0;
+  REPLAY_STATE_RUNNING = 1;
+  REPLAY_STATE_DONE = 2;
+  REPLAY_STATE_FAILED = 3;
+}
+
+// ReplayStatus is the progress of re-applying the Install Ledger at startup.
+message ReplayStatus {
+  ReplayState state = 1;
+  // Steps finished so far, of total.
+  int32 done = 2;
+  int32 total = 3;
+  string message = 4;
+  google.protobuf.Timestamp started_at = 5;
+  google.protobuf.Timestamp finished_at = 6;
+}
+
+// ---------------------------------------------------------------- Services (PLAN.md §12)
+
+enum RestartPolicy {
+  RESTART_POLICY_UNSPECIFIED = 0;
+  RESTART_POLICY_ALWAYS = 1;
+  RESTART_POLICY_ON_FAILURE = 2;
+  RESTART_POLICY_NEVER = 3;
+}
+
+enum ServiceState {
+  SERVICE_STATE_UNSPECIFIED = 0;
+  SERVICE_STATE_STOPPED = 1;
+  SERVICE_STATE_RUNNING = 2;
+  // It exited and starts again after a delay.
+  SERVICE_STATE_RESTARTING = 3;
+  // It exited with an error and is not restarted.
+  SERVICE_STATE_FAILED = 4;
+}
+
+message ServiceInfo {
+  string name = 1;
+  string command = 2;
+  string working_dir = 3;
+  map<string, string> env = 4;
+  // Runs as root (created through an approved Privileged Tool); otherwise as
+  // aos, confined like the Agent that created it.
+  bool root = 5;
+  bool confined = 6;
+  bool autostart = 7;
+  RestartPolicy restart = 8;
+  // The Task that created it.
+  string task_id = 9;
+  ServiceState state = 10;
+  int32 pid = 11;
+  repeated int32 ports = 12;
+  int32 restarts = 13;
+  // How the last run ended, such as "exit 1" or "signal 9"; empty if it hasn't.
+  string last_exit = 14;
+  google.protobuf.Timestamp started_at = 15;
+}
+
+// Listener is a program listening on a TCP port in the Machine.
+message Listener {
+  int32 port = 1;
+  int32 pid = 2;
+  string process = 3;
+  // The Service it belongs to, if any.
+  string service = 4;
+  // The address it listens on, such as 0.0.0.0 or 127.0.0.1.
+  string address = 5;
+}
+
+// ---------------------------------------------------------------- Memory (PLAN.md §8.5)
+
+message Memory {
+  string id = 1;
+  string text = 2;
+  // proposed (by an Agent's remember, until the user accepts) | accepted
+  string status = 3;
+  string task_id = 4;
+  google.protobuf.Timestamp created_at = 5;
 }

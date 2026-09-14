@@ -35,6 +35,12 @@ const (
 	TrashServiceName = "aos.v1.TrashService"
 	// SessionServiceName is the fully-qualified name of the SessionService service.
 	SessionServiceName = "aos.v1.SessionService"
+	// SoftwareServiceName is the fully-qualified name of the SoftwareService service.
+	SoftwareServiceName = "aos.v1.SoftwareService"
+	// SupervisorServiceName is the fully-qualified name of the SupervisorService service.
+	SupervisorServiceName = "aos.v1.SupervisorService"
+	// SettingsServiceName is the fully-qualified name of the SettingsService service.
+	SettingsServiceName = "aos.v1.SettingsService"
 	// SystemServiceName is the fully-qualified name of the SystemService service.
 	SystemServiceName = "aos.v1.SystemService"
 )
@@ -114,6 +120,51 @@ const (
 	// SessionServiceCloseSessionProcedure is the fully-qualified name of the SessionService's
 	// CloseSession RPC.
 	SessionServiceCloseSessionProcedure = "/aos.v1.SessionService/CloseSession"
+	// SoftwareServiceListPackagesProcedure is the fully-qualified name of the SoftwareService's
+	// ListPackages RPC.
+	SoftwareServiceListPackagesProcedure = "/aos.v1.SoftwareService/ListPackages"
+	// SoftwareServiceListLedgerProcedure is the fully-qualified name of the SoftwareService's
+	// ListLedger RPC.
+	SoftwareServiceListLedgerProcedure = "/aos.v1.SoftwareService/ListLedger"
+	// SoftwareServiceListCheckpointsProcedure is the fully-qualified name of the SoftwareService's
+	// ListCheckpoints RPC.
+	SoftwareServiceListCheckpointsProcedure = "/aos.v1.SoftwareService/ListCheckpoints"
+	// SoftwareServiceCreateCheckpointProcedure is the fully-qualified name of the SoftwareService's
+	// CreateCheckpoint RPC.
+	SoftwareServiceCreateCheckpointProcedure = "/aos.v1.SoftwareService/CreateCheckpoint"
+	// SoftwareServiceRestoreCheckpointProcedure is the fully-qualified name of the SoftwareService's
+	// RestoreCheckpoint RPC.
+	SoftwareServiceRestoreCheckpointProcedure = "/aos.v1.SoftwareService/RestoreCheckpoint"
+	// SupervisorServiceListServicesProcedure is the fully-qualified name of the SupervisorService's
+	// ListServices RPC.
+	SupervisorServiceListServicesProcedure = "/aos.v1.SupervisorService/ListServices"
+	// SupervisorServiceStartServiceProcedure is the fully-qualified name of the SupervisorService's
+	// StartService RPC.
+	SupervisorServiceStartServiceProcedure = "/aos.v1.SupervisorService/StartService"
+	// SupervisorServiceStopServiceProcedure is the fully-qualified name of the SupervisorService's
+	// StopService RPC.
+	SupervisorServiceStopServiceProcedure = "/aos.v1.SupervisorService/StopService"
+	// SupervisorServiceRestartServiceProcedure is the fully-qualified name of the SupervisorService's
+	// RestartService RPC.
+	SupervisorServiceRestartServiceProcedure = "/aos.v1.SupervisorService/RestartService"
+	// SupervisorServiceRemoveServiceProcedure is the fully-qualified name of the SupervisorService's
+	// RemoveService RPC.
+	SupervisorServiceRemoveServiceProcedure = "/aos.v1.SupervisorService/RemoveService"
+	// SupervisorServiceStreamLogsProcedure is the fully-qualified name of the SupervisorService's
+	// StreamLogs RPC.
+	SupervisorServiceStreamLogsProcedure = "/aos.v1.SupervisorService/StreamLogs"
+	// SettingsServiceListMemoryProcedure is the fully-qualified name of the SettingsService's
+	// ListMemory RPC.
+	SettingsServiceListMemoryProcedure = "/aos.v1.SettingsService/ListMemory"
+	// SettingsServiceAddMemoryProcedure is the fully-qualified name of the SettingsService's AddMemory
+	// RPC.
+	SettingsServiceAddMemoryProcedure = "/aos.v1.SettingsService/AddMemory"
+	// SettingsServiceAcceptMemoryProcedure is the fully-qualified name of the SettingsService's
+	// AcceptMemory RPC.
+	SettingsServiceAcceptMemoryProcedure = "/aos.v1.SettingsService/AcceptMemory"
+	// SettingsServiceForgetMemoryProcedure is the fully-qualified name of the SettingsService's
+	// ForgetMemory RPC.
+	SettingsServiceForgetMemoryProcedure = "/aos.v1.SettingsService/ForgetMemory"
 	// SystemServiceInfoProcedure is the fully-qualified name of the SystemService's Info RPC.
 	SystemServiceInfoProcedure = "/aos.v1.SystemService/Info"
 	// SystemServiceAuditProcedure is the fully-qualified name of the SystemService's Audit RPC.
@@ -1192,6 +1243,546 @@ func (UnimplementedSessionServiceHandler) ListSessions(context.Context, *connect
 
 func (UnimplementedSessionServiceHandler) CloseSession(context.Context, *connect.Request[v1.CloseSessionRequest]) (*connect.Response[v1.CloseSessionResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SessionService.CloseSession is not implemented"))
+}
+
+// SoftwareServiceClient is a client for the aos.v1.SoftwareService service.
+type SoftwareServiceClient interface {
+	// Software the Install Ledger says the Machine has (packages installed through AOS).
+	ListPackages(context.Context, *connect.Request[v1.ListPackagesRequest]) (*connect.Response[v1.ListPackagesResponse], error)
+	// The Ledger's operations, newest first.
+	ListLedger(context.Context, *connect.Request[v1.ListLedgerRequest]) (*connect.Response[v1.ListLedgerResponse], error)
+	ListCheckpoints(context.Context, *connect.Request[v1.ListCheckpointsRequest]) (*connect.Response[v1.ListCheckpointsResponse], error)
+	CreateCheckpoint(context.Context, *connect.Request[v1.CreateCheckpointRequest]) (*connect.Response[v1.CreateCheckpointResponse], error)
+	// Returns software, /etc and Services to a Checkpoint. A "Before Restore"
+	// Checkpoint is taken first, so the Restore itself can be undone.
+	RestoreCheckpoint(context.Context, *connect.Request[v1.RestoreCheckpointRequest]) (*connect.Response[v1.RestoreCheckpointResponse], error)
+}
+
+// NewSoftwareServiceClient constructs a client for the aos.v1.SoftwareService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSoftwareServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SoftwareServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	softwareServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SoftwareService").Methods()
+	return &softwareServiceClient{
+		listPackages: connect.NewClient[v1.ListPackagesRequest, v1.ListPackagesResponse](
+			httpClient,
+			baseURL+SoftwareServiceListPackagesProcedure,
+			connect.WithSchema(softwareServiceMethods.ByName("ListPackages")),
+			connect.WithClientOptions(opts...),
+		),
+		listLedger: connect.NewClient[v1.ListLedgerRequest, v1.ListLedgerResponse](
+			httpClient,
+			baseURL+SoftwareServiceListLedgerProcedure,
+			connect.WithSchema(softwareServiceMethods.ByName("ListLedger")),
+			connect.WithClientOptions(opts...),
+		),
+		listCheckpoints: connect.NewClient[v1.ListCheckpointsRequest, v1.ListCheckpointsResponse](
+			httpClient,
+			baseURL+SoftwareServiceListCheckpointsProcedure,
+			connect.WithSchema(softwareServiceMethods.ByName("ListCheckpoints")),
+			connect.WithClientOptions(opts...),
+		),
+		createCheckpoint: connect.NewClient[v1.CreateCheckpointRequest, v1.CreateCheckpointResponse](
+			httpClient,
+			baseURL+SoftwareServiceCreateCheckpointProcedure,
+			connect.WithSchema(softwareServiceMethods.ByName("CreateCheckpoint")),
+			connect.WithClientOptions(opts...),
+		),
+		restoreCheckpoint: connect.NewClient[v1.RestoreCheckpointRequest, v1.RestoreCheckpointResponse](
+			httpClient,
+			baseURL+SoftwareServiceRestoreCheckpointProcedure,
+			connect.WithSchema(softwareServiceMethods.ByName("RestoreCheckpoint")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// softwareServiceClient implements SoftwareServiceClient.
+type softwareServiceClient struct {
+	listPackages      *connect.Client[v1.ListPackagesRequest, v1.ListPackagesResponse]
+	listLedger        *connect.Client[v1.ListLedgerRequest, v1.ListLedgerResponse]
+	listCheckpoints   *connect.Client[v1.ListCheckpointsRequest, v1.ListCheckpointsResponse]
+	createCheckpoint  *connect.Client[v1.CreateCheckpointRequest, v1.CreateCheckpointResponse]
+	restoreCheckpoint *connect.Client[v1.RestoreCheckpointRequest, v1.RestoreCheckpointResponse]
+}
+
+// ListPackages calls aos.v1.SoftwareService.ListPackages.
+func (c *softwareServiceClient) ListPackages(ctx context.Context, req *connect.Request[v1.ListPackagesRequest]) (*connect.Response[v1.ListPackagesResponse], error) {
+	return c.listPackages.CallUnary(ctx, req)
+}
+
+// ListLedger calls aos.v1.SoftwareService.ListLedger.
+func (c *softwareServiceClient) ListLedger(ctx context.Context, req *connect.Request[v1.ListLedgerRequest]) (*connect.Response[v1.ListLedgerResponse], error) {
+	return c.listLedger.CallUnary(ctx, req)
+}
+
+// ListCheckpoints calls aos.v1.SoftwareService.ListCheckpoints.
+func (c *softwareServiceClient) ListCheckpoints(ctx context.Context, req *connect.Request[v1.ListCheckpointsRequest]) (*connect.Response[v1.ListCheckpointsResponse], error) {
+	return c.listCheckpoints.CallUnary(ctx, req)
+}
+
+// CreateCheckpoint calls aos.v1.SoftwareService.CreateCheckpoint.
+func (c *softwareServiceClient) CreateCheckpoint(ctx context.Context, req *connect.Request[v1.CreateCheckpointRequest]) (*connect.Response[v1.CreateCheckpointResponse], error) {
+	return c.createCheckpoint.CallUnary(ctx, req)
+}
+
+// RestoreCheckpoint calls aos.v1.SoftwareService.RestoreCheckpoint.
+func (c *softwareServiceClient) RestoreCheckpoint(ctx context.Context, req *connect.Request[v1.RestoreCheckpointRequest]) (*connect.Response[v1.RestoreCheckpointResponse], error) {
+	return c.restoreCheckpoint.CallUnary(ctx, req)
+}
+
+// SoftwareServiceHandler is an implementation of the aos.v1.SoftwareService service.
+type SoftwareServiceHandler interface {
+	// Software the Install Ledger says the Machine has (packages installed through AOS).
+	ListPackages(context.Context, *connect.Request[v1.ListPackagesRequest]) (*connect.Response[v1.ListPackagesResponse], error)
+	// The Ledger's operations, newest first.
+	ListLedger(context.Context, *connect.Request[v1.ListLedgerRequest]) (*connect.Response[v1.ListLedgerResponse], error)
+	ListCheckpoints(context.Context, *connect.Request[v1.ListCheckpointsRequest]) (*connect.Response[v1.ListCheckpointsResponse], error)
+	CreateCheckpoint(context.Context, *connect.Request[v1.CreateCheckpointRequest]) (*connect.Response[v1.CreateCheckpointResponse], error)
+	// Returns software, /etc and Services to a Checkpoint. A "Before Restore"
+	// Checkpoint is taken first, so the Restore itself can be undone.
+	RestoreCheckpoint(context.Context, *connect.Request[v1.RestoreCheckpointRequest]) (*connect.Response[v1.RestoreCheckpointResponse], error)
+}
+
+// NewSoftwareServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSoftwareServiceHandler(svc SoftwareServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	softwareServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SoftwareService").Methods()
+	softwareServiceListPackagesHandler := connect.NewUnaryHandler(
+		SoftwareServiceListPackagesProcedure,
+		svc.ListPackages,
+		connect.WithSchema(softwareServiceMethods.ByName("ListPackages")),
+		connect.WithHandlerOptions(opts...),
+	)
+	softwareServiceListLedgerHandler := connect.NewUnaryHandler(
+		SoftwareServiceListLedgerProcedure,
+		svc.ListLedger,
+		connect.WithSchema(softwareServiceMethods.ByName("ListLedger")),
+		connect.WithHandlerOptions(opts...),
+	)
+	softwareServiceListCheckpointsHandler := connect.NewUnaryHandler(
+		SoftwareServiceListCheckpointsProcedure,
+		svc.ListCheckpoints,
+		connect.WithSchema(softwareServiceMethods.ByName("ListCheckpoints")),
+		connect.WithHandlerOptions(opts...),
+	)
+	softwareServiceCreateCheckpointHandler := connect.NewUnaryHandler(
+		SoftwareServiceCreateCheckpointProcedure,
+		svc.CreateCheckpoint,
+		connect.WithSchema(softwareServiceMethods.ByName("CreateCheckpoint")),
+		connect.WithHandlerOptions(opts...),
+	)
+	softwareServiceRestoreCheckpointHandler := connect.NewUnaryHandler(
+		SoftwareServiceRestoreCheckpointProcedure,
+		svc.RestoreCheckpoint,
+		connect.WithSchema(softwareServiceMethods.ByName("RestoreCheckpoint")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/aos.v1.SoftwareService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SoftwareServiceListPackagesProcedure:
+			softwareServiceListPackagesHandler.ServeHTTP(w, r)
+		case SoftwareServiceListLedgerProcedure:
+			softwareServiceListLedgerHandler.ServeHTTP(w, r)
+		case SoftwareServiceListCheckpointsProcedure:
+			softwareServiceListCheckpointsHandler.ServeHTTP(w, r)
+		case SoftwareServiceCreateCheckpointProcedure:
+			softwareServiceCreateCheckpointHandler.ServeHTTP(w, r)
+		case SoftwareServiceRestoreCheckpointProcedure:
+			softwareServiceRestoreCheckpointHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSoftwareServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSoftwareServiceHandler struct{}
+
+func (UnimplementedSoftwareServiceHandler) ListPackages(context.Context, *connect.Request[v1.ListPackagesRequest]) (*connect.Response[v1.ListPackagesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SoftwareService.ListPackages is not implemented"))
+}
+
+func (UnimplementedSoftwareServiceHandler) ListLedger(context.Context, *connect.Request[v1.ListLedgerRequest]) (*connect.Response[v1.ListLedgerResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SoftwareService.ListLedger is not implemented"))
+}
+
+func (UnimplementedSoftwareServiceHandler) ListCheckpoints(context.Context, *connect.Request[v1.ListCheckpointsRequest]) (*connect.Response[v1.ListCheckpointsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SoftwareService.ListCheckpoints is not implemented"))
+}
+
+func (UnimplementedSoftwareServiceHandler) CreateCheckpoint(context.Context, *connect.Request[v1.CreateCheckpointRequest]) (*connect.Response[v1.CreateCheckpointResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SoftwareService.CreateCheckpoint is not implemented"))
+}
+
+func (UnimplementedSoftwareServiceHandler) RestoreCheckpoint(context.Context, *connect.Request[v1.RestoreCheckpointRequest]) (*connect.Response[v1.RestoreCheckpointResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SoftwareService.RestoreCheckpoint is not implemented"))
+}
+
+// SupervisorServiceClient is a client for the aos.v1.SupervisorService service.
+type SupervisorServiceClient interface {
+	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
+	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
+	StopService(context.Context, *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error)
+	RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error)
+	RemoveService(context.Context, *connect.Request[v1.RemoveServiceRequest]) (*connect.Response[v1.RemoveServiceResponse], error)
+	// The Service's recent output, then new output while follow is set.
+	StreamLogs(context.Context, *connect.Request[v1.StreamLogsRequest]) (*connect.ServerStreamForClient[v1.StreamLogsResponse], error)
+}
+
+// NewSupervisorServiceClient constructs a client for the aos.v1.SupervisorService service. By
+// default, it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses,
+// and sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the
+// connect.WithGRPC() or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSupervisorServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SupervisorServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	supervisorServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SupervisorService").Methods()
+	return &supervisorServiceClient{
+		listServices: connect.NewClient[v1.ListServicesRequest, v1.ListServicesResponse](
+			httpClient,
+			baseURL+SupervisorServiceListServicesProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("ListServices")),
+			connect.WithClientOptions(opts...),
+		),
+		startService: connect.NewClient[v1.StartServiceRequest, v1.StartServiceResponse](
+			httpClient,
+			baseURL+SupervisorServiceStartServiceProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("StartService")),
+			connect.WithClientOptions(opts...),
+		),
+		stopService: connect.NewClient[v1.StopServiceRequest, v1.StopServiceResponse](
+			httpClient,
+			baseURL+SupervisorServiceStopServiceProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("StopService")),
+			connect.WithClientOptions(opts...),
+		),
+		restartService: connect.NewClient[v1.RestartServiceRequest, v1.RestartServiceResponse](
+			httpClient,
+			baseURL+SupervisorServiceRestartServiceProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("RestartService")),
+			connect.WithClientOptions(opts...),
+		),
+		removeService: connect.NewClient[v1.RemoveServiceRequest, v1.RemoveServiceResponse](
+			httpClient,
+			baseURL+SupervisorServiceRemoveServiceProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("RemoveService")),
+			connect.WithClientOptions(opts...),
+		),
+		streamLogs: connect.NewClient[v1.StreamLogsRequest, v1.StreamLogsResponse](
+			httpClient,
+			baseURL+SupervisorServiceStreamLogsProcedure,
+			connect.WithSchema(supervisorServiceMethods.ByName("StreamLogs")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// supervisorServiceClient implements SupervisorServiceClient.
+type supervisorServiceClient struct {
+	listServices   *connect.Client[v1.ListServicesRequest, v1.ListServicesResponse]
+	startService   *connect.Client[v1.StartServiceRequest, v1.StartServiceResponse]
+	stopService    *connect.Client[v1.StopServiceRequest, v1.StopServiceResponse]
+	restartService *connect.Client[v1.RestartServiceRequest, v1.RestartServiceResponse]
+	removeService  *connect.Client[v1.RemoveServiceRequest, v1.RemoveServiceResponse]
+	streamLogs     *connect.Client[v1.StreamLogsRequest, v1.StreamLogsResponse]
+}
+
+// ListServices calls aos.v1.SupervisorService.ListServices.
+func (c *supervisorServiceClient) ListServices(ctx context.Context, req *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error) {
+	return c.listServices.CallUnary(ctx, req)
+}
+
+// StartService calls aos.v1.SupervisorService.StartService.
+func (c *supervisorServiceClient) StartService(ctx context.Context, req *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error) {
+	return c.startService.CallUnary(ctx, req)
+}
+
+// StopService calls aos.v1.SupervisorService.StopService.
+func (c *supervisorServiceClient) StopService(ctx context.Context, req *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error) {
+	return c.stopService.CallUnary(ctx, req)
+}
+
+// RestartService calls aos.v1.SupervisorService.RestartService.
+func (c *supervisorServiceClient) RestartService(ctx context.Context, req *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error) {
+	return c.restartService.CallUnary(ctx, req)
+}
+
+// RemoveService calls aos.v1.SupervisorService.RemoveService.
+func (c *supervisorServiceClient) RemoveService(ctx context.Context, req *connect.Request[v1.RemoveServiceRequest]) (*connect.Response[v1.RemoveServiceResponse], error) {
+	return c.removeService.CallUnary(ctx, req)
+}
+
+// StreamLogs calls aos.v1.SupervisorService.StreamLogs.
+func (c *supervisorServiceClient) StreamLogs(ctx context.Context, req *connect.Request[v1.StreamLogsRequest]) (*connect.ServerStreamForClient[v1.StreamLogsResponse], error) {
+	return c.streamLogs.CallServerStream(ctx, req)
+}
+
+// SupervisorServiceHandler is an implementation of the aos.v1.SupervisorService service.
+type SupervisorServiceHandler interface {
+	ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error)
+	StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error)
+	StopService(context.Context, *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error)
+	RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error)
+	RemoveService(context.Context, *connect.Request[v1.RemoveServiceRequest]) (*connect.Response[v1.RemoveServiceResponse], error)
+	// The Service's recent output, then new output while follow is set.
+	StreamLogs(context.Context, *connect.Request[v1.StreamLogsRequest], *connect.ServerStream[v1.StreamLogsResponse]) error
+}
+
+// NewSupervisorServiceHandler builds an HTTP handler from the service implementation. It returns
+// the path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSupervisorServiceHandler(svc SupervisorServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	supervisorServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SupervisorService").Methods()
+	supervisorServiceListServicesHandler := connect.NewUnaryHandler(
+		SupervisorServiceListServicesProcedure,
+		svc.ListServices,
+		connect.WithSchema(supervisorServiceMethods.ByName("ListServices")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisorServiceStartServiceHandler := connect.NewUnaryHandler(
+		SupervisorServiceStartServiceProcedure,
+		svc.StartService,
+		connect.WithSchema(supervisorServiceMethods.ByName("StartService")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisorServiceStopServiceHandler := connect.NewUnaryHandler(
+		SupervisorServiceStopServiceProcedure,
+		svc.StopService,
+		connect.WithSchema(supervisorServiceMethods.ByName("StopService")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisorServiceRestartServiceHandler := connect.NewUnaryHandler(
+		SupervisorServiceRestartServiceProcedure,
+		svc.RestartService,
+		connect.WithSchema(supervisorServiceMethods.ByName("RestartService")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisorServiceRemoveServiceHandler := connect.NewUnaryHandler(
+		SupervisorServiceRemoveServiceProcedure,
+		svc.RemoveService,
+		connect.WithSchema(supervisorServiceMethods.ByName("RemoveService")),
+		connect.WithHandlerOptions(opts...),
+	)
+	supervisorServiceStreamLogsHandler := connect.NewServerStreamHandler(
+		SupervisorServiceStreamLogsProcedure,
+		svc.StreamLogs,
+		connect.WithSchema(supervisorServiceMethods.ByName("StreamLogs")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/aos.v1.SupervisorService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SupervisorServiceListServicesProcedure:
+			supervisorServiceListServicesHandler.ServeHTTP(w, r)
+		case SupervisorServiceStartServiceProcedure:
+			supervisorServiceStartServiceHandler.ServeHTTP(w, r)
+		case SupervisorServiceStopServiceProcedure:
+			supervisorServiceStopServiceHandler.ServeHTTP(w, r)
+		case SupervisorServiceRestartServiceProcedure:
+			supervisorServiceRestartServiceHandler.ServeHTTP(w, r)
+		case SupervisorServiceRemoveServiceProcedure:
+			supervisorServiceRemoveServiceHandler.ServeHTTP(w, r)
+		case SupervisorServiceStreamLogsProcedure:
+			supervisorServiceStreamLogsHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSupervisorServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSupervisorServiceHandler struct{}
+
+func (UnimplementedSupervisorServiceHandler) ListServices(context.Context, *connect.Request[v1.ListServicesRequest]) (*connect.Response[v1.ListServicesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.ListServices is not implemented"))
+}
+
+func (UnimplementedSupervisorServiceHandler) StartService(context.Context, *connect.Request[v1.StartServiceRequest]) (*connect.Response[v1.StartServiceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.StartService is not implemented"))
+}
+
+func (UnimplementedSupervisorServiceHandler) StopService(context.Context, *connect.Request[v1.StopServiceRequest]) (*connect.Response[v1.StopServiceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.StopService is not implemented"))
+}
+
+func (UnimplementedSupervisorServiceHandler) RestartService(context.Context, *connect.Request[v1.RestartServiceRequest]) (*connect.Response[v1.RestartServiceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.RestartService is not implemented"))
+}
+
+func (UnimplementedSupervisorServiceHandler) RemoveService(context.Context, *connect.Request[v1.RemoveServiceRequest]) (*connect.Response[v1.RemoveServiceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.RemoveService is not implemented"))
+}
+
+func (UnimplementedSupervisorServiceHandler) StreamLogs(context.Context, *connect.Request[v1.StreamLogsRequest], *connect.ServerStream[v1.StreamLogsResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SupervisorService.StreamLogs is not implemented"))
+}
+
+// SettingsServiceClient is a client for the aos.v1.SettingsService service.
+type SettingsServiceClient interface {
+	// Accepted Memory and the Agents' proposals.
+	ListMemory(context.Context, *connect.Request[v1.ListMemoryRequest]) (*connect.Response[v1.ListMemoryResponse], error)
+	// Saves an entry the user wrote.
+	AddMemory(context.Context, *connect.Request[v1.AddMemoryRequest]) (*connect.Response[v1.AddMemoryResponse], error)
+	// Accepts an Agent's proposal.
+	AcceptMemory(context.Context, *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error)
+	// Removes an entry or rejects a proposal.
+	ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error)
+}
+
+// NewSettingsServiceClient constructs a client for the aos.v1.SettingsService service. By default,
+// it uses the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and
+// sends uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC()
+// or connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) SettingsServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	settingsServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SettingsService").Methods()
+	return &settingsServiceClient{
+		listMemory: connect.NewClient[v1.ListMemoryRequest, v1.ListMemoryResponse](
+			httpClient,
+			baseURL+SettingsServiceListMemoryProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("ListMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		addMemory: connect.NewClient[v1.AddMemoryRequest, v1.AddMemoryResponse](
+			httpClient,
+			baseURL+SettingsServiceAddMemoryProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("AddMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		acceptMemory: connect.NewClient[v1.AcceptMemoryRequest, v1.AcceptMemoryResponse](
+			httpClient,
+			baseURL+SettingsServiceAcceptMemoryProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("AcceptMemory")),
+			connect.WithClientOptions(opts...),
+		),
+		forgetMemory: connect.NewClient[v1.ForgetMemoryRequest, v1.ForgetMemoryResponse](
+			httpClient,
+			baseURL+SettingsServiceForgetMemoryProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("ForgetMemory")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// settingsServiceClient implements SettingsServiceClient.
+type settingsServiceClient struct {
+	listMemory   *connect.Client[v1.ListMemoryRequest, v1.ListMemoryResponse]
+	addMemory    *connect.Client[v1.AddMemoryRequest, v1.AddMemoryResponse]
+	acceptMemory *connect.Client[v1.AcceptMemoryRequest, v1.AcceptMemoryResponse]
+	forgetMemory *connect.Client[v1.ForgetMemoryRequest, v1.ForgetMemoryResponse]
+}
+
+// ListMemory calls aos.v1.SettingsService.ListMemory.
+func (c *settingsServiceClient) ListMemory(ctx context.Context, req *connect.Request[v1.ListMemoryRequest]) (*connect.Response[v1.ListMemoryResponse], error) {
+	return c.listMemory.CallUnary(ctx, req)
+}
+
+// AddMemory calls aos.v1.SettingsService.AddMemory.
+func (c *settingsServiceClient) AddMemory(ctx context.Context, req *connect.Request[v1.AddMemoryRequest]) (*connect.Response[v1.AddMemoryResponse], error) {
+	return c.addMemory.CallUnary(ctx, req)
+}
+
+// AcceptMemory calls aos.v1.SettingsService.AcceptMemory.
+func (c *settingsServiceClient) AcceptMemory(ctx context.Context, req *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error) {
+	return c.acceptMemory.CallUnary(ctx, req)
+}
+
+// ForgetMemory calls aos.v1.SettingsService.ForgetMemory.
+func (c *settingsServiceClient) ForgetMemory(ctx context.Context, req *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error) {
+	return c.forgetMemory.CallUnary(ctx, req)
+}
+
+// SettingsServiceHandler is an implementation of the aos.v1.SettingsService service.
+type SettingsServiceHandler interface {
+	// Accepted Memory and the Agents' proposals.
+	ListMemory(context.Context, *connect.Request[v1.ListMemoryRequest]) (*connect.Response[v1.ListMemoryResponse], error)
+	// Saves an entry the user wrote.
+	AddMemory(context.Context, *connect.Request[v1.AddMemoryRequest]) (*connect.Response[v1.AddMemoryResponse], error)
+	// Accepts an Agent's proposal.
+	AcceptMemory(context.Context, *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error)
+	// Removes an entry or rejects a proposal.
+	ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error)
+}
+
+// NewSettingsServiceHandler builds an HTTP handler from the service implementation. It returns the
+// path on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	settingsServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("SettingsService").Methods()
+	settingsServiceListMemoryHandler := connect.NewUnaryHandler(
+		SettingsServiceListMemoryProcedure,
+		svc.ListMemory,
+		connect.WithSchema(settingsServiceMethods.ByName("ListMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceAddMemoryHandler := connect.NewUnaryHandler(
+		SettingsServiceAddMemoryProcedure,
+		svc.AddMemory,
+		connect.WithSchema(settingsServiceMethods.ByName("AddMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceAcceptMemoryHandler := connect.NewUnaryHandler(
+		SettingsServiceAcceptMemoryProcedure,
+		svc.AcceptMemory,
+		connect.WithSchema(settingsServiceMethods.ByName("AcceptMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceForgetMemoryHandler := connect.NewUnaryHandler(
+		SettingsServiceForgetMemoryProcedure,
+		svc.ForgetMemory,
+		connect.WithSchema(settingsServiceMethods.ByName("ForgetMemory")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/aos.v1.SettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case SettingsServiceListMemoryProcedure:
+			settingsServiceListMemoryHandler.ServeHTTP(w, r)
+		case SettingsServiceAddMemoryProcedure:
+			settingsServiceAddMemoryHandler.ServeHTTP(w, r)
+		case SettingsServiceAcceptMemoryProcedure:
+			settingsServiceAcceptMemoryHandler.ServeHTTP(w, r)
+		case SettingsServiceForgetMemoryProcedure:
+			settingsServiceForgetMemoryHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedSettingsServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedSettingsServiceHandler struct{}
+
+func (UnimplementedSettingsServiceHandler) ListMemory(context.Context, *connect.Request[v1.ListMemoryRequest]) (*connect.Response[v1.ListMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.ListMemory is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) AddMemory(context.Context, *connect.Request[v1.AddMemoryRequest]) (*connect.Response[v1.AddMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.AddMemory is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) AcceptMemory(context.Context, *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.AcceptMemory is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.ForgetMemory is not implemented"))
 }
 
 // SystemServiceClient is a client for the aos.v1.SystemService service.

@@ -139,6 +139,66 @@ func (TaskState) EnumDescriptor() ([]byte, []int) {
 	return file_aos_v1_types_proto_rawDescGZIP(), []int{1}
 }
 
+// AwaitingKind says why a Task waits for the user.
+type AwaitingKind int32
+
+const (
+	AwaitingKind_AWAITING_KIND_UNSPECIFIED AwaitingKind = 0
+	AwaitingKind_AWAITING_KIND_APPROVAL    AwaitingKind = 1
+	// The Agent asked a question (ask_user); the answer goes to the Agent.
+	AwaitingKind_AWAITING_KIND_QUESTION AwaitingKind = 2
+	// A step failed or repeated too often (AOS_MAX_RETRIES), or the model API
+	// kept failing. The reply is a hint for the Agent, such as "try another way".
+	AwaitingKind_AWAITING_KIND_RETRIES AwaitingKind = 3
+	// A Cost Limit was reached; replying continues the Task.
+	AwaitingKind_AWAITING_KIND_COST_LIMIT AwaitingKind = 4
+)
+
+// Enum value maps for AwaitingKind.
+var (
+	AwaitingKind_name = map[int32]string{
+		0: "AWAITING_KIND_UNSPECIFIED",
+		1: "AWAITING_KIND_APPROVAL",
+		2: "AWAITING_KIND_QUESTION",
+		3: "AWAITING_KIND_RETRIES",
+		4: "AWAITING_KIND_COST_LIMIT",
+	}
+	AwaitingKind_value = map[string]int32{
+		"AWAITING_KIND_UNSPECIFIED": 0,
+		"AWAITING_KIND_APPROVAL":    1,
+		"AWAITING_KIND_QUESTION":    2,
+		"AWAITING_KIND_RETRIES":     3,
+		"AWAITING_KIND_COST_LIMIT":  4,
+	}
+)
+
+func (x AwaitingKind) Enum() *AwaitingKind {
+	p := new(AwaitingKind)
+	*p = x
+	return p
+}
+
+func (x AwaitingKind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AwaitingKind) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_types_proto_enumTypes[2].Descriptor()
+}
+
+func (AwaitingKind) Type() protoreflect.EnumType {
+	return &file_aos_v1_types_proto_enumTypes[2]
+}
+
+func (x AwaitingKind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AwaitingKind.Descriptor instead.
+func (AwaitingKind) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{2}
+}
+
 type StepKind int32
 
 const (
@@ -180,11 +240,11 @@ func (x StepKind) String() string {
 }
 
 func (StepKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_aos_v1_types_proto_enumTypes[2].Descriptor()
+	return file_aos_v1_types_proto_enumTypes[3].Descriptor()
 }
 
 func (StepKind) Type() protoreflect.EnumType {
-	return &file_aos_v1_types_proto_enumTypes[2]
+	return &file_aos_v1_types_proto_enumTypes[3]
 }
 
 func (x StepKind) Number() protoreflect.EnumNumber {
@@ -193,7 +253,7 @@ func (x StepKind) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use StepKind.Descriptor instead.
 func (StepKind) EnumDescriptor() ([]byte, []int) {
-	return file_aos_v1_types_proto_rawDescGZIP(), []int{2}
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{3}
 }
 
 type ToolCallStatus int32
@@ -244,11 +304,11 @@ func (x ToolCallStatus) String() string {
 }
 
 func (ToolCallStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_aos_v1_types_proto_enumTypes[3].Descriptor()
+	return file_aos_v1_types_proto_enumTypes[4].Descriptor()
 }
 
 func (ToolCallStatus) Type() protoreflect.EnumType {
-	return &file_aos_v1_types_proto_enumTypes[3]
+	return &file_aos_v1_types_proto_enumTypes[4]
 }
 
 func (x ToolCallStatus) Number() protoreflect.EnumNumber {
@@ -257,7 +317,7 @@ func (x ToolCallStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ToolCallStatus.Descriptor instead.
 func (ToolCallStatus) EnumDescriptor() ([]byte, []int) {
-	return file_aos_v1_types_proto_rawDescGZIP(), []int{3}
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{4}
 }
 
 type ApprovalDecision int32
@@ -297,11 +357,11 @@ func (x ApprovalDecision) String() string {
 }
 
 func (ApprovalDecision) Descriptor() protoreflect.EnumDescriptor {
-	return file_aos_v1_types_proto_enumTypes[4].Descriptor()
+	return file_aos_v1_types_proto_enumTypes[5].Descriptor()
 }
 
 func (ApprovalDecision) Type() protoreflect.EnumType {
-	return &file_aos_v1_types_proto_enumTypes[4]
+	return &file_aos_v1_types_proto_enumTypes[5]
 }
 
 func (x ApprovalDecision) Number() protoreflect.EnumNumber {
@@ -310,7 +370,168 @@ func (x ApprovalDecision) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ApprovalDecision.Descriptor instead.
 func (ApprovalDecision) EnumDescriptor() ([]byte, []int) {
-	return file_aos_v1_types_proto_rawDescGZIP(), []int{4}
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{5}
+}
+
+type ReplayState int32
+
+const (
+	ReplayState_REPLAY_STATE_UNSPECIFIED ReplayState = 0
+	ReplayState_REPLAY_STATE_RUNNING     ReplayState = 1
+	ReplayState_REPLAY_STATE_DONE        ReplayState = 2
+	ReplayState_REPLAY_STATE_FAILED      ReplayState = 3
+)
+
+// Enum value maps for ReplayState.
+var (
+	ReplayState_name = map[int32]string{
+		0: "REPLAY_STATE_UNSPECIFIED",
+		1: "REPLAY_STATE_RUNNING",
+		2: "REPLAY_STATE_DONE",
+		3: "REPLAY_STATE_FAILED",
+	}
+	ReplayState_value = map[string]int32{
+		"REPLAY_STATE_UNSPECIFIED": 0,
+		"REPLAY_STATE_RUNNING":     1,
+		"REPLAY_STATE_DONE":        2,
+		"REPLAY_STATE_FAILED":      3,
+	}
+)
+
+func (x ReplayState) Enum() *ReplayState {
+	p := new(ReplayState)
+	*p = x
+	return p
+}
+
+func (x ReplayState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ReplayState) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_types_proto_enumTypes[6].Descriptor()
+}
+
+func (ReplayState) Type() protoreflect.EnumType {
+	return &file_aos_v1_types_proto_enumTypes[6]
+}
+
+func (x ReplayState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ReplayState.Descriptor instead.
+func (ReplayState) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{6}
+}
+
+type RestartPolicy int32
+
+const (
+	RestartPolicy_RESTART_POLICY_UNSPECIFIED RestartPolicy = 0
+	RestartPolicy_RESTART_POLICY_ALWAYS      RestartPolicy = 1
+	RestartPolicy_RESTART_POLICY_ON_FAILURE  RestartPolicy = 2
+	RestartPolicy_RESTART_POLICY_NEVER       RestartPolicy = 3
+)
+
+// Enum value maps for RestartPolicy.
+var (
+	RestartPolicy_name = map[int32]string{
+		0: "RESTART_POLICY_UNSPECIFIED",
+		1: "RESTART_POLICY_ALWAYS",
+		2: "RESTART_POLICY_ON_FAILURE",
+		3: "RESTART_POLICY_NEVER",
+	}
+	RestartPolicy_value = map[string]int32{
+		"RESTART_POLICY_UNSPECIFIED": 0,
+		"RESTART_POLICY_ALWAYS":      1,
+		"RESTART_POLICY_ON_FAILURE":  2,
+		"RESTART_POLICY_NEVER":       3,
+	}
+)
+
+func (x RestartPolicy) Enum() *RestartPolicy {
+	p := new(RestartPolicy)
+	*p = x
+	return p
+}
+
+func (x RestartPolicy) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RestartPolicy) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_types_proto_enumTypes[7].Descriptor()
+}
+
+func (RestartPolicy) Type() protoreflect.EnumType {
+	return &file_aos_v1_types_proto_enumTypes[7]
+}
+
+func (x RestartPolicy) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RestartPolicy.Descriptor instead.
+func (RestartPolicy) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{7}
+}
+
+type ServiceState int32
+
+const (
+	ServiceState_SERVICE_STATE_UNSPECIFIED ServiceState = 0
+	ServiceState_SERVICE_STATE_STOPPED     ServiceState = 1
+	ServiceState_SERVICE_STATE_RUNNING     ServiceState = 2
+	// It exited and starts again after a delay.
+	ServiceState_SERVICE_STATE_RESTARTING ServiceState = 3
+	// It exited with an error and is not restarted.
+	ServiceState_SERVICE_STATE_FAILED ServiceState = 4
+)
+
+// Enum value maps for ServiceState.
+var (
+	ServiceState_name = map[int32]string{
+		0: "SERVICE_STATE_UNSPECIFIED",
+		1: "SERVICE_STATE_STOPPED",
+		2: "SERVICE_STATE_RUNNING",
+		3: "SERVICE_STATE_RESTARTING",
+		4: "SERVICE_STATE_FAILED",
+	}
+	ServiceState_value = map[string]int32{
+		"SERVICE_STATE_UNSPECIFIED": 0,
+		"SERVICE_STATE_STOPPED":     1,
+		"SERVICE_STATE_RUNNING":     2,
+		"SERVICE_STATE_RESTARTING":  3,
+		"SERVICE_STATE_FAILED":      4,
+	}
+)
+
+func (x ServiceState) Enum() *ServiceState {
+	p := new(ServiceState)
+	*p = x
+	return p
+}
+
+func (x ServiceState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ServiceState) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_types_proto_enumTypes[8].Descriptor()
+}
+
+func (ServiceState) Type() protoreflect.EnumType {
+	return &file_aos_v1_types_proto_enumTypes[8]
+}
+
+func (x ServiceState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ServiceState.Descriptor instead.
+func (ServiceState) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{8}
 }
 
 type Usage struct {
@@ -319,8 +540,12 @@ type Usage struct {
 	CachedInputTokens int64                  `protobuf:"varint,2,opt,name=cached_input_tokens,json=cachedInputTokens,proto3" json:"cached_input_tokens,omitempty"`
 	OutputTokens      int64                  `protobuf:"varint,3,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
 	ReasoningTokens   int64                  `protobuf:"varint,4,opt,name=reasoning_tokens,json=reasoningTokens,proto3" json:"reasoning_tokens,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Estimated from /var/lib/aos/prices.yaml (PLAN.md §8.4).
+	CostUsd float64 `protobuf:"fixed64,5,opt,name=cost_usd,json=costUsd,proto3" json:"cost_usd,omitempty"`
+	// False when prices.yaml has no prices for a model that was used.
+	CostKnown     bool `protobuf:"varint,6,opt,name=cost_known,json=costKnown,proto3" json:"cost_known,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Usage) Reset() {
@@ -381,13 +606,29 @@ func (x *Usage) GetReasoningTokens() int64 {
 	return 0
 }
 
+func (x *Usage) GetCostUsd() float64 {
+	if x != nil {
+		return x.CostUsd
+	}
+	return 0
+}
+
+func (x *Usage) GetCostKnown() bool {
+	if x != nil {
+		return x.CostKnown
+	}
+	return false
+}
+
 // Awaiting says what a Task in TASK_STATE_AWAITING_USER waits for.
 type Awaiting struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Set when the Task waits for an Approval decision.
 	ApprovalId string `protobuf:"bytes,1,opt,name=approval_id,json=approvalId,proto3" json:"approval_id,omitempty"`
-	// Set when the Agent asked the user a question (ask_user).
-	Question      string `protobuf:"bytes,2,opt,name=question,proto3" json:"question,omitempty"`
+	// The question for QUESTION; what happened for RETRIES and COST_LIMIT.
+	// Answered with TaskService.AnswerQuestion.
+	Question      string       `protobuf:"bytes,2,opt,name=question,proto3" json:"question,omitempty"`
+	Kind          AwaitingKind `protobuf:"varint,3,opt,name=kind,proto3,enum=aos.v1.AwaitingKind" json:"kind,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -436,6 +677,13 @@ func (x *Awaiting) GetQuestion() string {
 	return ""
 }
 
+func (x *Awaiting) GetKind() AwaitingKind {
+	if x != nil {
+		return x.Kind
+	}
+	return AwaitingKind_AWAITING_KIND_UNSPECIFIED
+}
+
 type Task struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Id       string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -447,13 +695,15 @@ type Task struct {
 	// calls that would need an Approval are denied instead.
 	Interactive bool `protobuf:"varint,6,opt,name=interactive,proto3" json:"interactive,omitempty"`
 	// The Agent's final answer, or the reason it failed.
-	Summary       string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
-	Usage         *Usage                 `protobuf:"bytes,8,opt,name=usage,proto3" json:"usage,omitempty"`
-	Awaiting      *Awaiting              `protobuf:"bytes,9,opt,name=awaiting,proto3" json:"awaiting,omitempty"`
-	Model         string                 `protobuf:"bytes,10,opt,name=model,proto3" json:"model,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Summary    string                 `protobuf:"bytes,7,opt,name=summary,proto3" json:"summary,omitempty"`
+	Usage      *Usage                 `protobuf:"bytes,8,opt,name=usage,proto3" json:"usage,omitempty"`
+	Awaiting   *Awaiting              `protobuf:"bytes,9,opt,name=awaiting,proto3" json:"awaiting,omitempty"`
+	Model      string                 `protobuf:"bytes,10,opt,name=model,proto3" json:"model,omitempty"`
+	CreatedAt  *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt  *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	FinishedAt *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	// The Checkpoint taken before the Task's first software change, if any.
+	CheckpointId  string `protobuf:"bytes,14,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -577,6 +827,13 @@ func (x *Task) GetFinishedAt() *timestamppb.Timestamp {
 		return x.FinishedAt
 	}
 	return nil
+}
+
+func (x *Task) GetCheckpointId() string {
+	if x != nil {
+		return x.CheckpointId
+	}
+	return ""
 }
 
 type ToolCall struct {
@@ -1034,20 +1291,767 @@ func (x *AuditEntry) GetTime() *timestamppb.Timestamp {
 	return nil
 }
 
+// LedgerOp is one operation in the Install Ledger: an install, a removal, a
+// command run as root, a Service change or a Restore, with what it changed.
+type LedgerOp struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Id     int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Time   *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=time,proto3" json:"time,omitempty"`
+	TaskId string                 `protobuf:"bytes,3,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// install | remove | command | service | restore
+	Action  string `protobuf:"bytes,4,opt,name=action,proto3" json:"action,omitempty"`
+	Summary string `protobuf:"bytes,5,opt,name=summary,proto3" json:"summary,omitempty"`
+	// Who asked: agent, user:cli, …
+	Actor         string          `protobuf:"bytes,6,opt,name=actor,proto3" json:"actor,omitempty"`
+	Changes       []*LedgerChange `protobuf:"bytes,7,rep,name=changes,proto3" json:"changes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerOp) Reset() {
+	*x = LedgerOp{}
+	mi := &file_aos_v1_types_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerOp) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerOp) ProtoMessage() {}
+
+func (x *LedgerOp) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerOp.ProtoReflect.Descriptor instead.
+func (*LedgerOp) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *LedgerOp) GetId() int64 {
+	if x != nil {
+		return x.Id
+	}
+	return 0
+}
+
+func (x *LedgerOp) GetTime() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Time
+	}
+	return nil
+}
+
+func (x *LedgerOp) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *LedgerOp) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *LedgerOp) GetSummary() string {
+	if x != nil {
+		return x.Summary
+	}
+	return ""
+}
+
+func (x *LedgerOp) GetActor() string {
+	if x != nil {
+		return x.Actor
+	}
+	return ""
+}
+
+func (x *LedgerOp) GetChanges() []*LedgerChange {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+type LedgerChange struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// package | file | service
+	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	// apt | pipx | npm, for packages
+	Manager string `protobuf:"bytes,2,opt,name=manager,proto3" json:"manager,omitempty"`
+	// A package (name:arch for apt), a path under /etc, or a Service name.
+	Name string `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
+	// The state before and after, in short; empty means absent.
+	Before        string `protobuf:"bytes,4,opt,name=before,proto3" json:"before,omitempty"`
+	After         string `protobuf:"bytes,5,opt,name=after,proto3" json:"after,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *LedgerChange) Reset() {
+	*x = LedgerChange{}
+	mi := &file_aos_v1_types_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *LedgerChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*LedgerChange) ProtoMessage() {}
+
+func (x *LedgerChange) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use LedgerChange.ProtoReflect.Descriptor instead.
+func (*LedgerChange) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *LedgerChange) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *LedgerChange) GetManager() string {
+	if x != nil {
+		return x.Manager
+	}
+	return ""
+}
+
+func (x *LedgerChange) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *LedgerChange) GetBefore() string {
+	if x != nil {
+		return x.Before
+	}
+	return ""
+}
+
+func (x *LedgerChange) GetAfter() string {
+	if x != nil {
+		return x.After
+	}
+	return ""
+}
+
+// Package is software the Install Ledger says the Machine has.
+type Package struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Manager string                 `protobuf:"bytes,1,opt,name=manager,proto3" json:"manager,omitempty"`
+	Name    string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Version string                 `protobuf:"bytes,3,opt,name=version,proto3" json:"version,omitempty"`
+	// Installed as a dependency of another package.
+	Auto bool `protobuf:"varint,4,opt,name=auto,proto3" json:"auto,omitempty"`
+	// The Ledger operation that installed this version.
+	LedgerId      int64 `protobuf:"varint,5,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Package) Reset() {
+	*x = Package{}
+	mi := &file_aos_v1_types_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Package) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Package) ProtoMessage() {}
+
+func (x *Package) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Package.ProtoReflect.Descriptor instead.
+func (*Package) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *Package) GetManager() string {
+	if x != nil {
+		return x.Manager
+	}
+	return ""
+}
+
+func (x *Package) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Package) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *Package) GetAuto() bool {
+	if x != nil {
+		return x.Auto
+	}
+	return false
+}
+
+func (x *Package) GetLedgerId() int64 {
+	if x != nil {
+		return x.LedgerId
+	}
+	return 0
+}
+
+type Checkpoint struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The last Ledger operation it includes.
+	LedgerId int64  `protobuf:"varint,3,opt,name=ledger_id,json=ledgerId,proto3" json:"ledger_id,omitempty"`
+	TaskId   string `protobuf:"bytes,4,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	// Taken automatically before a Task's first software change, or before a Restore.
+	Automatic     bool                   `protobuf:"varint,5,opt,name=automatic,proto3" json:"automatic,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Checkpoint) Reset() {
+	*x = Checkpoint{}
+	mi := &file_aos_v1_types_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Checkpoint) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Checkpoint) ProtoMessage() {}
+
+func (x *Checkpoint) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Checkpoint.ProtoReflect.Descriptor instead.
+func (*Checkpoint) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *Checkpoint) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Checkpoint) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Checkpoint) GetLedgerId() int64 {
+	if x != nil {
+		return x.LedgerId
+	}
+	return 0
+}
+
+func (x *Checkpoint) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *Checkpoint) GetAutomatic() bool {
+	if x != nil {
+		return x.Automatic
+	}
+	return false
+}
+
+func (x *Checkpoint) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+// ReplayStatus is the progress of re-applying the Install Ledger at startup.
+type ReplayStatus struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	State ReplayState            `protobuf:"varint,1,opt,name=state,proto3,enum=aos.v1.ReplayState" json:"state,omitempty"`
+	// Steps finished so far, of total.
+	Done          int32                  `protobuf:"varint,2,opt,name=done,proto3" json:"done,omitempty"`
+	Total         int32                  `protobuf:"varint,3,opt,name=total,proto3" json:"total,omitempty"`
+	Message       string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReplayStatus) Reset() {
+	*x = ReplayStatus{}
+	mi := &file_aos_v1_types_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReplayStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReplayStatus) ProtoMessage() {}
+
+func (x *ReplayStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReplayStatus.ProtoReflect.Descriptor instead.
+func (*ReplayStatus) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *ReplayStatus) GetState() ReplayState {
+	if x != nil {
+		return x.State
+	}
+	return ReplayState_REPLAY_STATE_UNSPECIFIED
+}
+
+func (x *ReplayStatus) GetDone() int32 {
+	if x != nil {
+		return x.Done
+	}
+	return 0
+}
+
+func (x *ReplayStatus) GetTotal() int32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *ReplayStatus) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *ReplayStatus) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+func (x *ReplayStatus) GetFinishedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.FinishedAt
+	}
+	return nil
+}
+
+type ServiceInfo struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	Name       string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Command    string                 `protobuf:"bytes,2,opt,name=command,proto3" json:"command,omitempty"`
+	WorkingDir string                 `protobuf:"bytes,3,opt,name=working_dir,json=workingDir,proto3" json:"working_dir,omitempty"`
+	Env        map[string]string      `protobuf:"bytes,4,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Runs as root (created through an approved Privileged Tool); otherwise as
+	// aos, confined like the Agent that created it.
+	Root      bool          `protobuf:"varint,5,opt,name=root,proto3" json:"root,omitempty"`
+	Confined  bool          `protobuf:"varint,6,opt,name=confined,proto3" json:"confined,omitempty"`
+	Autostart bool          `protobuf:"varint,7,opt,name=autostart,proto3" json:"autostart,omitempty"`
+	Restart   RestartPolicy `protobuf:"varint,8,opt,name=restart,proto3,enum=aos.v1.RestartPolicy" json:"restart,omitempty"`
+	// The Task that created it.
+	TaskId   string       `protobuf:"bytes,9,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	State    ServiceState `protobuf:"varint,10,opt,name=state,proto3,enum=aos.v1.ServiceState" json:"state,omitempty"`
+	Pid      int32        `protobuf:"varint,11,opt,name=pid,proto3" json:"pid,omitempty"`
+	Ports    []int32      `protobuf:"varint,12,rep,packed,name=ports,proto3" json:"ports,omitempty"`
+	Restarts int32        `protobuf:"varint,13,opt,name=restarts,proto3" json:"restarts,omitempty"`
+	// How the last run ended, such as "exit 1" or "signal 9"; empty if it hasn't.
+	LastExit      string                 `protobuf:"bytes,14,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceInfo) Reset() {
+	*x = ServiceInfo{}
+	mi := &file_aos_v1_types_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceInfo) ProtoMessage() {}
+
+func (x *ServiceInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceInfo.ProtoReflect.Descriptor instead.
+func (*ServiceInfo) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ServiceInfo) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ServiceInfo) GetCommand() string {
+	if x != nil {
+		return x.Command
+	}
+	return ""
+}
+
+func (x *ServiceInfo) GetWorkingDir() string {
+	if x != nil {
+		return x.WorkingDir
+	}
+	return ""
+}
+
+func (x *ServiceInfo) GetEnv() map[string]string {
+	if x != nil {
+		return x.Env
+	}
+	return nil
+}
+
+func (x *ServiceInfo) GetRoot() bool {
+	if x != nil {
+		return x.Root
+	}
+	return false
+}
+
+func (x *ServiceInfo) GetConfined() bool {
+	if x != nil {
+		return x.Confined
+	}
+	return false
+}
+
+func (x *ServiceInfo) GetAutostart() bool {
+	if x != nil {
+		return x.Autostart
+	}
+	return false
+}
+
+func (x *ServiceInfo) GetRestart() RestartPolicy {
+	if x != nil {
+		return x.Restart
+	}
+	return RestartPolicy_RESTART_POLICY_UNSPECIFIED
+}
+
+func (x *ServiceInfo) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ServiceInfo) GetState() ServiceState {
+	if x != nil {
+		return x.State
+	}
+	return ServiceState_SERVICE_STATE_UNSPECIFIED
+}
+
+func (x *ServiceInfo) GetPid() int32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *ServiceInfo) GetPorts() []int32 {
+	if x != nil {
+		return x.Ports
+	}
+	return nil
+}
+
+func (x *ServiceInfo) GetRestarts() int32 {
+	if x != nil {
+		return x.Restarts
+	}
+	return 0
+}
+
+func (x *ServiceInfo) GetLastExit() string {
+	if x != nil {
+		return x.LastExit
+	}
+	return ""
+}
+
+func (x *ServiceInfo) GetStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.StartedAt
+	}
+	return nil
+}
+
+// Listener is a program listening on a TCP port in the Machine.
+type Listener struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Port    int32                  `protobuf:"varint,1,opt,name=port,proto3" json:"port,omitempty"`
+	Pid     int32                  `protobuf:"varint,2,opt,name=pid,proto3" json:"pid,omitempty"`
+	Process string                 `protobuf:"bytes,3,opt,name=process,proto3" json:"process,omitempty"`
+	// The Service it belongs to, if any.
+	Service string `protobuf:"bytes,4,opt,name=service,proto3" json:"service,omitempty"`
+	// The address it listens on, such as 0.0.0.0 or 127.0.0.1.
+	Address       string `protobuf:"bytes,5,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Listener) Reset() {
+	*x = Listener{}
+	mi := &file_aos_v1_types_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Listener) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Listener) ProtoMessage() {}
+
+func (x *Listener) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Listener.ProtoReflect.Descriptor instead.
+func (*Listener) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *Listener) GetPort() int32 {
+	if x != nil {
+		return x.Port
+	}
+	return 0
+}
+
+func (x *Listener) GetPid() int32 {
+	if x != nil {
+		return x.Pid
+	}
+	return 0
+}
+
+func (x *Listener) GetProcess() string {
+	if x != nil {
+		return x.Process
+	}
+	return ""
+}
+
+func (x *Listener) GetService() string {
+	if x != nil {
+		return x.Service
+	}
+	return ""
+}
+
+func (x *Listener) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type Memory struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Text  string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// proposed (by an Agent's remember, until the user accepts) | accepted
+	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	TaskId        string                 `protobuf:"bytes,4,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Memory) Reset() {
+	*x = Memory{}
+	mi := &file_aos_v1_types_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Memory) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Memory) ProtoMessage() {}
+
+func (x *Memory) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_types_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Memory.ProtoReflect.Descriptor instead.
+func (*Memory) Descriptor() ([]byte, []int) {
+	return file_aos_v1_types_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *Memory) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *Memory) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *Memory) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Memory) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *Memory) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
 var File_aos_v1_types_proto protoreflect.FileDescriptor
 
 const file_aos_v1_types_proto_rawDesc = "" +
 	"\n" +
-	"\x12aos/v1/types.proto\x12\x06aos.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xaa\x01\n" +
+	"\x12aos/v1/types.proto\x12\x06aos.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe4\x01\n" +
 	"\x05Usage\x12!\n" +
 	"\finput_tokens\x18\x01 \x01(\x03R\vinputTokens\x12.\n" +
 	"\x13cached_input_tokens\x18\x02 \x01(\x03R\x11cachedInputTokens\x12#\n" +
 	"\routput_tokens\x18\x03 \x01(\x03R\foutputTokens\x12)\n" +
-	"\x10reasoning_tokens\x18\x04 \x01(\x03R\x0freasoningTokens\"G\n" +
+	"\x10reasoning_tokens\x18\x04 \x01(\x03R\x0freasoningTokens\x12\x19\n" +
+	"\bcost_usd\x18\x05 \x01(\x01R\acostUsd\x12\x1d\n" +
+	"\n" +
+	"cost_known\x18\x06 \x01(\bR\tcostKnown\"q\n" +
 	"\bAwaiting\x12\x1f\n" +
 	"\vapproval_id\x18\x01 \x01(\tR\n" +
 	"approvalId\x12\x1a\n" +
-	"\bquestion\x18\x02 \x01(\tR\bquestion\"\xf3\x03\n" +
+	"\bquestion\x18\x02 \x01(\tR\bquestion\x12(\n" +
+	"\x04kind\x18\x03 \x01(\x0e2\x14.aos.v1.AwaitingKindR\x04kind\"\x98\x04\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -1065,7 +2069,8 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12;\n" +
 	"\vfinished_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"\xbd\x02\n" +
+	"finishedAt\x12#\n" +
+	"\rcheckpoint_id\x18\x0e \x01(\tR\fcheckpointId\"\xbd\x02\n" +
 	"\bToolCall\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04tool\x18\x02 \x01(\tR\x04tool\x12%\n" +
@@ -1119,7 +2124,80 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"durationMs\x12\x14\n" +
 	"\x05actor\x18\n" +
 	" \x01(\tR\x05actor\x12.\n" +
-	"\x04time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x04time*m\n" +
+	"\x04time\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\x04time\"\xdb\x01\n" +
+	"\bLedgerOp\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\x03R\x02id\x12.\n" +
+	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x17\n" +
+	"\atask_id\x18\x03 \x01(\tR\x06taskId\x12\x16\n" +
+	"\x06action\x18\x04 \x01(\tR\x06action\x12\x18\n" +
+	"\asummary\x18\x05 \x01(\tR\asummary\x12\x14\n" +
+	"\x05actor\x18\x06 \x01(\tR\x05actor\x12.\n" +
+	"\achanges\x18\a \x03(\v2\x14.aos.v1.LedgerChangeR\achanges\"~\n" +
+	"\fLedgerChange\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x18\n" +
+	"\amanager\x18\x02 \x01(\tR\amanager\x12\x12\n" +
+	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
+	"\x06before\x18\x04 \x01(\tR\x06before\x12\x14\n" +
+	"\x05after\x18\x05 \x01(\tR\x05after\"\x82\x01\n" +
+	"\aPackage\x12\x18\n" +
+	"\amanager\x18\x01 \x01(\tR\amanager\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
+	"\aversion\x18\x03 \x01(\tR\aversion\x12\x12\n" +
+	"\x04auto\x18\x04 \x01(\bR\x04auto\x12\x1b\n" +
+	"\tledger_id\x18\x05 \x01(\x03R\bledgerId\"\xbf\x01\n" +
+	"\n" +
+	"Checkpoint\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1b\n" +
+	"\tledger_id\x18\x03 \x01(\x03R\bledgerId\x12\x17\n" +
+	"\atask_id\x18\x04 \x01(\tR\x06taskId\x12\x1c\n" +
+	"\tautomatic\x18\x05 \x01(\bR\tautomatic\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\xf5\x01\n" +
+	"\fReplayStatus\x12)\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x13.aos.v1.ReplayStateR\x05state\x12\x12\n" +
+	"\x04done\x18\x02 \x01(\x05R\x04done\x12\x14\n" +
+	"\x05total\x18\x03 \x01(\x05R\x05total\x12\x18\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x129\n" +
+	"\n" +
+	"started_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vfinished_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"finishedAt\"\xa4\x04\n" +
+	"\vServiceInfo\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
+	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1f\n" +
+	"\vworking_dir\x18\x03 \x01(\tR\n" +
+	"workingDir\x12.\n" +
+	"\x03env\x18\x04 \x03(\v2\x1c.aos.v1.ServiceInfo.EnvEntryR\x03env\x12\x12\n" +
+	"\x04root\x18\x05 \x01(\bR\x04root\x12\x1a\n" +
+	"\bconfined\x18\x06 \x01(\bR\bconfined\x12\x1c\n" +
+	"\tautostart\x18\a \x01(\bR\tautostart\x12/\n" +
+	"\arestart\x18\b \x01(\x0e2\x15.aos.v1.RestartPolicyR\arestart\x12\x17\n" +
+	"\atask_id\x18\t \x01(\tR\x06taskId\x12*\n" +
+	"\x05state\x18\n" +
+	" \x01(\x0e2\x14.aos.v1.ServiceStateR\x05state\x12\x10\n" +
+	"\x03pid\x18\v \x01(\x05R\x03pid\x12\x14\n" +
+	"\x05ports\x18\f \x03(\x05R\x05ports\x12\x1a\n" +
+	"\brestarts\x18\r \x01(\x05R\brestarts\x12\x1b\n" +
+	"\tlast_exit\x18\x0e \x01(\tR\blastExit\x129\n" +
+	"\n" +
+	"started_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x1a6\n" +
+	"\bEnvEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"~\n" +
+	"\bListener\x12\x12\n" +
+	"\x04port\x18\x01 \x01(\x05R\x04port\x12\x10\n" +
+	"\x03pid\x18\x02 \x01(\x05R\x03pid\x12\x18\n" +
+	"\aprocess\x18\x03 \x01(\tR\aprocess\x12\x18\n" +
+	"\aservice\x18\x04 \x01(\tR\aservice\x12\x18\n" +
+	"\aaddress\x18\x05 \x01(\tR\aaddress\"\x98\x01\n" +
+	"\x06Memory\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x16\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x17\n" +
+	"\atask_id\x18\x04 \x01(\tR\x06taskId\x129\n" +
+	"\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt*m\n" +
 	"\bAutonomy\x12\x18\n" +
 	"\x14AUTONOMY_UNSPECIFIED\x10\x00\x12\x11\n" +
 	"\rAUTONOMY_AUTO\x10\x01\x12\x1a\n" +
@@ -1133,7 +2211,13 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\x14TASK_STATE_SUCCEEDED\x10\x04\x12\x15\n" +
 	"\x11TASK_STATE_FAILED\x10\x05\x12\x18\n" +
 	"\x14TASK_STATE_CANCELLED\x10\x06\x12\x1a\n" +
-	"\x16TASK_STATE_INTERRUPTED\x10\a*\x88\x01\n" +
+	"\x16TASK_STATE_INTERRUPTED\x10\a*\x9e\x01\n" +
+	"\fAwaitingKind\x12\x1d\n" +
+	"\x19AWAITING_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
+	"\x16AWAITING_KIND_APPROVAL\x10\x01\x12\x1a\n" +
+	"\x16AWAITING_KIND_QUESTION\x10\x02\x12\x19\n" +
+	"\x15AWAITING_KIND_RETRIES\x10\x03\x12\x1c\n" +
+	"\x18AWAITING_KIND_COST_LIMIT\x10\x04*\x88\x01\n" +
 	"\bStepKind\x12\x19\n" +
 	"\x15STEP_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16STEP_KIND_USER_MESSAGE\x10\x01\x12\x18\n" +
@@ -1153,7 +2237,23 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\x1dAPPROVAL_DECISION_UNSPECIFIED\x10\x00\x12 \n" +
 	"\x1cAPPROVAL_DECISION_ALLOW_ONCE\x10\x01\x12$\n" +
 	" APPROVAL_DECISION_ALLOW_FOR_TASK\x10\x02\x12\x1a\n" +
-	"\x16APPROVAL_DECISION_DENY\x10\x03B6Z4github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
+	"\x16APPROVAL_DECISION_DENY\x10\x03*u\n" +
+	"\vReplayState\x12\x1c\n" +
+	"\x18REPLAY_STATE_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14REPLAY_STATE_RUNNING\x10\x01\x12\x15\n" +
+	"\x11REPLAY_STATE_DONE\x10\x02\x12\x17\n" +
+	"\x13REPLAY_STATE_FAILED\x10\x03*\x83\x01\n" +
+	"\rRestartPolicy\x12\x1e\n" +
+	"\x1aRESTART_POLICY_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15RESTART_POLICY_ALWAYS\x10\x01\x12\x1d\n" +
+	"\x19RESTART_POLICY_ON_FAILURE\x10\x02\x12\x18\n" +
+	"\x14RESTART_POLICY_NEVER\x10\x03*\x9b\x01\n" +
+	"\fServiceState\x12\x1d\n" +
+	"\x19SERVICE_STATE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15SERVICE_STATE_STOPPED\x10\x01\x12\x19\n" +
+	"\x15SERVICE_STATE_RUNNING\x10\x02\x12\x1c\n" +
+	"\x18SERVICE_STATE_RESTARTING\x10\x03\x12\x18\n" +
+	"\x14SERVICE_STATE_FAILED\x10\x04B6Z4github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
 
 var (
 	file_aos_v1_types_proto_rawDescOnce sync.Once
@@ -1167,46 +2267,71 @@ func file_aos_v1_types_proto_rawDescGZIP() []byte {
 	return file_aos_v1_types_proto_rawDescData
 }
 
-var file_aos_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 5)
-var file_aos_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_aos_v1_types_proto_enumTypes = make([]protoimpl.EnumInfo, 9)
+var file_aos_v1_types_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_aos_v1_types_proto_goTypes = []any{
 	(Autonomy)(0),                 // 0: aos.v1.Autonomy
 	(TaskState)(0),                // 1: aos.v1.TaskState
-	(StepKind)(0),                 // 2: aos.v1.StepKind
-	(ToolCallStatus)(0),           // 3: aos.v1.ToolCallStatus
-	(ApprovalDecision)(0),         // 4: aos.v1.ApprovalDecision
-	(*Usage)(nil),                 // 5: aos.v1.Usage
-	(*Awaiting)(nil),              // 6: aos.v1.Awaiting
-	(*Task)(nil),                  // 7: aos.v1.Task
-	(*ToolCall)(nil),              // 8: aos.v1.ToolCall
-	(*TaskStep)(nil),              // 9: aos.v1.TaskStep
-	(*Approval)(nil),              // 10: aos.v1.Approval
-	(*AuditEntry)(nil),            // 11: aos.v1.AuditEntry
-	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
+	(AwaitingKind)(0),             // 2: aos.v1.AwaitingKind
+	(StepKind)(0),                 // 3: aos.v1.StepKind
+	(ToolCallStatus)(0),           // 4: aos.v1.ToolCallStatus
+	(ApprovalDecision)(0),         // 5: aos.v1.ApprovalDecision
+	(ReplayState)(0),              // 6: aos.v1.ReplayState
+	(RestartPolicy)(0),            // 7: aos.v1.RestartPolicy
+	(ServiceState)(0),             // 8: aos.v1.ServiceState
+	(*Usage)(nil),                 // 9: aos.v1.Usage
+	(*Awaiting)(nil),              // 10: aos.v1.Awaiting
+	(*Task)(nil),                  // 11: aos.v1.Task
+	(*ToolCall)(nil),              // 12: aos.v1.ToolCall
+	(*TaskStep)(nil),              // 13: aos.v1.TaskStep
+	(*Approval)(nil),              // 14: aos.v1.Approval
+	(*AuditEntry)(nil),            // 15: aos.v1.AuditEntry
+	(*LedgerOp)(nil),              // 16: aos.v1.LedgerOp
+	(*LedgerChange)(nil),          // 17: aos.v1.LedgerChange
+	(*Package)(nil),               // 18: aos.v1.Package
+	(*Checkpoint)(nil),            // 19: aos.v1.Checkpoint
+	(*ReplayStatus)(nil),          // 20: aos.v1.ReplayStatus
+	(*ServiceInfo)(nil),           // 21: aos.v1.ServiceInfo
+	(*Listener)(nil),              // 22: aos.v1.Listener
+	(*Memory)(nil),                // 23: aos.v1.Memory
+	nil,                           // 24: aos.v1.ServiceInfo.EnvEntry
+	(*timestamppb.Timestamp)(nil), // 25: google.protobuf.Timestamp
 }
 var file_aos_v1_types_proto_depIdxs = []int32{
-	1,  // 0: aos.v1.Task.state:type_name -> aos.v1.TaskState
-	0,  // 1: aos.v1.Task.autonomy:type_name -> aos.v1.Autonomy
-	5,  // 2: aos.v1.Task.usage:type_name -> aos.v1.Usage
-	6,  // 3: aos.v1.Task.awaiting:type_name -> aos.v1.Awaiting
-	12, // 4: aos.v1.Task.created_at:type_name -> google.protobuf.Timestamp
-	12, // 5: aos.v1.Task.updated_at:type_name -> google.protobuf.Timestamp
-	12, // 6: aos.v1.Task.finished_at:type_name -> google.protobuf.Timestamp
-	3,  // 7: aos.v1.ToolCall.status:type_name -> aos.v1.ToolCallStatus
-	12, // 8: aos.v1.ToolCall.started_at:type_name -> google.protobuf.Timestamp
-	12, // 9: aos.v1.ToolCall.finished_at:type_name -> google.protobuf.Timestamp
-	2,  // 10: aos.v1.TaskStep.kind:type_name -> aos.v1.StepKind
-	8,  // 11: aos.v1.TaskStep.tool_call:type_name -> aos.v1.ToolCall
-	12, // 12: aos.v1.TaskStep.created_at:type_name -> google.protobuf.Timestamp
-	4,  // 13: aos.v1.Approval.decision:type_name -> aos.v1.ApprovalDecision
-	12, // 14: aos.v1.Approval.created_at:type_name -> google.protobuf.Timestamp
-	12, // 15: aos.v1.Approval.decided_at:type_name -> google.protobuf.Timestamp
-	12, // 16: aos.v1.AuditEntry.time:type_name -> google.protobuf.Timestamp
-	17, // [17:17] is the sub-list for method output_type
-	17, // [17:17] is the sub-list for method input_type
-	17, // [17:17] is the sub-list for extension type_name
-	17, // [17:17] is the sub-list for extension extendee
-	0,  // [0:17] is the sub-list for field type_name
+	2,  // 0: aos.v1.Awaiting.kind:type_name -> aos.v1.AwaitingKind
+	1,  // 1: aos.v1.Task.state:type_name -> aos.v1.TaskState
+	0,  // 2: aos.v1.Task.autonomy:type_name -> aos.v1.Autonomy
+	9,  // 3: aos.v1.Task.usage:type_name -> aos.v1.Usage
+	10, // 4: aos.v1.Task.awaiting:type_name -> aos.v1.Awaiting
+	25, // 5: aos.v1.Task.created_at:type_name -> google.protobuf.Timestamp
+	25, // 6: aos.v1.Task.updated_at:type_name -> google.protobuf.Timestamp
+	25, // 7: aos.v1.Task.finished_at:type_name -> google.protobuf.Timestamp
+	4,  // 8: aos.v1.ToolCall.status:type_name -> aos.v1.ToolCallStatus
+	25, // 9: aos.v1.ToolCall.started_at:type_name -> google.protobuf.Timestamp
+	25, // 10: aos.v1.ToolCall.finished_at:type_name -> google.protobuf.Timestamp
+	3,  // 11: aos.v1.TaskStep.kind:type_name -> aos.v1.StepKind
+	12, // 12: aos.v1.TaskStep.tool_call:type_name -> aos.v1.ToolCall
+	25, // 13: aos.v1.TaskStep.created_at:type_name -> google.protobuf.Timestamp
+	5,  // 14: aos.v1.Approval.decision:type_name -> aos.v1.ApprovalDecision
+	25, // 15: aos.v1.Approval.created_at:type_name -> google.protobuf.Timestamp
+	25, // 16: aos.v1.Approval.decided_at:type_name -> google.protobuf.Timestamp
+	25, // 17: aos.v1.AuditEntry.time:type_name -> google.protobuf.Timestamp
+	25, // 18: aos.v1.LedgerOp.time:type_name -> google.protobuf.Timestamp
+	17, // 19: aos.v1.LedgerOp.changes:type_name -> aos.v1.LedgerChange
+	25, // 20: aos.v1.Checkpoint.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 21: aos.v1.ReplayStatus.state:type_name -> aos.v1.ReplayState
+	25, // 22: aos.v1.ReplayStatus.started_at:type_name -> google.protobuf.Timestamp
+	25, // 23: aos.v1.ReplayStatus.finished_at:type_name -> google.protobuf.Timestamp
+	24, // 24: aos.v1.ServiceInfo.env:type_name -> aos.v1.ServiceInfo.EnvEntry
+	7,  // 25: aos.v1.ServiceInfo.restart:type_name -> aos.v1.RestartPolicy
+	8,  // 26: aos.v1.ServiceInfo.state:type_name -> aos.v1.ServiceState
+	25, // 27: aos.v1.ServiceInfo.started_at:type_name -> google.protobuf.Timestamp
+	25, // 28: aos.v1.Memory.created_at:type_name -> google.protobuf.Timestamp
+	29, // [29:29] is the sub-list for method output_type
+	29, // [29:29] is the sub-list for method input_type
+	29, // [29:29] is the sub-list for extension type_name
+	29, // [29:29] is the sub-list for extension extendee
+	0,  // [0:29] is the sub-list for field type_name
 }
 
 func init() { file_aos_v1_types_proto_init() }
@@ -1219,8 +2344,8 @@ func file_aos_v1_types_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aos_v1_types_proto_rawDesc), len(file_aos_v1_types_proto_rawDesc)),
-			NumEnums:      5,
-			NumMessages:   7,
+			NumEnums:      9,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

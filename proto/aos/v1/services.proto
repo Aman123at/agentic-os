@@ -70,6 +70,8 @@ message GetTaskResponse {
 message SendFollowUpRequest {
   string id = 1;
   string text = 2;
+  // Whether someone can answer Approvals and questions from now on.
+  bool interactive = 3;
 }
 message SendFollowUpResponse {
   Task task = 1;
@@ -88,6 +90,7 @@ message CancelTaskResponse {}
 
 message ResumeTaskRequest {
   string id = 1;
+  bool interactive = 2;
 }
 message ResumeTaskResponse {
   Task task = 1;
@@ -145,7 +148,18 @@ message Event {
     ApprovalChanged approval = 5;
     DownloadProgress download_progress = 6;
     Notification notification = 7;
+    ServiceChanged service_changed = 8;
+    ReplayProgress replay_progress = 9;
   }
+}
+
+message ServiceChanged {
+  ServiceInfo service = 1;
+  bool removed = 2;
+}
+
+message ReplayProgress {
+  ReplayStatus status = 1;
 }
 
 message TaskChanged {
@@ -180,6 +194,8 @@ message Notification {
   string title = 1;
   string body = 2;
   string task_id = 3;
+  // Set when an Agent proposes a Memory; SettingsService.AcceptMemory saves it.
+  string memory_id = 4;
 }
 
 // ---------------------------------------------------------------- Files and Trash
@@ -354,6 +370,150 @@ message CloseSessionRequest {
 }
 message CloseSessionResponse {}
 
+// ---------------------------------------------------------------- Software (PLAN.md §11)
+
+service SoftwareService {
+  // Software the Install Ledger says the Machine has (packages installed through AOS).
+  rpc ListPackages(ListPackagesRequest) returns (ListPackagesResponse);
+  // The Ledger's operations, newest first.
+  rpc ListLedger(ListLedgerRequest) returns (ListLedgerResponse);
+  rpc ListCheckpoints(ListCheckpointsRequest) returns (ListCheckpointsResponse);
+  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
+  // Returns software, /etc and Services to a Checkpoint. A "Before Restore"
+  // Checkpoint is taken first, so the Restore itself can be undone.
+  rpc RestoreCheckpoint(RestoreCheckpointRequest) returns (RestoreCheckpointResponse);
+}
+
+message ListPackagesRequest {}
+message ListPackagesResponse {
+  repeated Package packages = 1;
+}
+
+message ListLedgerRequest {
+  int32 limit = 1;
+  // Operations with id < before_id; 0 starts at the newest.
+  int64 before_id = 2;
+}
+message ListLedgerResponse {
+  repeated LedgerOp ops = 1;
+}
+
+message ListCheckpointsRequest {}
+message ListCheckpointsResponse {
+  repeated Checkpoint checkpoints = 1;
+}
+
+message CreateCheckpointRequest {
+  string name = 1;
+}
+message CreateCheckpointResponse {
+  Checkpoint checkpoint = 1;
+}
+
+message RestoreCheckpointRequest {
+  string id = 1;
+}
+message RestoreCheckpointResponse {
+  // The Restore as recorded in the Ledger.
+  LedgerOp op = 1;
+  // The Checkpoint that undoes this Restore.
+  Checkpoint before = 2;
+  // Anything that could not be restored exactly.
+  repeated string notes = 3;
+}
+
+// ---------------------------------------------------------------- Services (PLAN.md §12)
+
+service SupervisorService {
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc StartService(StartServiceRequest) returns (StartServiceResponse);
+  rpc StopService(StopServiceRequest) returns (StopServiceResponse);
+  rpc RestartService(RestartServiceRequest) returns (RestartServiceResponse);
+  rpc RemoveService(RemoveServiceRequest) returns (RemoveServiceResponse);
+  // The Service's recent output, then new output while follow is set.
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+}
+
+message ListServicesRequest {}
+message ListServicesResponse {
+  repeated ServiceInfo services = 1;
+  // Every program listening on a TCP port, Service or not.
+  repeated Listener listeners = 2;
+}
+
+message StartServiceRequest {
+  string name = 1;
+}
+message StartServiceResponse {
+  ServiceInfo service = 1;
+}
+
+message StopServiceRequest {
+  string name = 1;
+}
+message StopServiceResponse {
+  ServiceInfo service = 1;
+}
+
+message RestartServiceRequest {
+  string name = 1;
+}
+message RestartServiceResponse {
+  ServiceInfo service = 1;
+}
+
+message RemoveServiceRequest {
+  string name = 1;
+}
+message RemoveServiceResponse {}
+
+message StreamLogsRequest {
+  string name = 1;
+  bool follow = 2;
+  // How much recent output to send first; 0 sends up to 64 KiB.
+  int32 tail_bytes = 3;
+}
+message StreamLogsResponse {
+  bytes data = 1;
+}
+
+// ---------------------------------------------------------------- Settings
+
+service SettingsService {
+  // Accepted Memory and the Agents' proposals.
+  rpc ListMemory(ListMemoryRequest) returns (ListMemoryResponse);
+  // Saves an entry the user wrote.
+  rpc AddMemory(AddMemoryRequest) returns (AddMemoryResponse);
+  // Accepts an Agent's proposal.
+  rpc AcceptMemory(AcceptMemoryRequest) returns (AcceptMemoryResponse);
+  // Removes an entry or rejects a proposal.
+  rpc ForgetMemory(ForgetMemoryRequest) returns (ForgetMemoryResponse);
+}
+
+message ListMemoryRequest {}
+message ListMemoryResponse {
+  repeated Memory memories = 1;
+}
+
+message AddMemoryRequest {
+  string text = 1;
+}
+message AddMemoryResponse {
+  Memory memory = 1;
+}
+
+message AcceptMemoryRequest {
+  string id = 1;
+}
+message AcceptMemoryResponse {
+  Memory memory = 1;
+}
+
+message ForgetMemoryRequest {
+  string id = 1;
+}
+message ForgetMemoryResponse {}
+
 // ---------------------------------------------------------------- System
 
 service SystemService {
@@ -371,6 +531,15 @@ message InfoResponse {
   string model = 5;
   Autonomy autonomy = 6;
   int32 max_tasks = 7;
+  ReplayStatus replay = 8;
+  // Today's model usage, all Tasks.
+  Usage today = 9;
+  // 0 means no limit.
+  double task_cost_limit_usd = 10;
+  double daily_cost_limit_usd = 11;
+  // Whether prices.yaml has prices for the configured model.
+  bool prices_known = 12;
+  int32 max_retries = 13;
 }
 
 message AuditRequest {
