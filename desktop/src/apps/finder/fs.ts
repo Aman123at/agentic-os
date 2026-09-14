@@ -29,6 +29,13 @@ export function join(dir: string, name: string): string {
   return `${dir.replace(/\/+$/, "")}/${name}`;
 }
 
+// basename is the last path segment (a file or folder's own name).
+export function basename(path: string): string {
+  const clean = path.replace(/\/+$/, "");
+  const i = clean.lastIndexOf("/");
+  return i < 0 ? clean : clean.slice(i + 1);
+}
+
 // parent returns the containing folder, or "" at a root ("~", "/", "/shared").
 export function parent(dir: string): string {
   if (dir === "~" || dir === "/" || dir === "/shared") return "";
@@ -124,6 +131,22 @@ export async function readAll(path: string, max = MAX_PREVIEW): Promise<Uint8Arr
     at += p.length;
   }
   return out;
+}
+
+const MAX_DOWNLOAD = 256 << 20; // a safety ceiling for a whole-file download
+
+// downloadToHost pulls a file's bytes and hands them to the browser as a save,
+// so the user's own Host machine receives it.
+export async function downloadToHost(path: string, name: string): Promise<void> {
+  const bytes = await readAll(path, MAX_DOWNLOAD);
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 const decoder = new TextDecoder("utf-8", { fatal: false });

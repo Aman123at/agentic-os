@@ -684,3 +684,83 @@ button {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ---------------------------------------------------------------- finder: menu, ask, drop */
+.finder--drop .finder__body {
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+  border-radius: 8px;
+}
+.menu {
+  position: fixed;
+  z-index: 20;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--panel-strong);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  box-shadow: var(--shadow);
+}
+.menu__item {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu__item:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.menu__item--danger {
+  color: var(--error);
+}
+.menu__item--danger:hover {
+  background: var(--error);
+  color: #fff;
+}
+.menu__sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
+}
+.ask {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(78%, 460px);
+  padding: 16px;
+  background: var(--window-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.ask__title {
+  margin: 0;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ask__text {
+  min-height: 84px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-strong);
+  color: var(--text);
+  font: inherit;
+  resize: vertical;
+}
+.ask__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

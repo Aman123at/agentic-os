@@ -1,20 +1,25 @@
 // Finder browses the Machine's files over FileService, with the Trash over
-// TrashService (PLAN.md §4.3, §13). Navigation, the sidebar and the two views
-// live here; file actions (upload, download, move, delete, protect, Ask Agent)
-// arrive in the next commit. Long folders are virtualised (§4.3 rule 5).
+// TrashService (PLAN.md §4.3, §13). Navigation and the two views sit alongside
+// the file actions: upload/download to the Host, move (drag-and-drop), Protect,
+// move to Trash, restore/empty, and "Ask Agent…", which starts a Task — the
+// minimal task surface the shell offers in M3. Long folders are virtualised
+// (§4.3 rule 5).
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ConnectError, Code } from "@connectrpc/connect";
 
-import { files, trash } from "../api/client";
+import { files, tasks, trash } from "../api/client";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
-import { ConnectError } from "@connectrpc/connect";
 import {
   PLACES,
+  basename,
   crumbs,
   decodeText,
+  downloadToHost,
   formatSize,
   formatWhen,
   iconFor,
   isImage,
+  join,
   looksBinary,
   parent,
   readAll,
@@ -24,6 +29,14 @@ type View = "list" | "icon";
 
 const ROW_H = 28;
 const TRASH = ""; // the Trash "folder" browses TrashService, not FileService
+const DRAG_TYPE = "application/x-aos-path"; // an internal move, told apart from a Host-file drop
+
+interface Menu {
+  x: number;
+  y: number;
+  file?: FileInfo;
+  item?: TrashItem;
+}
 
 export default function Finder() {
   const [dir, setDir] = useState<string>("~");
@@ -34,8 +47,12 @@ export default function Finder() {
   const [view, setView] = useState<View>("list");
   const [selected, setSelected] = useState<string>("");
   const [quick, setQuick] = useState<FileInfo | null>(null);
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [ask, setAsk] = useState<FileInfo | null>(null);
+  const [busy, setBusy] = useState("");
+  const [dropping, setDropping] = useState(false);
+  const upload = useRef<HTMLInputElement>(null);
 
-  // Back/forward history of visited locations.
   const [history, setHistory] = useState<string[]>(["~"]);
   const [at, setAt] = useState(0);
 
@@ -45,12 +62,10 @@ export default function Finder() {
     setSelected("");
     try {
       if (loc === TRASH) {
-        const resp = await trash.listTrash({});
-        setTrashItems(resp.items);
+        setTrashItems((await trash.listTrash({})).items);
         setEntries([]);
       } else {
-        const resp = await files.list({ path: loc });
-        setEntries(resp.entries);
+        setEntries((await files.list({ path: loc })).entries);
         setTrashItems([]);
       }
     } catch (err) {
@@ -65,8 +80,8 @@ export default function Finder() {
   useEffect(() => {
     void load(dir);
   }, [dir, load]);
+  const reload = useCallback(() => void load(dir), [dir, load]);
 
-  // go navigates to a new location, pushing it onto the history.
   const go = useCallback(
     (loc: string) => {
       setHistory((h) => [...h.slice(0, at + 1), loc]);
@@ -75,32 +90,107 @@ export default function Finder() {
     },
     [at],
   );
-  const back = useCallback(() => {
-    if (at > 0) {
-      setAt(at - 1);
-      setDir(history[at - 1]);
-    }
-  }, [at, history]);
-  const forward = useCallback(() => {
-    if (at < history.length - 1) {
-      setAt(at + 1);
-      setDir(history[at + 1]);
-    }
-  }, [at, history]);
-
-  const open = useCallback(
-    (e: FileInfo) => {
-      if (e.dir) go(e.path);
-      else setQuick(e);
-    },
-    [go],
+  const back = useCallback(() => at > 0 && (setAt(at - 1), setDir(history[at - 1])), [at, history]);
+  const forward = useCallback(
+    () => at < history.length - 1 && (setAt(at + 1), setDir(history[at + 1])),
+    [at, history],
   );
+
+  const open = useCallback((e: FileInfo) => (e.dir ? go(e.path) : setQuick(e)), [go]);
+
+  // run wraps a mutation: it reports failures in the status bar and reloads.
+  const run = useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      setBusy(label);
+      setError("");
+      try {
+        await fn();
+        reload();
+      } catch (err) {
+        setError(ConnectError.from(err).message);
+      } finally {
+        setBusy("");
+      }
+    },
+    [reload],
+  );
+
+  const doDownload = (e: FileInfo) => run(`Downloading ${e.name}…`, () => downloadToHost(e.path, e.name));
+  const doProtect = (e: FileInfo) =>
+    run(e.protected ? "Unprotecting…" : "Protecting…", () =>
+      e.protected ? files.unprotect({ path: e.path }) : files.protect({ path: e.path }),
+    );
+  const doDelete = (e: FileInfo) => run(`Moving ${e.name} to Trash…`, () => files.delete({ path: e.path }));
+  const doRestore = (it: TrashItem) => run("Restoring…", () => trash.restore({ id: it.id }));
+  const doEmpty = () => {
+    if (!window.confirm("Empty the Trash? This permanently deletes its contents.")) return;
+    void run("Emptying Trash…", () => trash.empty({}));
+  };
+  const doMove = (srcPath: string, destDir: string) => {
+    const dest = join(destDir, basename(srcPath));
+    if (dest === srcPath) return;
+    void run("Moving…", () => files.move({ source: srcPath, destination: dest }));
+  };
+
+  const uploadFiles = (list: FileList | null) => {
+    if (!list || list.length === 0 || dir === TRASH) return;
+    void run(`Uploading ${list.length} item${list.length === 1 ? "" : "s"}…`, async () => {
+      for (const f of Array.from(list)) {
+        const bytes = new Uint8Array(await f.arrayBuffer());
+        const path = join(dir, f.name);
+        try {
+          await files.write({ path, content: bytes, overwrite: false });
+        } catch (err) {
+          if (err instanceof ConnectError && err.code === Code.AlreadyExists) {
+            if (!window.confirm(`${f.name} already exists here. Replace it?`)) continue;
+            await files.write({ path, content: bytes, overwrite: true });
+          } else {
+            throw err;
+          }
+        }
+      }
+    });
+  };
+
+  const doAsk = (prompt: string) => {
+    setAsk(null);
+    void run("Starting Task…", () => tasks.createTask({ prompt }));
+  };
+
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("blur", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [menu]);
 
   const up = parent(dir);
   const inTrash = dir === TRASH;
 
   return (
-    <div className="finder">
+    <div
+      className={`finder${dropping ? " finder--drop" : ""}`}
+      onDragOver={(e) => {
+        if (!inTrash && e.dataTransfer.types.includes("Files")) {
+          e.preventDefault();
+          setDropping(true);
+        }
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDropping(false);
+      }}
+      onDrop={(e) => {
+        if (!inTrash && e.dataTransfer.types.includes("Files")) {
+          e.preventDefault();
+          setDropping(false);
+          uploadFiles(e.dataTransfer.files);
+        }
+      }}
+    >
       <nav className="finder__sidebar">
         <div className="finder__group">Places</div>
         {PLACES.map((p) => (
@@ -145,6 +235,15 @@ export default function Finder() {
               ))
             )}
           </div>
+          {inTrash ? (
+            <button className="finder__btn" title="Empty the Trash" disabled={trashItems.length === 0} onClick={doEmpty}>
+              Empty
+            </button>
+          ) : (
+            <button className="finder__btn" title="Upload from this computer" onClick={() => upload.current?.click()}>
+              ⬆ Upload
+            </button>
+          )}
           <div className="finder__views">
             <button
               className={`finder__btn${view === "list" ? " finder__btn--on" : ""}`}
@@ -169,40 +268,118 @@ export default function Finder() {
           ) : error ? (
             <div className="finder__empty finder__empty--error">{error}</div>
           ) : inTrash ? (
-            <TrashList items={trashItems} selected={selected} onSelect={setSelected} />
+            <TrashList
+              items={trashItems}
+              selected={selected}
+              onSelect={setSelected}
+              onMenu={(x, y, item) => setMenu({ x, y, item })}
+            />
           ) : entries.length === 0 ? (
             <div className="finder__empty">This folder is empty.</div>
           ) : view === "list" ? (
-            <FileList entries={entries} selected={selected} onSelect={setSelected} onOpen={open} />
+            <FileList
+              entries={entries}
+              selected={selected}
+              onSelect={setSelected}
+              onOpen={open}
+              onMenu={(x, y, file) => setMenu({ x, y, file })}
+              onMove={doMove}
+            />
           ) : (
-            <IconGrid entries={entries} selected={selected} onSelect={setSelected} onOpen={open} />
+            <IconGrid
+              entries={entries}
+              selected={selected}
+              onSelect={setSelected}
+              onOpen={open}
+              onMenu={(x, y, file) => setMenu({ x, y, file })}
+              onMove={doMove}
+            />
           )}
         </div>
 
         <div className="finder__status">
-          {inTrash
-            ? `${trashItems.length} item${trashItems.length === 1 ? "" : "s"} in Trash`
-            : `${entries.length} item${entries.length === 1 ? "" : "s"}`}
+          {busy ||
+            (inTrash
+              ? `${trashItems.length} item${trashItems.length === 1 ? "" : "s"} in Trash`
+              : `${entries.length} item${entries.length === 1 ? "" : "s"}`)}
         </div>
       </div>
 
+      <input
+        ref={upload}
+        type="file"
+        multiple
+        hidden
+        onChange={(e) => {
+          uploadFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+
+      {menu?.file && (
+        <ContextMenu x={menu.x} y={menu.y}>
+          {menu.file.dir ? (
+            <MenuItem label="Open" onClick={() => open(menu.file!)} />
+          ) : (
+            <>
+              <MenuItem label="Quick Look" onClick={() => setQuick(menu.file!)} />
+              <MenuItem label="Download…" onClick={() => doDownload(menu.file!)} />
+            </>
+          )}
+          <MenuItem label={menu.file.protected ? "Unprotect" : "🔒 Protect"} onClick={() => doProtect(menu.file!)} />
+          <MenuItem label="Ask Agent…" onClick={() => setAsk(menu.file!)} />
+          <div className="menu__sep" />
+          <MenuItem label="Move to Trash" danger onClick={() => doDelete(menu.file!)} />
+        </ContextMenu>
+      )}
+      {menu?.item && (
+        <ContextMenu x={menu.x} y={menu.y}>
+          <MenuItem label="Put Back" onClick={() => doRestore(menu.item!)} />
+        </ContextMenu>
+      )}
+
+      {ask && <AskDialog file={ask} onCancel={() => setAsk(null)} onSubmit={doAsk} />}
       {quick && <QuickLook file={quick} onClose={() => setQuick(null)} />}
     </div>
   );
 }
 
-// FileList is the virtualised list view: only the visible rows are rendered.
-function FileList({
-  entries,
-  selected,
-  onSelect,
-  onOpen,
-}: {
+interface RowsProps {
   entries: FileInfo[];
   selected: string;
   onSelect: (path: string) => void;
   onOpen: (e: FileInfo) => void;
-}) {
+  onMenu: (x: number, y: number, file: FileInfo) => void;
+  onMove: (src: string, destDir: string) => void;
+}
+
+// dragProps makes an entry a drag source, and a folder a drop target for moves.
+function dragProps(e: FileInfo, onMove: RowsProps["onMove"]) {
+  return {
+    draggable: true,
+    onDragStart: (ev: React.DragEvent) => {
+      ev.dataTransfer.setData(DRAG_TYPE, e.path);
+      ev.dataTransfer.effectAllowed = "move";
+    },
+    onDragOver: (ev: React.DragEvent) => {
+      if (e.dir && ev.dataTransfer.types.includes(DRAG_TYPE)) {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = "move";
+      }
+    },
+    onDrop: (ev: React.DragEvent) => {
+      const src = ev.dataTransfer.getData(DRAG_TYPE);
+      if (e.dir && src) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        onMove(src, e.path);
+      }
+    },
+  };
+}
+
+// FileList is the virtualised list view: only the visible rows are rendered.
+function FileList({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsProps) {
   const box = useRef<HTMLDivElement>(null);
   const [scroll, setScroll] = useState(0);
   const [height, setHeight] = useState(300);
@@ -235,6 +412,12 @@ function FileList({
             style={{ top: (first + i) * ROW_H }}
             onClick={() => onSelect(e.path)}
             onDoubleClick={() => onOpen(e)}
+            onContextMenu={(ev) => {
+              ev.preventDefault();
+              onSelect(e.path);
+              onMenu(ev.clientX, ev.clientY, e);
+            }}
+            {...dragProps(e, onMove)}
           >
             <span className="finder__col-name">
               <span className="finder__icon">{iconFor(e)}</span>
@@ -250,17 +433,7 @@ function FileList({
   );
 }
 
-function IconGrid({
-  entries,
-  selected,
-  onSelect,
-  onOpen,
-}: {
-  entries: FileInfo[];
-  selected: string;
-  onSelect: (path: string) => void;
-  onOpen: (e: FileInfo) => void;
-}) {
+function IconGrid({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsProps) {
   return (
     <div className="finder__grid">
       {entries.map((e) => (
@@ -269,6 +442,12 @@ function IconGrid({
           className={`finder__tile${selected === e.path ? " finder__tile--on" : ""}`}
           onClick={() => onSelect(e.path)}
           onDoubleClick={() => onOpen(e)}
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            onSelect(e.path);
+            onMenu(ev.clientX, ev.clientY, e);
+          }}
+          {...dragProps(e, onMove)}
         >
           <span className="finder__tile-icon">{iconFor(e)}</span>
           <span className="finder__tile-name">{e.name}</span>
@@ -283,10 +462,12 @@ function TrashList({
   items,
   selected,
   onSelect,
+  onMenu,
 }: {
   items: TrashItem[];
   selected: string;
   onSelect: (id: string) => void;
+  onMenu: (x: number, y: number, item: TrashItem) => void;
 }) {
   if (items.length === 0) return <div className="finder__empty">The Trash is empty.</div>;
   return (
@@ -301,6 +482,11 @@ function TrashList({
           key={it.id}
           className={`finder__row finder__row--static${selected === it.id ? " finder__row--on" : ""}`}
           onClick={() => onSelect(it.id)}
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            onSelect(it.id);
+            onMenu(ev.clientX, ev.clientY, it);
+          }}
         >
           <span className="finder__col-name">
             <span className="finder__icon">{it.dir ? "📁" : "📄"}</span>
@@ -310,6 +496,59 @@ function TrashList({
           <span className="finder__col-when">{formatWhen(it.deletedAt)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ContextMenu({ x, y, children }: { x: number; y: number; children: React.ReactNode }) {
+  return (
+    <div className="menu" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
+      {children}
+    </div>
+  );
+}
+
+function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button className={`menu__item${danger ? " menu__item--danger" : ""}`} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+// AskDialog collects a request and starts a Task that references the file — the
+// minimal task surface Finder offers (the full Agent app is M4).
+function AskDialog({ file, onCancel, onSubmit }: { file: FileInfo; onCancel: () => void; onSubmit: (prompt: string) => void }) {
+  const [text, setText] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  const submit = () => {
+    const t = text.trim();
+    if (t) onSubmit(`${t}\n\nFile: ${file.path}`);
+  };
+  return (
+    <div className="quicklook" onClick={onCancel}>
+      <div className="ask" onClick={(e) => e.stopPropagation()}>
+        <h3 className="ask__title">Ask the Agent about {file.name}</h3>
+        <textarea
+          ref={ref}
+          className="ask__text"
+          placeholder="e.g. Summarise this file, or rename it to something clearer"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+          }}
+        />
+        <div className="ask__actions">
+          <button className="finder__btn" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="finder__btn finder__btn--on" disabled={!text.trim()} onClick={submit}>
+            Start Task
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
