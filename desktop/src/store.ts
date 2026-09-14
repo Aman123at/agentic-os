@@ -6,7 +6,9 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
 import type { Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
-import { auth, settings, system } from "./api/client";
+import type { Approval, Task, TaskStep } from "./gen/aos/v1/types_pb";
+import { ApprovalDecision } from "./gen/aos/v1/types_pb";
+import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
 import { subscribe, type ConnState } from "./api/events";
 import { APPS, type AppId } from "./apps/registry";
 import { applyTheme, type ThemePref } from "./theme";
@@ -48,6 +50,15 @@ interface DesktopState {
   notifications: Notification[];
   topZ: number;
 
+  // The Agent surface (PLAN.md §4.3, M3.4): live Tasks, pending Approvals and
+  // the step feed of the one Task currently open in the Tasks app.
+  tasks: Record<string, Task>;
+  approvals: Record<string, Approval>; // pending only
+  openTask: string;
+  steps: TaskStep[];
+  spotlight: boolean;
+  notifCenter: boolean;
+
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
   openApp: (appId: AppId) => void;
@@ -56,6 +67,18 @@ interface DesktopState {
   setRect: (id: string, rect: Rect) => void;
   minimize: (id: string) => void;
   toggleMaximize: (id: string) => void;
+
+  createTask: (prompt: string) => Promise<void>;
+  openTaskView: (id: string) => void;
+  loadTask: (id: string) => Promise<void>;
+  decideApproval: (id: string, decision: ApprovalDecision) => Promise<void>;
+  answerQuestion: (id: string, text: string) => Promise<void>;
+  sendFollowUp: (id: string, text: string) => Promise<void>;
+  cancelTask: (id: string) => Promise<void>;
+  resumeTask: (id: string) => Promise<void>;
+  stopAll: () => Promise<void>;
+  toggleSpotlight: (open?: boolean) => void;
+  toggleNotifCenter: (open?: boolean) => void;
 }
 
 let nextId = 1;
@@ -80,6 +103,12 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   focused: "",
   notifications: [],
   topZ: 1,
+  tasks: {},
+  approvals: {},
+  openTask: "",
+  steps: [],
+  spotlight: false,
+  notifCenter: false,
 
   boot: async () => {
     try {
@@ -87,6 +116,16 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       const info = await system.info({});
       const saved = await settings.getDesktopState({}).catch(() => ({ state: "" }));
       restore(saved.state, set);
+      // Seed the Agent surface: Tasks already running and Approvals already
+      // waiting when the Desktop loads (a later tab, or a reload).
+      const [taskList, pending] = await Promise.all([
+        taskApi.listTasks({ limit: 50 }).catch(() => ({ tasks: [] })),
+        approvalApi.listPending({}).catch(() => ({ approvals: [] })),
+      ]);
+      set({
+        tasks: Object.fromEntries(taskList.tasks.map((t) => [t.id, t])),
+        approvals: Object.fromEntries(pending.approvals.map((a) => [a.id, a])),
+      });
       set({ phase: "ready", info });
       startStream(set);
     } catch (err) {
@@ -164,6 +203,82 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     }));
     save(get);
   },
+
+  // ------------------------------------------------------------- Agent surface
+
+  createTask: async (prompt) => {
+    const text = prompt.trim();
+    if (!text) return;
+    // interactive: someone (this Desktop) is here to answer Approvals and
+    // questions, so the Agent may ask rather than deny (PLAN.md §7).
+    const resp = await taskApi.createTask({ prompt: text, interactive: true });
+    const task = resp.task;
+    if (!task) return;
+    set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }));
+    get().openTaskView(task.id);
+  },
+
+  openTaskView: (id) => {
+    set({ openTask: id, steps: [], notifCenter: false, spotlight: false });
+    get().openApp("tasks");
+    void get().loadTask(id);
+  },
+
+  loadTask: async (id) => {
+    const resp = await taskApi.getTask({ id }).catch(() => null);
+    if (!resp?.task) return;
+    const task = resp.task;
+    set((s) => {
+      const approvals = { ...s.approvals };
+      for (const a of resp.approvals) {
+        if (a.decision === ApprovalDecision.UNSPECIFIED) approvals[a.id] = a;
+        else delete approvals[a.id];
+      }
+      return {
+        tasks: { ...s.tasks, [task.id]: task },
+        approvals,
+        // Only the open Task keeps a live step feed.
+        steps: s.openTask === id ? resp.steps : s.steps,
+      };
+    });
+  },
+
+  decideApproval: async (id, decision) => {
+    // Drop it from the pending set at once; the ApprovalChanged event confirms.
+    set((s) => {
+      if (!s.approvals[id]) return {};
+      const approvals = { ...s.approvals };
+      delete approvals[id];
+      return { approvals };
+    });
+    await approvalApi.decide({ approvalId: id, decision });
+  },
+
+  answerQuestion: async (id, text) => {
+    await taskApi.answerQuestion({ id, text });
+    void get().loadTask(id);
+  },
+
+  sendFollowUp: async (id, text) => {
+    const resp = await taskApi.sendFollowUp({ id, text, interactive: true });
+    if (resp.task) set((s) => ({ tasks: { ...s.tasks, [id]: resp.task! } }));
+  },
+
+  cancelTask: async (id) => {
+    await taskApi.cancelTask({ id });
+  },
+
+  resumeTask: async (id) => {
+    const resp = await taskApi.resumeTask({ id, interactive: true });
+    if (resp.task) set((s) => ({ tasks: { ...s.tasks, [id]: resp.task! } }));
+  },
+
+  stopAll: async () => {
+    await taskApi.stopAll({});
+  },
+
+  toggleSpotlight: (open) => set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false })),
+  toggleNotifCenter: (open) => set((s) => ({ notifCenter: open ?? !s.notifCenter, spotlight: false })),
 }));
 
 // ---------------------------------------------------------------- event stream
@@ -193,12 +308,70 @@ function startStream(set: SetState) {
 
 function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let notifications = s.notifications;
+  let tasks = s.tasks;
+  let approvals = s.approvals;
+  let steps = s.steps;
+
   for (const e of batch) {
-    if (e.kind?.case === "notification") {
-      notifications = [e.kind.value, ...notifications].slice(0, 50);
+    const k = e.kind;
+    switch (k?.case) {
+      case "notification":
+        notifications = [k.value, ...notifications].slice(0, 50);
+        break;
+      case "taskChanged": {
+        const t = k.value.task;
+        if (t) tasks = { ...tasks, [t.id]: t };
+        break;
+      }
+      case "approval": {
+        const a = k.value.approval;
+        if (!a) break;
+        if (a.decision === ApprovalDecision.UNSPECIFIED) {
+          approvals = { ...approvals, [a.id]: a };
+        } else if (approvals[a.id]) {
+          approvals = { ...approvals };
+          delete approvals[a.id];
+        }
+        break;
+      }
+      // The step feed is kept only for the Task open in the Tasks app.
+      // TaskStepChanged replaces a step wholesale; TextDelta appends streamed
+      // text to it — so the two never double-count.
+      case "taskStep": {
+        const step = k.value.step;
+        if (step && step.taskId === s.openTask) steps = upsertStep(steps, step);
+        break;
+      }
+      case "textDelta": {
+        const d = k.value;
+        if (d.taskId === s.openTask) steps = appendDelta(steps, d.stepId, d.delta);
+        break;
+      }
     }
   }
-  return notifications === s.notifications ? {} : { notifications };
+
+  const out: Partial<DesktopState> = {};
+  if (notifications !== s.notifications) out.notifications = notifications;
+  if (tasks !== s.tasks) out.tasks = tasks;
+  if (approvals !== s.approvals) out.approvals = approvals;
+  if (steps !== s.steps) out.steps = steps;
+  return out;
+}
+
+function upsertStep(steps: TaskStep[], step: TaskStep): TaskStep[] {
+  const i = steps.findIndex((x) => x.id === step.id);
+  if (i < 0) return [...steps, step];
+  const next = steps.slice();
+  next[i] = step;
+  return next;
+}
+
+function appendDelta(steps: TaskStep[], stepId: string, delta: string): TaskStep[] {
+  const i = steps.findIndex((x) => x.id === stepId);
+  if (i < 0) return steps;
+  const next = steps.slice();
+  next[i] = { ...next[i], text: next[i].text + delta };
+  return next;
 }
 
 // ---------------------------------------------------------------- persistence

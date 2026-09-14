@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal";
+export type AppId = "about" | "finder" | "terminal" | "tasks";
 
 export interface AppDef {
   id: AppId;
@@ -38,6 +38,16 @@ export const APPS: Record<AppId, AppDef> = {
     size: { w: 660, h: 420 },
     inDock: true,
     Component: lazy(() => import("./Terminal")),
+  },
+  // The minimal in-shell Agent surface (M3.4): opened by Spotlight or a
+  // notification, so it is a singleton and not a standing Dock icon.
+  tasks: {
+    id: "tasks",
+    name: "Agent Task",
+    icon: "🤖",
+    size: { w: 620, h: 520 },
+    singleton: true,
+    Component: lazy(() => import("./Tasks")),
   },
 };
 

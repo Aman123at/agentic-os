@@ -5,6 +5,7 @@ import { createClient, type Client } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
 import {
+  ApprovalService,
   AuthService,
   EventService,
   FileService,
@@ -33,3 +34,4 @@ export const files = client(FileService);
 export const trash = client(TrashService);
 export const tasks = client(TaskService);
 export const sessions = client(SessionService);
+export const approvals = client(ApprovalService);
