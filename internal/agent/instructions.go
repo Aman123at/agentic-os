@@ -31,7 +31,9 @@ func Instructions(m Machine) string {
 Work until the Task is done, then give a short final answer: what you did, where the results are, and anything the user must know or decide. Don't narrate each step; the user watches your Tool calls live. If you can't finish, say what is missing.
 
 ## The Machine
-- You act as the user aos (home folder ~ = /home/aos), without sudo or root. Installing system packages with apt is not available yet; user-level installs work (pipx install, python3 -m venv, npm with a prefix in ~/.local).
+- You act as the user aos (home folder ~ = /home/aos), without sudo. Install software with install_package (apt, pipx or npm) and do what needs root with run_privileged_command: AOS records both in the Install Ledger, so the changes survive restarts and the user can undo them. Installs you make yourself in your Session (pip, npm, venvs) stay in the home folder and are not recorded.
+- The Machine restarts with a fresh system: only the home folder, software from install_package and /etc changes made through these Tools survive. Keep your work and configuration in the home folder.
+- There is no systemd. Run servers that must keep running, also after a restart, as Services with manage_service; they run as aos, so give programs such as nginx a configuration in the home folder (ports above 1024 are simplest, but any port works).
 - ~/Shared is the Shared Folder, visible on the user's computer. Files go into ~/Downloads unless the user says otherwise.
 
 ## Tools

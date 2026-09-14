@@ -262,6 +262,22 @@ func (m *Manager) freshContext(ctx context.Context, taskID string) string {
 	return c
 }
 
+// setCheckpoint records the Checkpoint taken before the Task's first software change.
+func (r *run) setCheckpoint(id string) {
+	r.mu.Lock()
+	r.task.CheckpointId = id
+	snapshot := proto.Clone(r.task).(*aosv1.Task)
+	r.mu.Unlock()
+	_ = r.m.cfg.DB.Write(context.Background(), func(tx *sql.Tx) error { return saveTask(context.Background(), tx, snapshot) })
+	r.m.publishTask(snapshot)
+}
+
+func (r *run) checkpoint() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.task.CheckpointId
+}
+
 // userMessages returns what the user said in the Task so far.
 func (r *run) userMessages() []string {
 	steps, _, err := listSteps(context.Background(), r.m.cfg.DB.Read(), r.id)
@@ -386,7 +402,8 @@ func (r *run) execute() {
 	r.task = t
 	r.setState(aosv1.TaskState_TASK_STATE_RUNNING, "")
 
-	env := &tool.Env{TaskID: t.Id, Home: cfg.Home, Interactive: t.Interactive, AskUser: r.askUser, UserMessages: r.userMessages}
+	env := &tool.Env{TaskID: t.Id, TaskTitle: t.Title, Home: cfg.Home, Interactive: t.Interactive, AskUser: r.askUser,
+		UserMessages: r.userMessages, SetCheckpoint: r.setCheckpoint}
 	r.env = env
 	release := func() {}
 	if cfg.NewEnv != nil {
@@ -412,7 +429,12 @@ func (r *run) execute() {
 	case err == nil:
 		r.setState(aosv1.TaskState_TASK_STATE_SUCCEEDED, final)
 	case cancelled:
-		r.setState(aosv1.TaskState_TASK_STATE_CANCELLED, "Cancelled by the user.")
+		summary := "Cancelled by the user."
+		if id := r.checkpoint(); id != "" {
+			// PLAN.md §8.1: after a cancel, offer the Restore.
+			summary += fmt.Sprintf(" It had changed software: aos checkpoint restore %s undoes that.", id)
+		}
+		r.setState(aosv1.TaskState_TASK_STATE_CANCELLED, summary)
 	case r.m.ctx.Err() != nil:
 		r.setState(aosv1.TaskState_TASK_STATE_INTERRUPTED, "AOS stopped while the Task was running.")
 	default:

@@ -9,9 +9,9 @@ import (
 	"github.com/amantiwari/agentic-os/internal/policy"
 )
 
-// CoordinationTools returns the Coordination group, except create_checkpoint (M2).
+// CoordinationTools returns the Coordination group.
 func CoordinationTools() []Tool {
-	return []Tool{askUser{}, remember{}}
+	return []Tool{askUser{}, remember{}, createCheckpoint{}}
 }
 
 type askUser struct{}

@@ -86,6 +86,12 @@ type Env struct {
 	Remember func(ctx context.Context, text string, direct bool) error
 	// UserMessages returns what the user said in this Task so far.
 	UserMessages func() []string
+	// TaskTitle names the Task, e.g. in its Checkpoint.
+	TaskTitle string
+	// Software runs the Privileged Tools; nil where they are unavailable.
+	Software Software
+	// SetCheckpoint records the Checkpoint taken before the Task's first software change.
+	SetCheckpoint func(id string)
 }
 
 func (e *Env) stat(path string) (exists, dir bool) {
