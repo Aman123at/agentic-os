@@ -120,14 +120,14 @@ flowchart LR
 | `aos` | Interactive chat: live steps, Approval prompts, Ctrl-C cancels the current Task |
 | `aos run "<task>" [--autonomy auto] [--json]` | One-shot, for scripts; non-interactive rules in §7.4 |
 | `aos tasks` · `aos show <id>` | List Tasks · show a Task's steps |
-| `aos follow-up <id> "<text>"` · `aos resume <id>` | Continue a finished Task · resume an Interrupted one |
+| `aos follow-up <id> "<text>"` · `aos resume <id>` · `aos reply <id> "<text>"` | Continue a finished Task · resume an Interrupted one · answer a Task awaiting you |
 | `aos cancel <id>` · `aos stop --all` | Cancel one Task · stop every Agent |
 | `aos attach <id>` | Watch or type into a Task's Session |
 | `aos approve <id>` · `aos deny <id>` | Decide an Approval (refused when called from an Agent Session) |
 | `aos trash list\|restore\|empty` | Trash |
-| `aos software list` · `aos checkpoint list\|create\|restore` | Install Ledger and Checkpoints |
-| `aos service list\|logs\|start\|stop` | Services |
-| `aos protect\|unprotect <path>` · `aos memory list\|add\|forget` | Protected Paths · Memory |
+| `aos software list\|ledger` · `aos checkpoint list\|create\|restore` | Install Ledger and Checkpoints |
+| `aos service list\|logs\|start\|stop\|restart\|remove` | Services |
+| `aos protect\|unprotect <path>` · `aos memory list\|add\|accept\|forget` | Protected Paths · Memory |
 | `aos desktop-url` | Print a one-time sign-in link for the Desktop |
 | `aos doctor` | Mode, Landlock status, API key present, versions, volumes |
 
@@ -490,7 +490,7 @@ stateDiagram-v2
 
 ### 8.3 Retry guard (`AOS_MAX_RETRIES`, default 3)
 
-- **Step retries:** a counter per step tracks consecutive failures of the same goal (same Tool, and for commands the same program). At the limit, the Task becomes **Awaiting User** with a summary of what was tried; the user can say "try another way", add a hint, or cancel.
+- **Step retries:** a counter per step tracks consecutive failures of the same goal (same Tool, and for commands the same program); a success of that goal resets it. When the first attempt and `AOS_MAX_RETRIES` Retries have all failed (4 failures with the default 3), the Task becomes **Awaiting User** with a summary of what was tried; the user can say "try another way", add a hint, or cancel. The reply reaches the Agent as a message. With nobody to ask, the Task fails.
 - **Loop detection:** an identical Tool call repeated `AOS_MAX_RETRIES` times in a row counts as retries, even if each "succeeded". This catches endless polling or re-downloading.
 - **Transport retries:** OpenAI rate limits, 5xx errors and timeouts are retried with exponential backoff and jitter up to the limit, then the Task becomes Awaiting User.
 - **Never:** automatic re-runs of a whole Task.
@@ -498,7 +498,7 @@ stateDiagram-v2
 ### 8.4 Usage and Cost Limit
 
 - **Usage:** tokens from every response are stored per Task and per day.
-- **Cost:** estimated from `/var/lib/aos/prices.yaml`, which is user-editable because prices change.
+- **Cost:** estimated from `/var/lib/aos/prices.yaml`, which is user-editable because prices change. `aosd` writes it on first start with OpenAI's Standard short-context prices for the default model, as listed on 2026-09-14, and reads it again whenever it changes. A model without an entry has an unknown cost, and Cost Limits can't apply to it.
 - **Limits:** if `AOS_TASK_COST_LIMIT_USD` or `AOS_DAILY_COST_LIMIT_USD` is set and reached, the Task becomes Awaiting User ("continue?").
 - **Display:** the Agent app and `aos show` display usage live.
 
@@ -556,30 +556,36 @@ stateDiagram-v2
 
 ## 11. Software
 
-**Install Ledger entry:** manager (`apt` | `pipx` | `npm`), package, exact version, action (install/remove), Task, time. For apt, every package the operation changed is recorded as `name:arch=version`, dependencies included, with a flag for automatically installed ones (M0 finding F9).
+**Install Ledger** (decided in M2): every operation with root authority (`install_package`, `remove_package`, `run_privileged_command`, a Restore) and every Service created or removed is one Ledger operation: Task, actor, time, summary, and each thing it changed with its state before and after. Things are:
+- packages: apt as `name:arch` with its version, dependencies included and flagged as automatically installed (M0 finding F9); pipx; npm
+- paths under `/etc`, whose content is kept by SHA-256 under `/var/lib/aos/blobs`
+- Service definitions
+
+The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each operation, so a `run_privileged_command` that runs `apt-get` is recorded too.
 
 **Per package manager**
 
 - **apt:**
   - Ubuntu's `docker-clean` apt config is removed, and `APT::Keep-Downloaded-Packages` is enabled, with archives kept in the `aos-pkgcache` volume.
-  - Installs pin exact versions.
+  - The Ledger records exact versions. Recommended packages are not installed (`--no-install-recommends`), which keeps installs small; Agents name them when needed.
 - **pipx:** `PIPX_HOME` lives in the home volume. Recorded so a Restore can undo it.
 - **npm global:** the prefix is `~/.local`, the cache is in `aos-pkgcache`. Recorded.
 
-**Checkpoint** = a Ledger position, plus copies of every file under `/etc` that changed afterwards.
-- `aosd` hashes `/etc` before and after each Privileged Tool call (a few ms) and stores changed files under `/var/lib/aos/checkpoints/<id>/`.
-- Created automatically before the first software change in a Task, or manually.
+**Checkpoint** = a Ledger position. The copies of `/etc` files it needs are the "before" states of the operations after it.
+- `aosd` scans `/etc` before and after each Privileged Tool call, hashing again only files whose size, modification time or inode changed.
+- Created automatically before a Task's first software or Service change, or manually (`create_checkpoint`, `aos checkpoint create`).
 
 **Restore:**
-1. Create a "Before Restore" Checkpoint, so a Restore can itself be undone.
-2. Compute the difference between the Ledger now and at the target Checkpoint.
-3. Remove and install packages to match.
-4. Write back the saved `/etc` files.
-5. Log everything in the Audit Log.
+1. Create a "Before restoring" Checkpoint, so a Restore can itself be undone.
+2. For everything the Ledger changed after the target Checkpoint, take its state before the first such change.
+3. Remove Services that didn't exist then; purge and install packages to match (cached `.deb` files first, downgrades allowed); write back `/etc`; put Service definitions back.
+4. Record the Restore itself as a Ledger operation, and log it in the Audit Log.
 
 **Replay at startup (in the background):**
 - Compare `dpkg` state with the Ledger.
 - Install the cached `.deb` files directly (offline, version-exact, needs no package lists), then re-mark automatically installed packages. Otherwise, fall back to the package lists kept in `aos-pkgcache`, then to the network.
+- Write back the `/etc` files Privileged Tools changed, but only where the image still has the file as the Ledger first recorded it: a newer image's own change wins, with a note. pipx and npm installs live in the home volume and need no Replay.
+- Services start once Replay has finished.
 - Cache clean-up keeps every `.deb` the Ledger references.
 - If a version is unavailable, install the latest and notify the user. If the image already has a newer version, skip it.
 - Show progress in the menu bar and in `aos doctor`.
@@ -587,7 +593,9 @@ stateDiagram-v2
 
 ## 12. Services and port forwarding
 
-- **Service definition:** name, command, working directory, env, user, autostart, restart policy (`always` | `on-failure` | `never`), confinement inherited from the creator. Stored in SQLite; started at boot after Replay.
+- **Service definition:** name, command, working directory, env, user, autostart, restart policy (`always` | `on-failure` | `never`; `on-failure` by default), confinement inherited from the creator. Stored in SQLite; started at boot after Replay.
+  - Creating and removing a Service is recorded in the Install Ledger, so restoring a Task's Checkpoint also removes the Services it created.
+  - `aos service stop` lasts until the next start or the next restart of the Machine; `aos service remove` deletes the Service.
 - **Logs:** ring buffer in memory plus a rotated file. Visible in Activity Monitor and via `aos service logs`.
 - **Port discovery:** `/proc/net/tcp{,6}` is scanned every 2 s for listening sockets, feeding Activity Monitor and the Desktop's "Open" buttons.
 - **Forwarding:**
@@ -602,15 +610,15 @@ stateDiagram-v2
 | Service | RPCs |
 |---|---|
 | `AuthService` | `ExchangeLoginCode` |
-| `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `CancelTask`, `ResumeTask`, `StopAll` |
+| `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
 | `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `AwaitingUser`, `FileChanged`, `DownloadProgress`, `MetricsSample`, `ServiceChanged`, `ReplayProgress`, `Notification` |
 | `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect` |
 | `TrashService` | `List`, `Restore`, `Empty` |
-| `SoftwareService` | `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `Restore` |
-| `SupervisorService` | `ListServices`, `Start`, `Stop`, `StreamLogs` |
+| `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
+| `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
 | `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
-| `SettingsService` | `Get`, `Update`, `SetApiKey`, `ListMemory`, `UpdateMemory`, `GetDesktopState`, `SaveDesktopState` |
+| `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `Get`, `Update`, `SetApiKey`, `GetDesktopState`, `SaveDesktopState` (M3–M4) |
 | `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes`, `Audit` |
 
 **Plain HTTP routes:**
@@ -624,8 +632,8 @@ stateDiagram-v2
 
 - **SQLite at `/var/lib/aos/aos.db`:**
   - WAL mode, a single writer goroutine, migrations embedded in the binary.
-  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_entries`, `checkpoints`, `checkpoint_files`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
-- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `checkpoints/`, `keys/`, `token`, `prices.yaml`.
+  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
+- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
 
 ## 15. Cross-Host support
 
