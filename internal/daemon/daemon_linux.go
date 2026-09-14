@@ -30,6 +30,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/api"
 	"github.com/amantiwari/agentic-os/internal/audit"
 	"github.com/amantiwari/agentic-os/internal/config"
+	"github.com/amantiwari/agentic-os/internal/desktop"
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/llm"
@@ -149,7 +150,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
 	}
 	handler := srv.Handler()
 

@@ -488,6 +488,11 @@ service SettingsService {
   rpc AcceptMemory(AcceptMemoryRequest) returns (AcceptMemoryResponse);
   // Removes an entry or rejects a proposal.
   rpc ForgetMemory(ForgetMemoryRequest) returns (ForgetMemoryResponse);
+
+  // The Desktop's saved layout: window positions, theme and wallpaper. The
+  // server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
+  rpc GetDesktopState(GetDesktopStateRequest) returns (GetDesktopStateResponse);
+  rpc SaveDesktopState(SaveDesktopStateRequest) returns (SaveDesktopStateResponse);
 }
 
 message ListMemoryRequest {}
@@ -513,6 +518,17 @@ message ForgetMemoryRequest {
   string id = 1;
 }
 message ForgetMemoryResponse {}
+
+message GetDesktopStateRequest {}
+message GetDesktopStateResponse {
+  // The last saved layout as JSON, or "" if nothing has been saved yet.
+  string state = 1;
+}
+
+message SaveDesktopStateRequest {
+  string state = 1;
+}
+message SaveDesktopStateResponse {}
 
 // ---------------------------------------------------------------- System
 

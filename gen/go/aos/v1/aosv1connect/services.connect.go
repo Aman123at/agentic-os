@@ -165,6 +165,12 @@ const (
 	// SettingsServiceForgetMemoryProcedure is the fully-qualified name of the SettingsService's
 	// ForgetMemory RPC.
 	SettingsServiceForgetMemoryProcedure = "/aos.v1.SettingsService/ForgetMemory"
+	// SettingsServiceGetDesktopStateProcedure is the fully-qualified name of the SettingsService's
+	// GetDesktopState RPC.
+	SettingsServiceGetDesktopStateProcedure = "/aos.v1.SettingsService/GetDesktopState"
+	// SettingsServiceSaveDesktopStateProcedure is the fully-qualified name of the SettingsService's
+	// SaveDesktopState RPC.
+	SettingsServiceSaveDesktopStateProcedure = "/aos.v1.SettingsService/SaveDesktopState"
 	// SystemServiceInfoProcedure is the fully-qualified name of the SystemService's Info RPC.
 	SystemServiceInfoProcedure = "/aos.v1.SystemService/Info"
 	// SystemServiceAuditProcedure is the fully-qualified name of the SystemService's Audit RPC.
@@ -1639,6 +1645,10 @@ type SettingsServiceClient interface {
 	AcceptMemory(context.Context, *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error)
 	// Removes an entry or rejects a proposal.
 	ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error)
+	// The Desktop's saved layout: window positions, theme and wallpaper. The
+	// server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
+	GetDesktopState(context.Context, *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error)
+	SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error)
 }
 
 // NewSettingsServiceClient constructs a client for the aos.v1.SettingsService service. By default,
@@ -1676,15 +1686,29 @@ func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(settingsServiceMethods.ByName("ForgetMemory")),
 			connect.WithClientOptions(opts...),
 		),
+		getDesktopState: connect.NewClient[v1.GetDesktopStateRequest, v1.GetDesktopStateResponse](
+			httpClient,
+			baseURL+SettingsServiceGetDesktopStateProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("GetDesktopState")),
+			connect.WithClientOptions(opts...),
+		),
+		saveDesktopState: connect.NewClient[v1.SaveDesktopStateRequest, v1.SaveDesktopStateResponse](
+			httpClient,
+			baseURL+SettingsServiceSaveDesktopStateProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("SaveDesktopState")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // settingsServiceClient implements SettingsServiceClient.
 type settingsServiceClient struct {
-	listMemory   *connect.Client[v1.ListMemoryRequest, v1.ListMemoryResponse]
-	addMemory    *connect.Client[v1.AddMemoryRequest, v1.AddMemoryResponse]
-	acceptMemory *connect.Client[v1.AcceptMemoryRequest, v1.AcceptMemoryResponse]
-	forgetMemory *connect.Client[v1.ForgetMemoryRequest, v1.ForgetMemoryResponse]
+	listMemory       *connect.Client[v1.ListMemoryRequest, v1.ListMemoryResponse]
+	addMemory        *connect.Client[v1.AddMemoryRequest, v1.AddMemoryResponse]
+	acceptMemory     *connect.Client[v1.AcceptMemoryRequest, v1.AcceptMemoryResponse]
+	forgetMemory     *connect.Client[v1.ForgetMemoryRequest, v1.ForgetMemoryResponse]
+	getDesktopState  *connect.Client[v1.GetDesktopStateRequest, v1.GetDesktopStateResponse]
+	saveDesktopState *connect.Client[v1.SaveDesktopStateRequest, v1.SaveDesktopStateResponse]
 }
 
 // ListMemory calls aos.v1.SettingsService.ListMemory.
@@ -1707,6 +1731,16 @@ func (c *settingsServiceClient) ForgetMemory(ctx context.Context, req *connect.R
 	return c.forgetMemory.CallUnary(ctx, req)
 }
 
+// GetDesktopState calls aos.v1.SettingsService.GetDesktopState.
+func (c *settingsServiceClient) GetDesktopState(ctx context.Context, req *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error) {
+	return c.getDesktopState.CallUnary(ctx, req)
+}
+
+// SaveDesktopState calls aos.v1.SettingsService.SaveDesktopState.
+func (c *settingsServiceClient) SaveDesktopState(ctx context.Context, req *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error) {
+	return c.saveDesktopState.CallUnary(ctx, req)
+}
+
 // SettingsServiceHandler is an implementation of the aos.v1.SettingsService service.
 type SettingsServiceHandler interface {
 	// Accepted Memory and the Agents' proposals.
@@ -1717,6 +1751,10 @@ type SettingsServiceHandler interface {
 	AcceptMemory(context.Context, *connect.Request[v1.AcceptMemoryRequest]) (*connect.Response[v1.AcceptMemoryResponse], error)
 	// Removes an entry or rejects a proposal.
 	ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error)
+	// The Desktop's saved layout: window positions, theme and wallpaper. The
+	// server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
+	GetDesktopState(context.Context, *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error)
+	SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error)
 }
 
 // NewSettingsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1750,6 +1788,18 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 		connect.WithSchema(settingsServiceMethods.ByName("ForgetMemory")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingsServiceGetDesktopStateHandler := connect.NewUnaryHandler(
+		SettingsServiceGetDesktopStateProcedure,
+		svc.GetDesktopState,
+		connect.WithSchema(settingsServiceMethods.ByName("GetDesktopState")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceSaveDesktopStateHandler := connect.NewUnaryHandler(
+		SettingsServiceSaveDesktopStateProcedure,
+		svc.SaveDesktopState,
+		connect.WithSchema(settingsServiceMethods.ByName("SaveDesktopState")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingsServiceListMemoryProcedure:
@@ -1760,6 +1810,10 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 			settingsServiceAcceptMemoryHandler.ServeHTTP(w, r)
 		case SettingsServiceForgetMemoryProcedure:
 			settingsServiceForgetMemoryHandler.ServeHTTP(w, r)
+		case SettingsServiceGetDesktopStateProcedure:
+			settingsServiceGetDesktopStateHandler.ServeHTTP(w, r)
+		case SettingsServiceSaveDesktopStateProcedure:
+			settingsServiceSaveDesktopStateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1783,6 +1837,14 @@ func (UnimplementedSettingsServiceHandler) AcceptMemory(context.Context, *connec
 
 func (UnimplementedSettingsServiceHandler) ForgetMemory(context.Context, *connect.Request[v1.ForgetMemoryRequest]) (*connect.Response[v1.ForgetMemoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.ForgetMemory is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) GetDesktopState(context.Context, *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.GetDesktopState is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.SaveDesktopState is not implemented"))
 }
 
 // SystemServiceClient is a client for the aos.v1.SystemService service.

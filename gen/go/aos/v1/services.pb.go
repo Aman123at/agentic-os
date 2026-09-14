@@ -4835,6 +4835,167 @@ func (*ForgetMemoryResponse) Descriptor() ([]byte, []int) {
 	return file_aos_v1_services_proto_rawDescGZIP(), []int{99}
 }
 
+type GetDesktopStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDesktopStateRequest) Reset() {
+	*x = GetDesktopStateRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[100]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDesktopStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDesktopStateRequest) ProtoMessage() {}
+
+func (x *GetDesktopStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[100]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDesktopStateRequest.ProtoReflect.Descriptor instead.
+func (*GetDesktopStateRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{100}
+}
+
+type GetDesktopStateResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The last saved layout as JSON, or "" if nothing has been saved yet.
+	State         string `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDesktopStateResponse) Reset() {
+	*x = GetDesktopStateResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[101]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDesktopStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDesktopStateResponse) ProtoMessage() {}
+
+func (x *GetDesktopStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[101]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDesktopStateResponse.ProtoReflect.Descriptor instead.
+func (*GetDesktopStateResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{101}
+}
+
+func (x *GetDesktopStateResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type SaveDesktopStateRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         string                 `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveDesktopStateRequest) Reset() {
+	*x = SaveDesktopStateRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[102]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveDesktopStateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveDesktopStateRequest) ProtoMessage() {}
+
+func (x *SaveDesktopStateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[102]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveDesktopStateRequest.ProtoReflect.Descriptor instead.
+func (*SaveDesktopStateRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{102}
+}
+
+func (x *SaveDesktopStateRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type SaveDesktopStateResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SaveDesktopStateResponse) Reset() {
+	*x = SaveDesktopStateResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[103]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SaveDesktopStateResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SaveDesktopStateResponse) ProtoMessage() {}
+
+func (x *SaveDesktopStateResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[103]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SaveDesktopStateResponse.ProtoReflect.Descriptor instead.
+func (*SaveDesktopStateResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{103}
+}
+
 type InfoRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -4843,7 +5004,7 @@ type InfoRequest struct {
 
 func (x *InfoRequest) Reset() {
 	*x = InfoRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[100]
+	mi := &file_aos_v1_services_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4855,7 +5016,7 @@ func (x *InfoRequest) String() string {
 func (*InfoRequest) ProtoMessage() {}
 
 func (x *InfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[100]
+	mi := &file_aos_v1_services_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4868,7 +5029,7 @@ func (x *InfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InfoRequest.ProtoReflect.Descriptor instead.
 func (*InfoRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{100}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{104}
 }
 
 type InfoResponse struct {
@@ -4896,7 +5057,7 @@ type InfoResponse struct {
 
 func (x *InfoResponse) Reset() {
 	*x = InfoResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[101]
+	mi := &file_aos_v1_services_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4908,7 +5069,7 @@ func (x *InfoResponse) String() string {
 func (*InfoResponse) ProtoMessage() {}
 
 func (x *InfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[101]
+	mi := &file_aos_v1_services_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4921,7 +5082,7 @@ func (x *InfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InfoResponse.ProtoReflect.Descriptor instead.
 func (*InfoResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{101}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *InfoResponse) GetMode() string {
@@ -5027,7 +5188,7 @@ type AuditRequest struct {
 
 func (x *AuditRequest) Reset() {
 	*x = AuditRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[102]
+	mi := &file_aos_v1_services_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5039,7 +5200,7 @@ func (x *AuditRequest) String() string {
 func (*AuditRequest) ProtoMessage() {}
 
 func (x *AuditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[102]
+	mi := &file_aos_v1_services_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5052,7 +5213,7 @@ func (x *AuditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRequest.ProtoReflect.Descriptor instead.
 func (*AuditRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{102}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *AuditRequest) GetTaskId() string {
@@ -5085,7 +5246,7 @@ type AuditResponse struct {
 
 func (x *AuditResponse) Reset() {
 	*x = AuditResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[103]
+	mi := &file_aos_v1_services_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5097,7 +5258,7 @@ func (x *AuditResponse) String() string {
 func (*AuditResponse) ProtoMessage() {}
 
 func (x *AuditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[103]
+	mi := &file_aos_v1_services_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5110,7 +5271,7 @@ func (x *AuditResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditResponse.ProtoReflect.Descriptor instead.
 func (*AuditResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{103}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *AuditResponse) GetEntries() []*AuditEntry {
@@ -5133,7 +5294,7 @@ type ListProtectedResponse_Entry struct {
 
 func (x *ListProtectedResponse_Entry) Reset() {
 	*x = ListProtectedResponse_Entry{}
-	mi := &file_aos_v1_services_proto_msgTypes[104]
+	mi := &file_aos_v1_services_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5145,7 +5306,7 @@ func (x *ListProtectedResponse_Entry) String() string {
 func (*ListProtectedResponse_Entry) ProtoMessage() {}
 
 func (x *ListProtectedResponse_Entry) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[104]
+	mi := &file_aos_v1_services_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5441,7 +5602,13 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x06memory\x18\x01 \x01(\v2\x0e.aos.v1.MemoryR\x06memory\"%\n" +
 	"\x13ForgetMemoryRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x16\n" +
-	"\x14ForgetMemoryResponse\"\r\n" +
+	"\x14ForgetMemoryResponse\"\x18\n" +
+	"\x16GetDesktopStateRequest\"/\n" +
+	"\x17GetDesktopStateResponse\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\"/\n" +
+	"\x17SaveDesktopStateRequest\x12\x14\n" +
+	"\x05state\x18\x01 \x01(\tR\x05state\"\x1a\n" +
+	"\x18SaveDesktopStateResponse\"\r\n" +
 	"\vInfoRequest\"\xd0\x03\n" +
 	"\fInfoResponse\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x18\n" +
@@ -5518,13 +5685,15 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x0eRestartService\x12\x1d.aos.v1.RestartServiceRequest\x1a\x1e.aos.v1.RestartServiceResponse\x12L\n" +
 	"\rRemoveService\x12\x1c.aos.v1.RemoveServiceRequest\x1a\x1d.aos.v1.RemoveServiceResponse\x12E\n" +
 	"\n" +
-	"StreamLogs\x12\x19.aos.v1.StreamLogsRequest\x1a\x1a.aos.v1.StreamLogsResponse0\x012\xae\x02\n" +
+	"StreamLogs\x12\x19.aos.v1.StreamLogsRequest\x1a\x1a.aos.v1.StreamLogsResponse0\x012\xd9\x03\n" +
 	"\x0fSettingsService\x12C\n" +
 	"\n" +
 	"ListMemory\x12\x19.aos.v1.ListMemoryRequest\x1a\x1a.aos.v1.ListMemoryResponse\x12@\n" +
 	"\tAddMemory\x12\x18.aos.v1.AddMemoryRequest\x1a\x19.aos.v1.AddMemoryResponse\x12I\n" +
 	"\fAcceptMemory\x12\x1b.aos.v1.AcceptMemoryRequest\x1a\x1c.aos.v1.AcceptMemoryResponse\x12I\n" +
-	"\fForgetMemory\x12\x1b.aos.v1.ForgetMemoryRequest\x1a\x1c.aos.v1.ForgetMemoryResponse2x\n" +
+	"\fForgetMemory\x12\x1b.aos.v1.ForgetMemoryRequest\x1a\x1c.aos.v1.ForgetMemoryResponse\x12R\n" +
+	"\x0fGetDesktopState\x12\x1e.aos.v1.GetDesktopStateRequest\x1a\x1f.aos.v1.GetDesktopStateResponse\x12U\n" +
+	"\x10SaveDesktopState\x12\x1f.aos.v1.SaveDesktopStateRequest\x1a .aos.v1.SaveDesktopStateResponse2x\n" +
 	"\rSystemService\x121\n" +
 	"\x04Info\x12\x13.aos.v1.InfoRequest\x1a\x14.aos.v1.InfoResponse\x124\n" +
 	"\x05Audit\x12\x14.aos.v1.AuditRequest\x1a\x15.aos.v1.AuditResponseB6Z4github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
@@ -5541,7 +5710,7 @@ func file_aos_v1_services_proto_rawDescGZIP() []byte {
 	return file_aos_v1_services_proto_rawDescData
 }
 
-var file_aos_v1_services_proto_msgTypes = make([]protoimpl.MessageInfo, 105)
+var file_aos_v1_services_proto_msgTypes = make([]protoimpl.MessageInfo, 109)
 var file_aos_v1_services_proto_goTypes = []any{
 	(*ExchangeLoginCodeRequest)(nil),    // 0: aos.v1.ExchangeLoginCodeRequest
 	(*ExchangeLoginCodeResponse)(nil),   // 1: aos.v1.ExchangeLoginCodeResponse
@@ -5643,42 +5812,46 @@ var file_aos_v1_services_proto_goTypes = []any{
 	(*AcceptMemoryResponse)(nil),        // 97: aos.v1.AcceptMemoryResponse
 	(*ForgetMemoryRequest)(nil),         // 98: aos.v1.ForgetMemoryRequest
 	(*ForgetMemoryResponse)(nil),        // 99: aos.v1.ForgetMemoryResponse
-	(*InfoRequest)(nil),                 // 100: aos.v1.InfoRequest
-	(*InfoResponse)(nil),                // 101: aos.v1.InfoResponse
-	(*AuditRequest)(nil),                // 102: aos.v1.AuditRequest
-	(*AuditResponse)(nil),               // 103: aos.v1.AuditResponse
-	(*ListProtectedResponse_Entry)(nil), // 104: aos.v1.ListProtectedResponse.Entry
-	(*timestamppb.Timestamp)(nil),       // 105: google.protobuf.Timestamp
-	(Autonomy)(0),                       // 106: aos.v1.Autonomy
-	(*Task)(nil),                        // 107: aos.v1.Task
-	(*TaskStep)(nil),                    // 108: aos.v1.TaskStep
-	(*Approval)(nil),                    // 109: aos.v1.Approval
-	(ApprovalDecision)(0),               // 110: aos.v1.ApprovalDecision
-	(*ServiceInfo)(nil),                 // 111: aos.v1.ServiceInfo
-	(*ReplayStatus)(nil),                // 112: aos.v1.ReplayStatus
-	(*Package)(nil),                     // 113: aos.v1.Package
-	(*LedgerOp)(nil),                    // 114: aos.v1.LedgerOp
-	(*Checkpoint)(nil),                  // 115: aos.v1.Checkpoint
-	(*Listener)(nil),                    // 116: aos.v1.Listener
-	(*Memory)(nil),                      // 117: aos.v1.Memory
-	(*Usage)(nil),                       // 118: aos.v1.Usage
-	(*AuditEntry)(nil),                  // 119: aos.v1.AuditEntry
+	(*GetDesktopStateRequest)(nil),      // 100: aos.v1.GetDesktopStateRequest
+	(*GetDesktopStateResponse)(nil),     // 101: aos.v1.GetDesktopStateResponse
+	(*SaveDesktopStateRequest)(nil),     // 102: aos.v1.SaveDesktopStateRequest
+	(*SaveDesktopStateResponse)(nil),    // 103: aos.v1.SaveDesktopStateResponse
+	(*InfoRequest)(nil),                 // 104: aos.v1.InfoRequest
+	(*InfoResponse)(nil),                // 105: aos.v1.InfoResponse
+	(*AuditRequest)(nil),                // 106: aos.v1.AuditRequest
+	(*AuditResponse)(nil),               // 107: aos.v1.AuditResponse
+	(*ListProtectedResponse_Entry)(nil), // 108: aos.v1.ListProtectedResponse.Entry
+	(*timestamppb.Timestamp)(nil),       // 109: google.protobuf.Timestamp
+	(Autonomy)(0),                       // 110: aos.v1.Autonomy
+	(*Task)(nil),                        // 111: aos.v1.Task
+	(*TaskStep)(nil),                    // 112: aos.v1.TaskStep
+	(*Approval)(nil),                    // 113: aos.v1.Approval
+	(ApprovalDecision)(0),               // 114: aos.v1.ApprovalDecision
+	(*ServiceInfo)(nil),                 // 115: aos.v1.ServiceInfo
+	(*ReplayStatus)(nil),                // 116: aos.v1.ReplayStatus
+	(*Package)(nil),                     // 117: aos.v1.Package
+	(*LedgerOp)(nil),                    // 118: aos.v1.LedgerOp
+	(*Checkpoint)(nil),                  // 119: aos.v1.Checkpoint
+	(*Listener)(nil),                    // 120: aos.v1.Listener
+	(*Memory)(nil),                      // 121: aos.v1.Memory
+	(*Usage)(nil),                       // 122: aos.v1.Usage
+	(*AuditEntry)(nil),                  // 123: aos.v1.AuditEntry
 }
 var file_aos_v1_services_proto_depIdxs = []int32{
-	105, // 0: aos.v1.CreateLoginCodeResponse.expires_at:type_name -> google.protobuf.Timestamp
-	106, // 1: aos.v1.CreateTaskRequest.autonomy:type_name -> aos.v1.Autonomy
-	107, // 2: aos.v1.CreateTaskResponse.task:type_name -> aos.v1.Task
-	107, // 3: aos.v1.ListTasksResponse.tasks:type_name -> aos.v1.Task
-	107, // 4: aos.v1.GetTaskResponse.task:type_name -> aos.v1.Task
-	108, // 5: aos.v1.GetTaskResponse.steps:type_name -> aos.v1.TaskStep
-	109, // 6: aos.v1.GetTaskResponse.approvals:type_name -> aos.v1.Approval
-	107, // 7: aos.v1.SendFollowUpResponse.task:type_name -> aos.v1.Task
-	107, // 8: aos.v1.ResumeTaskResponse.task:type_name -> aos.v1.Task
-	109, // 9: aos.v1.ListPendingResponse.approvals:type_name -> aos.v1.Approval
-	110, // 10: aos.v1.DecideRequest.decision:type_name -> aos.v1.ApprovalDecision
-	109, // 11: aos.v1.DecideResponse.approval:type_name -> aos.v1.Approval
+	109, // 0: aos.v1.CreateLoginCodeResponse.expires_at:type_name -> google.protobuf.Timestamp
+	110, // 1: aos.v1.CreateTaskRequest.autonomy:type_name -> aos.v1.Autonomy
+	111, // 2: aos.v1.CreateTaskResponse.task:type_name -> aos.v1.Task
+	111, // 3: aos.v1.ListTasksResponse.tasks:type_name -> aos.v1.Task
+	111, // 4: aos.v1.GetTaskResponse.task:type_name -> aos.v1.Task
+	112, // 5: aos.v1.GetTaskResponse.steps:type_name -> aos.v1.TaskStep
+	113, // 6: aos.v1.GetTaskResponse.approvals:type_name -> aos.v1.Approval
+	111, // 7: aos.v1.SendFollowUpResponse.task:type_name -> aos.v1.Task
+	111, // 8: aos.v1.ResumeTaskResponse.task:type_name -> aos.v1.Task
+	113, // 9: aos.v1.ListPendingResponse.approvals:type_name -> aos.v1.Approval
+	114, // 10: aos.v1.DecideRequest.decision:type_name -> aos.v1.ApprovalDecision
+	113, // 11: aos.v1.DecideResponse.approval:type_name -> aos.v1.Approval
 	26,  // 12: aos.v1.SubscribeResponse.event:type_name -> aos.v1.Event
-	105, // 13: aos.v1.Event.time:type_name -> google.protobuf.Timestamp
+	109, // 13: aos.v1.Event.time:type_name -> google.protobuf.Timestamp
 	29,  // 14: aos.v1.Event.task_changed:type_name -> aos.v1.TaskChanged
 	30,  // 15: aos.v1.Event.task_step:type_name -> aos.v1.TaskStepChanged
 	31,  // 16: aos.v1.Event.text_delta:type_name -> aos.v1.TextDelta
@@ -5687,39 +5860,39 @@ var file_aos_v1_services_proto_depIdxs = []int32{
 	34,  // 19: aos.v1.Event.notification:type_name -> aos.v1.Notification
 	27,  // 20: aos.v1.Event.service_changed:type_name -> aos.v1.ServiceChanged
 	28,  // 21: aos.v1.Event.replay_progress:type_name -> aos.v1.ReplayProgress
-	111, // 22: aos.v1.ServiceChanged.service:type_name -> aos.v1.ServiceInfo
-	112, // 23: aos.v1.ReplayProgress.status:type_name -> aos.v1.ReplayStatus
-	107, // 24: aos.v1.TaskChanged.task:type_name -> aos.v1.Task
-	108, // 25: aos.v1.TaskStepChanged.step:type_name -> aos.v1.TaskStep
-	109, // 26: aos.v1.ApprovalChanged.approval:type_name -> aos.v1.Approval
-	105, // 27: aos.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	115, // 22: aos.v1.ServiceChanged.service:type_name -> aos.v1.ServiceInfo
+	116, // 23: aos.v1.ReplayProgress.status:type_name -> aos.v1.ReplayStatus
+	111, // 24: aos.v1.TaskChanged.task:type_name -> aos.v1.Task
+	112, // 25: aos.v1.TaskStepChanged.step:type_name -> aos.v1.TaskStep
+	113, // 26: aos.v1.ApprovalChanged.approval:type_name -> aos.v1.Approval
+	109, // 27: aos.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
 	35,  // 28: aos.v1.ListResponse.entries:type_name -> aos.v1.FileInfo
 	35,  // 29: aos.v1.StatResponse.info:type_name -> aos.v1.FileInfo
 	56,  // 30: aos.v1.DeleteResponse.item:type_name -> aos.v1.TrashItem
-	104, // 31: aos.v1.ListProtectedResponse.entries:type_name -> aos.v1.ListProtectedResponse.Entry
-	105, // 32: aos.v1.TrashItem.deleted_at:type_name -> google.protobuf.Timestamp
+	108, // 31: aos.v1.ListProtectedResponse.entries:type_name -> aos.v1.ListProtectedResponse.Entry
+	109, // 32: aos.v1.TrashItem.deleted_at:type_name -> google.protobuf.Timestamp
 	56,  // 33: aos.v1.ListTrashResponse.items:type_name -> aos.v1.TrashItem
-	105, // 34: aos.v1.SessionInfo.created_at:type_name -> google.protobuf.Timestamp
+	109, // 34: aos.v1.SessionInfo.created_at:type_name -> google.protobuf.Timestamp
 	63,  // 35: aos.v1.CreateSessionResponse.session:type_name -> aos.v1.SessionInfo
 	63,  // 36: aos.v1.ListSessionsResponse.sessions:type_name -> aos.v1.SessionInfo
-	113, // 37: aos.v1.ListPackagesResponse.packages:type_name -> aos.v1.Package
-	114, // 38: aos.v1.ListLedgerResponse.ops:type_name -> aos.v1.LedgerOp
-	115, // 39: aos.v1.ListCheckpointsResponse.checkpoints:type_name -> aos.v1.Checkpoint
-	115, // 40: aos.v1.CreateCheckpointResponse.checkpoint:type_name -> aos.v1.Checkpoint
-	114, // 41: aos.v1.RestoreCheckpointResponse.op:type_name -> aos.v1.LedgerOp
-	115, // 42: aos.v1.RestoreCheckpointResponse.before:type_name -> aos.v1.Checkpoint
-	111, // 43: aos.v1.ListServicesResponse.services:type_name -> aos.v1.ServiceInfo
-	116, // 44: aos.v1.ListServicesResponse.listeners:type_name -> aos.v1.Listener
-	111, // 45: aos.v1.StartServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	111, // 46: aos.v1.StopServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	111, // 47: aos.v1.RestartServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	117, // 48: aos.v1.ListMemoryResponse.memories:type_name -> aos.v1.Memory
-	117, // 49: aos.v1.AddMemoryResponse.memory:type_name -> aos.v1.Memory
-	117, // 50: aos.v1.AcceptMemoryResponse.memory:type_name -> aos.v1.Memory
-	106, // 51: aos.v1.InfoResponse.autonomy:type_name -> aos.v1.Autonomy
-	112, // 52: aos.v1.InfoResponse.replay:type_name -> aos.v1.ReplayStatus
-	118, // 53: aos.v1.InfoResponse.today:type_name -> aos.v1.Usage
-	119, // 54: aos.v1.AuditResponse.entries:type_name -> aos.v1.AuditEntry
+	117, // 37: aos.v1.ListPackagesResponse.packages:type_name -> aos.v1.Package
+	118, // 38: aos.v1.ListLedgerResponse.ops:type_name -> aos.v1.LedgerOp
+	119, // 39: aos.v1.ListCheckpointsResponse.checkpoints:type_name -> aos.v1.Checkpoint
+	119, // 40: aos.v1.CreateCheckpointResponse.checkpoint:type_name -> aos.v1.Checkpoint
+	118, // 41: aos.v1.RestoreCheckpointResponse.op:type_name -> aos.v1.LedgerOp
+	119, // 42: aos.v1.RestoreCheckpointResponse.before:type_name -> aos.v1.Checkpoint
+	115, // 43: aos.v1.ListServicesResponse.services:type_name -> aos.v1.ServiceInfo
+	120, // 44: aos.v1.ListServicesResponse.listeners:type_name -> aos.v1.Listener
+	115, // 45: aos.v1.StartServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	115, // 46: aos.v1.StopServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	115, // 47: aos.v1.RestartServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	121, // 48: aos.v1.ListMemoryResponse.memories:type_name -> aos.v1.Memory
+	121, // 49: aos.v1.AddMemoryResponse.memory:type_name -> aos.v1.Memory
+	121, // 50: aos.v1.AcceptMemoryResponse.memory:type_name -> aos.v1.Memory
+	110, // 51: aos.v1.InfoResponse.autonomy:type_name -> aos.v1.Autonomy
+	116, // 52: aos.v1.InfoResponse.replay:type_name -> aos.v1.ReplayStatus
+	122, // 53: aos.v1.InfoResponse.today:type_name -> aos.v1.Usage
+	123, // 54: aos.v1.AuditResponse.entries:type_name -> aos.v1.AuditEntry
 	0,   // 55: aos.v1.AuthService.ExchangeLoginCode:input_type -> aos.v1.ExchangeLoginCodeRequest
 	2,   // 56: aos.v1.AuthService.CreateLoginCode:input_type -> aos.v1.CreateLoginCodeRequest
 	4,   // 57: aos.v1.TaskService.CreateTask:input_type -> aos.v1.CreateTaskRequest
@@ -5764,56 +5937,60 @@ var file_aos_v1_services_proto_depIdxs = []int32{
 	94,  // 96: aos.v1.SettingsService.AddMemory:input_type -> aos.v1.AddMemoryRequest
 	96,  // 97: aos.v1.SettingsService.AcceptMemory:input_type -> aos.v1.AcceptMemoryRequest
 	98,  // 98: aos.v1.SettingsService.ForgetMemory:input_type -> aos.v1.ForgetMemoryRequest
-	100, // 99: aos.v1.SystemService.Info:input_type -> aos.v1.InfoRequest
-	102, // 100: aos.v1.SystemService.Audit:input_type -> aos.v1.AuditRequest
-	1,   // 101: aos.v1.AuthService.ExchangeLoginCode:output_type -> aos.v1.ExchangeLoginCodeResponse
-	3,   // 102: aos.v1.AuthService.CreateLoginCode:output_type -> aos.v1.CreateLoginCodeResponse
-	5,   // 103: aos.v1.TaskService.CreateTask:output_type -> aos.v1.CreateTaskResponse
-	7,   // 104: aos.v1.TaskService.ListTasks:output_type -> aos.v1.ListTasksResponse
-	9,   // 105: aos.v1.TaskService.GetTask:output_type -> aos.v1.GetTaskResponse
-	11,  // 106: aos.v1.TaskService.SendFollowUp:output_type -> aos.v1.SendFollowUpResponse
-	13,  // 107: aos.v1.TaskService.AnswerQuestion:output_type -> aos.v1.AnswerQuestionResponse
-	15,  // 108: aos.v1.TaskService.CancelTask:output_type -> aos.v1.CancelTaskResponse
-	17,  // 109: aos.v1.TaskService.ResumeTask:output_type -> aos.v1.ResumeTaskResponse
-	19,  // 110: aos.v1.TaskService.StopAll:output_type -> aos.v1.StopAllResponse
-	21,  // 111: aos.v1.ApprovalService.ListPending:output_type -> aos.v1.ListPendingResponse
-	23,  // 112: aos.v1.ApprovalService.Decide:output_type -> aos.v1.DecideResponse
-	25,  // 113: aos.v1.EventService.Subscribe:output_type -> aos.v1.SubscribeResponse
-	37,  // 114: aos.v1.FileService.List:output_type -> aos.v1.ListResponse
-	39,  // 115: aos.v1.FileService.Stat:output_type -> aos.v1.StatResponse
-	41,  // 116: aos.v1.FileService.Read:output_type -> aos.v1.ReadResponse
-	43,  // 117: aos.v1.FileService.Write:output_type -> aos.v1.WriteResponse
-	45,  // 118: aos.v1.FileService.Move:output_type -> aos.v1.MoveResponse
-	47,  // 119: aos.v1.FileService.Copy:output_type -> aos.v1.CopyResponse
-	49,  // 120: aos.v1.FileService.Delete:output_type -> aos.v1.DeleteResponse
-	51,  // 121: aos.v1.FileService.Protect:output_type -> aos.v1.ProtectResponse
-	53,  // 122: aos.v1.FileService.Unprotect:output_type -> aos.v1.UnprotectResponse
-	55,  // 123: aos.v1.FileService.ListProtected:output_type -> aos.v1.ListProtectedResponse
-	58,  // 124: aos.v1.TrashService.ListTrash:output_type -> aos.v1.ListTrashResponse
-	60,  // 125: aos.v1.TrashService.Restore:output_type -> aos.v1.RestoreResponse
-	62,  // 126: aos.v1.TrashService.Empty:output_type -> aos.v1.EmptyResponse
-	65,  // 127: aos.v1.SessionService.CreateSession:output_type -> aos.v1.CreateSessionResponse
-	67,  // 128: aos.v1.SessionService.ListSessions:output_type -> aos.v1.ListSessionsResponse
-	69,  // 129: aos.v1.SessionService.CloseSession:output_type -> aos.v1.CloseSessionResponse
-	71,  // 130: aos.v1.SoftwareService.ListPackages:output_type -> aos.v1.ListPackagesResponse
-	73,  // 131: aos.v1.SoftwareService.ListLedger:output_type -> aos.v1.ListLedgerResponse
-	75,  // 132: aos.v1.SoftwareService.ListCheckpoints:output_type -> aos.v1.ListCheckpointsResponse
-	77,  // 133: aos.v1.SoftwareService.CreateCheckpoint:output_type -> aos.v1.CreateCheckpointResponse
-	79,  // 134: aos.v1.SoftwareService.RestoreCheckpoint:output_type -> aos.v1.RestoreCheckpointResponse
-	81,  // 135: aos.v1.SupervisorService.ListServices:output_type -> aos.v1.ListServicesResponse
-	83,  // 136: aos.v1.SupervisorService.StartService:output_type -> aos.v1.StartServiceResponse
-	85,  // 137: aos.v1.SupervisorService.StopService:output_type -> aos.v1.StopServiceResponse
-	87,  // 138: aos.v1.SupervisorService.RestartService:output_type -> aos.v1.RestartServiceResponse
-	89,  // 139: aos.v1.SupervisorService.RemoveService:output_type -> aos.v1.RemoveServiceResponse
-	91,  // 140: aos.v1.SupervisorService.StreamLogs:output_type -> aos.v1.StreamLogsResponse
-	93,  // 141: aos.v1.SettingsService.ListMemory:output_type -> aos.v1.ListMemoryResponse
-	95,  // 142: aos.v1.SettingsService.AddMemory:output_type -> aos.v1.AddMemoryResponse
-	97,  // 143: aos.v1.SettingsService.AcceptMemory:output_type -> aos.v1.AcceptMemoryResponse
-	99,  // 144: aos.v1.SettingsService.ForgetMemory:output_type -> aos.v1.ForgetMemoryResponse
-	101, // 145: aos.v1.SystemService.Info:output_type -> aos.v1.InfoResponse
-	103, // 146: aos.v1.SystemService.Audit:output_type -> aos.v1.AuditResponse
-	101, // [101:147] is the sub-list for method output_type
-	55,  // [55:101] is the sub-list for method input_type
+	100, // 99: aos.v1.SettingsService.GetDesktopState:input_type -> aos.v1.GetDesktopStateRequest
+	102, // 100: aos.v1.SettingsService.SaveDesktopState:input_type -> aos.v1.SaveDesktopStateRequest
+	104, // 101: aos.v1.SystemService.Info:input_type -> aos.v1.InfoRequest
+	106, // 102: aos.v1.SystemService.Audit:input_type -> aos.v1.AuditRequest
+	1,   // 103: aos.v1.AuthService.ExchangeLoginCode:output_type -> aos.v1.ExchangeLoginCodeResponse
+	3,   // 104: aos.v1.AuthService.CreateLoginCode:output_type -> aos.v1.CreateLoginCodeResponse
+	5,   // 105: aos.v1.TaskService.CreateTask:output_type -> aos.v1.CreateTaskResponse
+	7,   // 106: aos.v1.TaskService.ListTasks:output_type -> aos.v1.ListTasksResponse
+	9,   // 107: aos.v1.TaskService.GetTask:output_type -> aos.v1.GetTaskResponse
+	11,  // 108: aos.v1.TaskService.SendFollowUp:output_type -> aos.v1.SendFollowUpResponse
+	13,  // 109: aos.v1.TaskService.AnswerQuestion:output_type -> aos.v1.AnswerQuestionResponse
+	15,  // 110: aos.v1.TaskService.CancelTask:output_type -> aos.v1.CancelTaskResponse
+	17,  // 111: aos.v1.TaskService.ResumeTask:output_type -> aos.v1.ResumeTaskResponse
+	19,  // 112: aos.v1.TaskService.StopAll:output_type -> aos.v1.StopAllResponse
+	21,  // 113: aos.v1.ApprovalService.ListPending:output_type -> aos.v1.ListPendingResponse
+	23,  // 114: aos.v1.ApprovalService.Decide:output_type -> aos.v1.DecideResponse
+	25,  // 115: aos.v1.EventService.Subscribe:output_type -> aos.v1.SubscribeResponse
+	37,  // 116: aos.v1.FileService.List:output_type -> aos.v1.ListResponse
+	39,  // 117: aos.v1.FileService.Stat:output_type -> aos.v1.StatResponse
+	41,  // 118: aos.v1.FileService.Read:output_type -> aos.v1.ReadResponse
+	43,  // 119: aos.v1.FileService.Write:output_type -> aos.v1.WriteResponse
+	45,  // 120: aos.v1.FileService.Move:output_type -> aos.v1.MoveResponse
+	47,  // 121: aos.v1.FileService.Copy:output_type -> aos.v1.CopyResponse
+	49,  // 122: aos.v1.FileService.Delete:output_type -> aos.v1.DeleteResponse
+	51,  // 123: aos.v1.FileService.Protect:output_type -> aos.v1.ProtectResponse
+	53,  // 124: aos.v1.FileService.Unprotect:output_type -> aos.v1.UnprotectResponse
+	55,  // 125: aos.v1.FileService.ListProtected:output_type -> aos.v1.ListProtectedResponse
+	58,  // 126: aos.v1.TrashService.ListTrash:output_type -> aos.v1.ListTrashResponse
+	60,  // 127: aos.v1.TrashService.Restore:output_type -> aos.v1.RestoreResponse
+	62,  // 128: aos.v1.TrashService.Empty:output_type -> aos.v1.EmptyResponse
+	65,  // 129: aos.v1.SessionService.CreateSession:output_type -> aos.v1.CreateSessionResponse
+	67,  // 130: aos.v1.SessionService.ListSessions:output_type -> aos.v1.ListSessionsResponse
+	69,  // 131: aos.v1.SessionService.CloseSession:output_type -> aos.v1.CloseSessionResponse
+	71,  // 132: aos.v1.SoftwareService.ListPackages:output_type -> aos.v1.ListPackagesResponse
+	73,  // 133: aos.v1.SoftwareService.ListLedger:output_type -> aos.v1.ListLedgerResponse
+	75,  // 134: aos.v1.SoftwareService.ListCheckpoints:output_type -> aos.v1.ListCheckpointsResponse
+	77,  // 135: aos.v1.SoftwareService.CreateCheckpoint:output_type -> aos.v1.CreateCheckpointResponse
+	79,  // 136: aos.v1.SoftwareService.RestoreCheckpoint:output_type -> aos.v1.RestoreCheckpointResponse
+	81,  // 137: aos.v1.SupervisorService.ListServices:output_type -> aos.v1.ListServicesResponse
+	83,  // 138: aos.v1.SupervisorService.StartService:output_type -> aos.v1.StartServiceResponse
+	85,  // 139: aos.v1.SupervisorService.StopService:output_type -> aos.v1.StopServiceResponse
+	87,  // 140: aos.v1.SupervisorService.RestartService:output_type -> aos.v1.RestartServiceResponse
+	89,  // 141: aos.v1.SupervisorService.RemoveService:output_type -> aos.v1.RemoveServiceResponse
+	91,  // 142: aos.v1.SupervisorService.StreamLogs:output_type -> aos.v1.StreamLogsResponse
+	93,  // 143: aos.v1.SettingsService.ListMemory:output_type -> aos.v1.ListMemoryResponse
+	95,  // 144: aos.v1.SettingsService.AddMemory:output_type -> aos.v1.AddMemoryResponse
+	97,  // 145: aos.v1.SettingsService.AcceptMemory:output_type -> aos.v1.AcceptMemoryResponse
+	99,  // 146: aos.v1.SettingsService.ForgetMemory:output_type -> aos.v1.ForgetMemoryResponse
+	101, // 147: aos.v1.SettingsService.GetDesktopState:output_type -> aos.v1.GetDesktopStateResponse
+	103, // 148: aos.v1.SettingsService.SaveDesktopState:output_type -> aos.v1.SaveDesktopStateResponse
+	105, // 149: aos.v1.SystemService.Info:output_type -> aos.v1.InfoResponse
+	107, // 150: aos.v1.SystemService.Audit:output_type -> aos.v1.AuditResponse
+	103, // [103:151] is the sub-list for method output_type
+	55,  // [55:103] is the sub-list for method input_type
 	55,  // [55:55] is the sub-list for extension type_name
 	55,  // [55:55] is the sub-list for extension extendee
 	0,   // [0:55] is the sub-list for field type_name
@@ -5841,7 +6018,7 @@ func file_aos_v1_services_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aos_v1_services_proto_rawDesc), len(file_aos_v1_services_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   105,
+			NumMessages:   109,
 			NumExtensions: 0,
 			NumServices:   11,
 		},

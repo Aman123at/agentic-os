@@ -15,6 +15,7 @@ import (
 	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
 	"github.com/amantiwari/agentic-os/gen/go/aos/v1/aosv1connect"
 	"github.com/amantiwari/agentic-os/internal/audit"
+	"github.com/amantiwari/agentic-os/internal/desktop"
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/profile"
@@ -59,6 +60,7 @@ type Server struct {
 	Protected Protected
 	Sessions  Sessions
 	Memories  *profile.Memories
+	Desktop   *desktop.State
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -534,6 +536,27 @@ func (st settingsService) ForgetMemory(ctx context.Context, req *connect.Request
 	}
 	st.audit(ctx, "memory_forget", req.Msg.Id, "")
 	return connect.NewResponse(&aosv1.ForgetMemoryResponse{}), nil
+}
+
+func (st settingsService) GetDesktopState(ctx context.Context, _ *connect.Request[aosv1.GetDesktopStateRequest]) (*connect.Response[aosv1.GetDesktopStateResponse], error) {
+	if st.s.Desktop == nil {
+		return connect.NewResponse(&aosv1.GetDesktopStateResponse{}), nil
+	}
+	state, err := st.s.Desktop.Get(ctx)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.GetDesktopStateResponse{State: state}), nil
+}
+
+func (st settingsService) SaveDesktopState(ctx context.Context, req *connect.Request[aosv1.SaveDesktopStateRequest]) (*connect.Response[aosv1.SaveDesktopStateResponse], error) {
+	if st.s.Desktop == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("desktop state is not available"))
+	}
+	if err := st.s.Desktop.Save(ctx, req.Msg.State); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&aosv1.SaveDesktopStateResponse{}), nil
 }
 
 func (st settingsService) audit(ctx context.Context, tool, id, result string) {
