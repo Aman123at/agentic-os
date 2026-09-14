@@ -784,6 +784,15 @@ button {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex: none;
+  /* No overflow here: the Watch dropdown escapes downward. The tab strip below
+     is the part that scrolls when there are many tabs. */
+}
+.term__tabstrip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
   overflow-x: auto;
 }
 .term__tab {

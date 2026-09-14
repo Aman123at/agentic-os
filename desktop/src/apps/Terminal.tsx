@@ -93,27 +93,29 @@ export default function Terminal() {
   return (
     <div className="term" onClick={() => watch && setWatch(null)}>
       <div className="term__tabs">
-        {tabs.map((t) => (
-          <div
-            key={t.id}
-            className={`term__tab${t.id === active ? " term__tab--on" : ""}${t.dead ? " term__tab--dead" : ""}`}
-            onClick={() => setActive(t.id)}
-            title={t.agent ? `Watching Agent Session ${t.id}` : `Session ${t.id}`}
-          >
-            <span className="term__tab-icon">{t.agent ? "👁️" : "⌨️"}</span>
-            <span className="term__tab-name">{t.title}</span>
-            <button
-              className="term__tab-close"
-              title="Close tab"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(t.id);
-              }}
+        <div className="term__tabstrip">
+          {tabs.map((t) => (
+            <div
+              key={t.id}
+              className={`term__tab${t.id === active ? " term__tab--on" : ""}${t.dead ? " term__tab--dead" : ""}`}
+              onClick={() => setActive(t.id)}
+              title={t.agent ? `Watching Agent Session ${t.id}` : `Session ${t.id}`}
             >
-              ✕
-            </button>
-          </div>
-        ))}
+              <span className="term__tab-icon">{t.agent ? "👁️" : "⌨️"}</span>
+              <span className="term__tab-name">{t.title}</span>
+              <button
+                className="term__tab-close"
+                title="Close tab"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(t.id);
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
         <div className="term__actions">
           <div className="term__watch">
             <button className="term__btn" onClick={openWatchMenu} title="Watch a running Agent Session (read-only)">
