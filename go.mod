@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	connectrpc.com/connect v1.21.0
 	github.com/JohannesKaufmann/html-to-markdown/v2 v2.5.2
+	github.com/coder/websocket v1.8.15
 	github.com/creack/pty v1.1.24
 	github.com/go-shiori/go-readability v0.0.0-20251205110129-5db1dc9836f0
 	github.com/landlock-lsm/go-landlock v0.10.1

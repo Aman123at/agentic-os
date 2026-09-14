@@ -391,15 +391,16 @@ func TestAnApprovedProtectedPathCallRunsWithTheSandboxWidenedToIt(t *testing.T) 
 
 	created, _ := h.m.Create(context.Background(), "remove my old key", 0, true)
 	a := h.waitPending(t, created.Id)
-	if a.Grantable || len(a.ProtectedPaths) != 1 || a.ProtectedPaths[0] != key {
+	// Deleting needs the folder: the Approval shows what becomes writable.
+	if a.Grantable || len(a.ProtectedPaths) != 1 || a.ProtectedPaths[0] != filepath.Dir(key) {
 		t.Fatalf("approval for a Protected Path under auto: %+v", a)
 	}
 	if _, err := h.m.Decide(context.Background(), a.Id, aosv1.ApprovalDecision_APPROVAL_DECISION_ALLOW_FOR_TASK, "user:cli"); err != nil {
 		t.Fatal(err)
 	}
 	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_SUCCEEDED)
-	if len(widened) != 1 || len(widened[0]) != 1 || widened[0][0] != key {
-		t.Errorf("file runner widened to %v, want [[%s]]", widened, key)
+	if len(widened) != 1 || len(widened[0]) != 1 || widened[0][0] != filepath.Dir(key) {
+		t.Errorf("file runner widened to %v, want [[%s]]", widened, filepath.Dir(key))
 	}
 	_, _, approvals, _ := h.m.Get(context.Background(), created.Id)
 	if approvals[0].Decision != aosv1.ApprovalDecision_APPROVAL_DECISION_ALLOW_ONCE {

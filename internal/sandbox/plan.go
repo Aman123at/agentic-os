@@ -49,8 +49,29 @@ type Policy struct {
 	Hidden []string
 	// Protected paths can be read but not written.
 	Protected []string
-	// Writable trees can be written, except for Protected and Hidden paths inside them.
+	// Writable trees can be written, except for Protected and Hidden paths inside
+	// them. A Writable tree inside a Hidden or Protected path is still writable:
+	// that is how a Session gets its own directory, and an approved call its paths.
 	Writable []string
+}
+
+// Widen returns p with paths writable too, for one approved call (ADR-0004).
+// Protected paths inside them stop being protected; Hidden paths stay hidden.
+func (p Policy) Widen(paths []string) Policy {
+	hidden := cleanAll(p.Hidden)
+	var widen []string
+	for _, w := range cleanAll(paths) {
+		if !isExcluded(w, hidden) {
+			widen = append(widen, w)
+		}
+	}
+	out := Policy{Hidden: p.Hidden, Writable: append(append([]string{}, p.Writable...), widen...)}
+	for _, x := range cleanAll(p.Protected) {
+		if !isExcluded(x, widen) {
+			out.Protected = append(out.Protected, x)
+		}
+	}
+	return out
 }
 
 // Grant gives Access on Path and everything beneath it.
@@ -84,7 +105,14 @@ func Plan(p Policy, fsys FS) (Ruleset, error) {
 		if _, err := fs.Stat(fsys, fsPath(w)); errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err := carve(fsys, w, readOnly, Write, Create, &rs); err != nil {
+		// Only exclusions at or beneath w apply; one above it is overridden.
+		var inside []string
+		for _, x := range readOnly {
+			if within(x, w) {
+				inside = append(inside, x)
+			}
+		}
+		if err := carve(fsys, w, inside, Write, Create, &rs); err != nil {
 			return Ruleset{}, err
 		}
 	}

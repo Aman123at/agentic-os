@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
 
 	"github.com/amantiwari/agentic-os/internal/sandbox"
 )
@@ -27,6 +28,10 @@ HISTCONTROL=ignorespace
 bind 'set enable-bracketed-paste off' 2>/dev/null
 __aos_c() { printf '\033]133;C;aos=%s\007' "$1" >/dev/tty; }
 __aos_d() { printf '\033]133;D;aos=%s;%s\007' "$1" "$2" >/dev/tty; }
+# Restores the folder and exported variables of a Session that was re-sandboxed.
+__aos_save() { { export -p; printf 'cd -- %q\n' "$PWD"; } > "$1"; }
+if [ -n "$AOS_RESTORE" ] && [ -f "$AOS_RESTORE" ]; then source "$AOS_RESTORE" 2>/dev/null; rm -f "$AOS_RESTORE"; fi
+unset AOS_RESTORE
 `
 
 // Options configures a Session.
@@ -51,7 +56,13 @@ type Session struct {
 	mu      sync.Mutex
 	current *Command
 	exited  chan struct{}
+	// recent is the tail of the raw PTY stream, replayed to new viewers.
+	recent  []byte
+	viewers map[chan []byte]struct{}
 }
+
+// recentBytes is how much raw output a new viewer sees first.
+const recentBytes = 64 << 10
 
 // Command is one framed command running in a Session.
 type Command struct {
@@ -108,7 +119,7 @@ func Start(opts Options) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Session{opts: opts, cmd: cmd, pty: f, exited: make(chan struct{})}
+	s := &Session{opts: opts, cmd: cmd, pty: f, exited: make(chan struct{}), viewers: map[chan []byte]struct{}{}}
 	go s.read()
 	// Synchronise with the shell: the first framed command drains rc output.
 	c, err := s.Run("true")
@@ -139,22 +150,100 @@ func baseEnv(opts Options) []string {
 }
 
 func (s *Session) read() {
-	defer close(s.exited)
+	defer func() {
+		s.mu.Lock()
+		for v := range s.viewers {
+			close(v)
+		}
+		s.viewers = map[chan []byte]struct{}{}
+		s.mu.Unlock()
+		close(s.exited)
+	}()
 	buf := make([]byte, 32*1024)
 	for {
 		n, err := s.pty.Read(buf)
 		if n > 0 {
+			chunk := append([]byte(nil), buf[:n]...)
 			s.mu.Lock()
 			c := s.current
+			s.recent = append(s.recent, chunk...)
+			if len(s.recent) > recentBytes {
+				s.recent = append([]byte(nil), s.recent[len(s.recent)-recentBytes:]...)
+			}
+			for v := range s.viewers {
+				select {
+				case v <- chunk:
+				default: // a viewer that falls behind misses output rather than stalling the Session
+				}
+			}
 			s.mu.Unlock()
 			if c != nil {
-				c.feed(buf[:n])
+				c.feed(chunk)
 			}
 		}
 		if err != nil {
 			return
 		}
 	}
+}
+
+// Watch returns the recent raw output and a channel of what follows, until stop
+// is called or the shell exits.
+func (s *Session) Watch() (recent []byte, output <-chan []byte, stop func()) {
+	ch := make(chan []byte, 256)
+	s.mu.Lock()
+	recent = append([]byte(nil), s.recent...)
+	select {
+	case <-s.exited:
+		close(ch)
+	default:
+		s.viewers[ch] = struct{}{}
+	}
+	s.mu.Unlock()
+	var once sync.Once
+	return recent, ch, func() {
+		once.Do(func() {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if _, ok := s.viewers[ch]; ok {
+				delete(s.viewers, ch)
+				close(ch)
+			}
+		})
+	}
+}
+
+// Resize changes the terminal size.
+func (s *Session) Resize(cols, rows uint16) error {
+	return pty.Setsize(s.pty, &pty.Winsize{Cols: cols, Rows: rows})
+}
+
+// Cwd returns the shell's current folder.
+func (s *Session) Cwd() string {
+	cwd, _ := os.Readlink(fmt.Sprintf("/proc/%d/cwd", s.Pid()))
+	return cwd
+}
+
+// Busy reports whether a command is still running.
+func (s *Session) Busy() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.current != nil && !s.current.finished()
+}
+
+// Interrupt sends Ctrl-C to the foreground command.
+func (s *Session) Interrupt() error { return s.Input([]byte{0x03}) }
+
+// KillForeground kills the foreground process group, unless it is the shell itself.
+func (s *Session) KillForeground() error {
+	pgrp, err := unix.IoctlGetInt(int(s.pty.Fd()), unix.TIOCGPGRP)
+	if err != nil {
+		return err
+	}
+	if pgrp <= 1 || pgrp == s.Pid() {
+		return nil
+	}
+	return syscall.Kill(-pgrp, syscall.SIGKILL)
 }
 
 // Run starts command in the Session. Only one command runs at a time: Run

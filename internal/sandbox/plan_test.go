@@ -213,3 +213,61 @@ func TestPlanProtectsTheTargetOfASymlinkedProtectedPath(t *testing.T) {
 		t.Errorf("/home/aos/dotfiles/vimrc: want writable, got %v", got)
 	}
 }
+
+func TestPlanGrantsAWritableRootInsideAnExcludedPath(t *testing.T) {
+	fsys := machine()
+	fsys["run/aos/sessions/t1/cmd-1"] = &fstest.MapFile{}
+	fsys["run/aos/sessions/t2/cmd-1"] = &fstest.MapFile{}
+	fsys["home/.aos-protected/ssh/id_old"] = &fstest.MapFile{}
+	fsys["home/.aos-protected/ssh/id_new"] = &fstest.MapFile{}
+	fsys["home/.aos-protected/bashrc"] = &fstest.MapFile{}
+
+	p := DefaultLayout().Policy()
+	p.Hidden = append(p.Hidden, "/run/aos/sessions")
+	// The Session's own directory, and an approved one-off change to ~/.ssh.
+	p.Writable = append(p.Writable, "/run/aos/sessions/t1", "/home/.aos-protected/ssh")
+	rs, err := Plan(p, fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]Access{
+		"/run/aos/sessions/t1":        Write,
+		"/run/aos/sessions/t2":        0,
+		"/run/aos/sessions":           0,
+		"/home/.aos-protected/ssh":    Write,
+		"/home/.aos-protected/bashrc": 0,
+	} {
+		if got := accessOf(t, rs, path) &^ (Read | List); got != want {
+			t.Errorf("%s: want %v, got %v", path, want, got)
+		}
+	}
+	if got := accessOf(t, rs, "/run/aos/sessions/t2"); got != 0 {
+		t.Errorf("another Session's directory must stay hidden, got %v", got)
+	}
+}
+
+func TestWidenMakesApprovedPathsWritableButNeverHiddenOnes(t *testing.T) {
+	fsys := machine()
+	fsys["home/aos/Documents/taxes/2025.pdf"] = &fstest.MapFile{}
+	p := DefaultLayout().Policy()
+	p.Protected = append(p.Protected, "/home/aos/Documents/taxes", "/home/aos/Downloads")
+
+	fsys["var/lib/aos/keys/openai"] = &fstest.MapFile{}
+	rs, err := Plan(p.Widen([]string{"/home/aos/Documents/taxes/", "/run/secrets", "/var/lib/aos/keys"}), fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]Access{
+		"/home/aos/Documents/taxes": Write,
+		"/home/aos/Downloads":       0, // still locked
+		"/run/secrets":              0, // Hidden is never widened
+		"/var/lib/aos/keys":         0,
+	} {
+		if got := accessOf(t, rs, path) &^ (Read | List); got != want {
+			t.Errorf("%s: want %v, got %v", path, want, got)
+		}
+	}
+	if got := accessOf(t, rs, "/run/secrets"); got&Read != 0 {
+		t.Errorf("/run/secrets readable after widening: %v", got)
+	}
+}

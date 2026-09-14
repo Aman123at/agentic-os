@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -240,6 +242,7 @@ func execute(ctx context.Context, h Host, p *pending) {
 		p.finish(ctx, h, aosv1.ToolCallStatus_TOOL_CALL_STATUS_DENIED, out, "")
 		return
 	case policy.Ask:
+		d.ProtectedPaths = widenTargets(h.Env(), p.call.Policy.Effects, d.ProtectedPaths)
 		decision, err := h.Approve(ctx, p.step, p.call, d)
 		if err != nil {
 			entry.Result = "cancelled while awaiting Approval"
@@ -283,4 +286,28 @@ func verdict(v policy.Verdict) string {
 		return "ask"
 	}
 	return "deny"
+}
+
+// widenTargets turns the Protected Paths a call changes into the paths the
+// sandbox must allow: the path itself when it already exists and is written in
+// place, otherwise its folder (creating, deleting or moving needs the folder).
+func widenTargets(env *tool.Env, effects []policy.Effect, hits []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, e := range effects {
+		if !slices.Contains(hits, e.Path) {
+			continue
+		}
+		target := filepath.Dir(e.Path)
+		if e.Op == policy.Write && env.Stat != nil {
+			if exists, _ := env.Stat(e.Path); exists {
+				target = e.Path
+			}
+		}
+		if !seen[target] {
+			seen[target] = true
+			out = append(out, target)
+		}
+	}
+	return out
 }
