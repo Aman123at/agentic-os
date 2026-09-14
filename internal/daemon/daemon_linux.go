@@ -13,9 +13,11 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -35,7 +37,9 @@ import (
 	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/proxy"
 	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/amantiwari/agentic-os/internal/service"
 	"github.com/amantiwari/agentic-os/internal/session"
+	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/task"
 	"github.com/amantiwari/agentic-os/internal/tool"
@@ -57,6 +61,10 @@ const (
 	outputsDir   = StateDir + "/outputs"
 	databaseFile = StateDir + "/aos.db"
 	pricesFile   = StateDir + "/prices.yaml"
+	blobsDir     = StateDir + "/blobs"
+	servicesDir  = StateDir + "/services"
+	aptArchives  = "/var/cache/aos/apt/archives"
+	aptLists     = "/var/cache/aos/apt/lists"
 )
 
 // Daemon is a running aosd.
@@ -78,6 +86,8 @@ type Daemon struct {
 	usage    *usage.Tracker
 	memories *profile.Memories
 	osName   string
+	software *software.Manager
+	services *service.Supervisor
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -107,7 +117,16 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	d.osName = osRelease()
 	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
-	registry := tool.NewRegistry(append(append(append(tool.SessionTools(), tool.FilesTools()...), tool.InternetTools()...), tool.CoordinationTools()...)...)
+	ledger := &software.Ledger{DB: d.db}
+	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf}
+	if err := d.services.Load(ctx); err != nil {
+		return fmt.Errorf("loading the Services: %w", err)
+	}
+	d.software = &software.Manager{Ledger: ledger, Etc: &software.Tree{Root: "/etc", Blobs: blobsDir, Skip: software.EtcSkip},
+		Archives: aptArchives, Lists: aptLists, AsUser: d.asUser, Services: d.services, Bus: d.bus, Logf: log.Printf}
+	tools := append(tool.SessionTools(), tool.FilesTools()...)
+	tools = append(append(append(tools, tool.InternetTools()...), tool.SoftwareTools()...), tool.ServiceTools()...)
+	registry := tool.NewRegistry(append(tools, tool.CoordinationTools()...)...)
 	d.tasks, err = task.New(task.Config{
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
@@ -119,13 +138,15 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		return err
 	}
 	defer d.tasks.Close()
+	defer d.services.Close()
 
 	userOps := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
 	userFiles := files.AsUser{Ops: userOps, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
-		Sessions: &userSessions{d: d}, Memories: d.memories, Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
+		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
+		Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
 	}
 	handler := srv.Handler()
 
@@ -144,6 +165,16 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	go func() { errc <- unixSrv.Serve(sock) }()
 	go func() { errc <- tcp.ListenAndServe() }()
 	go d.expireTrash(ctx, userFiles)
+	go d.services.Watch(ctx)
+	// Replay first, then the Services, which may need its software (PLAN.md §11–12).
+	go func() {
+		if err := d.software.Replay(ctx); err != nil {
+			log.Printf("Replay: %v", err)
+		}
+		if ctx.Err() == nil {
+			d.services.StartAll()
+		}
+	}()
 
 	log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d (on the Host: http://localhost:%s)", cfg.Mode, model, d.abi, Port, cfg.HostPort)
 	if cfg.Mode == "ui" {
@@ -306,6 +337,8 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	agentSession := session.NewAgent(session.AgentConfig{
 		TaskID: env.TaskID, Dir: filepath.Join(SessionsDir, env.TaskID), UID: d.uid, GID: d.gid, Home: d.layout.Home,
 		Policy: d.agentPolicy, Confine: d.abi >= 1, PathPrefix: AgentBinDir + ":", Outputs: d.outputs, Registry: d.registry,
+		// npm's global prefix is in the home folder (PLAN.md §11).
+		Env: []string{"NPM_CONFIG_PREFIX=" + d.layout.Home + "/.local"},
 	})
 	ops := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
 	env.Sessions = agentSession
@@ -323,6 +356,8 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 		}
 		return err
 	}
+	env.Software = software.Tools{M: d.software}
+	env.Services = service.Tools{S: d.services, Checkpoint: d.taskCheckpoint}
 	env.Files = func(widen []string) files.Runner {
 		return files.Confined{Ops: ops, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
 			p := d.agentPolicy()
@@ -380,7 +415,92 @@ func (d *Daemon) agentContext(ctx context.Context) string {
 
 // machine describes the Machine for its Profile.
 func (d *Daemon) machine() profile.Machine {
-	return profile.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1}
+	m := profile.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Replaying: d.software.Replaying()}
+	if pkgs, err := d.software.Installed(context.Background()); err == nil {
+		for _, p := range pkgs {
+			name, _, _ := strings.Cut(p.Name, ":") // nginx:arm64 → nginx
+			m.Software = append(m.Software, profile.Software{Manager: p.Manager, Name: name, Version: p.Version})
+		}
+	}
+	for _, s := range d.services.List() {
+		ps := profile.Service{Name: s.Name, State: service.StateName(s.State)}
+		for _, p := range s.Ports {
+			ps.Ports = append(ps.Ports, int(p))
+		}
+		m.Services = append(m.Services, ps)
+	}
+	for _, l := range d.services.Listeners() {
+		m.Listeners = append(m.Listeners, profile.Listener{Port: l.Port, Process: l.Process, Service: l.Service})
+	}
+	return m
+}
+
+// taskCheckpoint takes a Task's Checkpoint before its first change (for Services).
+func (d *Daemon) taskCheckpoint(ctx context.Context, taskID, title string) (string, string, bool, error) {
+	cp, created, err := d.software.TaskCheckpoint(ctx, software.Call{TaskID: taskID, TaskTitle: title, Actor: "agent"})
+	if err != nil {
+		return "", "", false, err
+	}
+	return cp.Id, cp.Name, created, nil
+}
+
+// userEnv is the environment of what AOS runs as aos outside a Session: pipx,
+// npm and Services.
+func (d *Daemon) userEnv() []string {
+	home := d.layout.Home
+	return []string{"HOME=" + home, "USER=aos", "LOGNAME=aos", "SHELL=/bin/bash", "LANG=C.UTF-8",
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + home + "/.local/bin",
+		"NPM_CONFIG_PREFIX=" + home + "/.local", "npm_config_yes=true", "PIP_NO_INPUT=1"}
+}
+
+// asUser runs argv as aos, confined like an Agent (pipx and npm installs).
+func (d *Daemon) asUser(argv ...string) (*exec.Cmd, error) {
+	rs, err := d.plan(d.agentPolicy())
+	if err != nil {
+		return nil, err
+	}
+	cmd, err := sandbox.Command(rs, d.uid, d.gid, d.userEnv(), argv...)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Dir = d.layout.Home
+	return cmd, nil
+}
+
+// launchService runs a Service's command: as aos, confined like the Agent
+// that created it, or as root when it was created as a Privileged Tool call.
+func (d *Daemon) launchService(def service.Definition) (*exec.Cmd, error) {
+	env := d.userEnv()
+	dir := d.layout.Home
+	if def.Root {
+		env, dir = []string{"HOME=/root", "USER=root", "LANG=C.UTF-8", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, "/"
+	}
+	keys := make([]string, 0, len(def.Env))
+	for k := range def.Env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		env = append(env, k+"="+def.Env[k])
+	}
+	if def.Dir != "" {
+		dir = def.Dir
+	}
+	var cmd *exec.Cmd
+	if def.Root {
+		cmd = exec.Command("/bin/bash", "-c", def.Command)
+		cmd.Env = env
+	} else {
+		rs, err := d.plan(d.agentPolicy())
+		if err != nil {
+			return nil, err
+		}
+		if cmd, err = sandbox.Command(rs, d.uid, d.gid, env, "bash", "-c", def.Command); err != nil {
+			return nil, err
+		}
+	}
+	cmd.Dir = dir
+	return cmd, nil
 }
 
 // refused records a request the Unix socket turned away (PLAN.md §7.5).
@@ -402,7 +522,7 @@ func (d *Daemon) info(model string) *aosv1.InfoResponse {
 	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[d.cfg.Autonomy]
 	today, _ := d.usage.Today(context.Background())
 	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: model, Autonomy: autonomy,
-		MaxTasks: int32(d.cfg.MaxTasks), MaxRetries: int32(d.cfg.MaxRetries), Today: today, PricesKnown: d.pricesKnown(model),
+		MaxTasks: int32(d.cfg.MaxTasks), MaxRetries: int32(d.cfg.MaxRetries), Today: today, PricesKnown: d.pricesKnown(model), Replay: d.software.ReplayStatus(),
 		TaskCostLimitUsd: d.cfg.TaskCostLimit, DailyCostLimitUsd: d.cfg.DailyCostLimit}
 }
 

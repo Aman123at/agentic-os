@@ -18,6 +18,8 @@ import (
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/profile"
+	"github.com/amantiwari/agentic-os/internal/service"
+	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/task"
 )
 
@@ -57,7 +59,10 @@ type Server struct {
 	Protected Protected
 	Sessions  Sessions
 	Memories  *profile.Memories
-	Info      func() *aosv1.InfoResponse
+	// Software and Supervisor serve the Install Ledger and the Services.
+	Software   *software.Manager
+	Supervisor *service.Supervisor
+	Info       func() *aosv1.InfoResponse
 	// Assets is the Desktop (ui Mode); nil serves a short note.
 	Assets fs.FS
 }
@@ -75,6 +80,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSessionServiceHandler(sessionService{s}, opts...))
 	mux.Handle(aosv1connect.NewSystemServiceHandler(systemService{s}, opts...))
 	mux.Handle(aosv1connect.NewSettingsServiceHandler(settingsService{s}, opts...))
+	mux.Handle(aosv1connect.NewSoftwareServiceHandler(softwareService{s}, opts...))
+	mux.Handle(aosv1connect.NewSupervisorServiceHandler(supervisorService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	page := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -99,7 +106,8 @@ func connectError(err error) error {
 	switch {
 	case err == nil:
 		return nil
-	case errors.Is(err, task.ErrNotFound), errors.Is(err, files.ErrNotExist), errors.Is(err, profile.ErrNoMemory):
+	case errors.Is(err, task.ErrNotFound), errors.Is(err, files.ErrNotExist), errors.Is(err, profile.ErrNoMemory),
+		errors.Is(err, software.ErrNoCheckpoint), errors.Is(err, service.ErrNoService):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, files.ErrExists):
 		return connect.NewError(connect.CodeAlreadyExists, err)

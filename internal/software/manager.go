@@ -251,6 +251,13 @@ func (m *Manager) operate(ctx context.Context, c Call, action, summary string, m
 	return out, runErr
 }
 
+// TaskCheckpoint returns the Checkpoint taken before the Task's first change,
+// taking it now if there is none; created reports that. Creating a Service is
+// such a change too.
+func (m *Manager) TaskCheckpoint(ctx context.Context, c Call) (cp *aosv1.Checkpoint, created bool, err error) {
+	return m.taskCheckpoint(ctx, c)
+}
+
 // taskCheckpoint returns the Checkpoint taken before the Task's first software
 // change, taking it now if there is none.
 func (m *Manager) taskCheckpoint(ctx context.Context, c Call) (*aosv1.Checkpoint, bool, error) {
