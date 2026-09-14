@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -21,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
@@ -118,7 +120,8 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d.osName = osRelease()
 	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
 	ledger := &software.Ledger{DB: d.db}
-	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf}
+	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf,
+		Owners: d.socketOwners}
 	if err := d.services.Load(ctx); err != nil {
 		return fmt.Errorf("loading the Services: %w", err)
 	}
@@ -451,6 +454,23 @@ func (d *Daemon) userEnv() []string {
 	return []string{"HOME=" + home, "USER=aos", "LOGNAME=aos", "SHELL=/bin/bash", "LANG=C.UTF-8",
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + home + "/.local/bin",
 		"NPM_CONFIG_PREFIX=" + home + "/.local", "npm_config_yes=true", "PIP_NO_INPUT=1"}
+}
+
+// socketOwners asks `aosd __sockets`, running as aos, which of aos's processes
+// hold which sockets: root in the container can't read their /proc/<pid>/fd.
+func (d *Daemon) socketOwners() map[string]int {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, d.exe, service.SocketsArg)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	cmd.Dir = "/"
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: d.uid, Gid: d.gid, Groups: []uint32{}}}
+	out, err := cmd.Output()
+	var owners map[string]int
+	if err != nil || json.Unmarshal(out, &owners) != nil {
+		return nil
+	}
+	return owners
 }
 
 // asUser runs argv as aos, confined like an Agent (pipx and npm installs).

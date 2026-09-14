@@ -46,8 +46,24 @@ func fakeProc(t *testing.T) string {
 	return proc
 }
 
+func TestOwnersRootCantSeeComeFromTheHelper(t *testing.T) {
+	proc := fakeProc(t)
+	// As in Docker: root can't read the fds of node, which another user runs.
+	if err := os.RemoveAll(filepath.Join(proc, "300", "fd")); err != nil {
+		t.Fatal(err)
+	}
+	without, _ := scanListeners(proc, nil)
+	with, _ := scanListeners(proc, map[string]int{"5552": 300, "5551": 999})
+	if without[0].Port != 3000 || without[0].PID != 0 {
+		t.Errorf("without the helper: %+v", without[0])
+	}
+	if with[0].PID != 300 || with[0].Process != "node" || with[1].PID != 200 {
+		t.Errorf("with the helper (which never overrides what root saw): %+v", with)
+	}
+}
+
 func TestListenersComeFromProcfsWithTheirProcesses(t *testing.T) {
-	got, err := scanListeners(fakeProc(t))
+	got, err := scanListeners(fakeProc(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

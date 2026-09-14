@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -70,8 +71,23 @@ func decodeAddr(h string) (string, bool) {
 	return "", false
 }
 
-// scanListeners finds the listening TCP sockets and the processes holding them.
-func scanListeners(procfs string) ([]Listener, error) {
+// SocketsArg makes aosd print which of the processes it may inspect hold
+// which sockets (`aosd __sockets`). Run as aos, it sees the Services that root
+// can't: reading another user's /proc/<pid>/fd needs CAP_SYS_PTRACE, which
+// Docker doesn't give the container.
+const SocketsArg = "__sockets"
+
+// SocketsMain is the body of `aosd __sockets`: socket inode → pid as JSON.
+func SocketsMain() int {
+	if err := json.NewEncoder(os.Stdout).Encode(socketOwners("/proc")); err != nil {
+		return 1
+	}
+	return 0
+}
+
+// scanListeners finds the listening TCP sockets and the processes holding
+// them; more adds owners found by `aosd __sockets`.
+func scanListeners(procfs string, more map[string]int) ([]Listener, error) {
 	var sockets []socket
 	for _, name := range []string{"tcp", "tcp6"} {
 		data, err := os.ReadFile(filepath.Join(procfs, "net", name))
@@ -83,6 +99,11 @@ func scanListeners(procfs string) ([]Listener, error) {
 		return nil, nil
 	}
 	owners := socketOwners(procfs)
+	for inode, pid := range more {
+		if _, ok := owners[inode]; !ok {
+			owners[inode] = pid
+		}
+	}
 	byPort := map[int]Listener{}
 	for _, s := range sockets {
 		l := Listener{Port: s.port, Address: s.address}

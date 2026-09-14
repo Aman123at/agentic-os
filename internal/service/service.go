@@ -98,6 +98,8 @@ type Supervisor struct {
 	LogDir string
 	// Procfs is /proc; tests use a fixture.
 	Procfs string
+	// Owners, if set, returns socket owners root can't see (see SocketsArg).
+	Owners func() map[string]int
 	// Backoff is the first delay before a restart; it doubles up to a minute.
 	Backoff time.Duration
 	Logf    func(format string, args ...any)
@@ -204,7 +206,9 @@ func (s *Supervisor) Create(ctx context.Context, d Definition, actor string) (*a
 	if err := s.record(ctx, d.TaskID, actor, verb+" Service "+d.Name, d.Name, before, d.JSON()); err != nil {
 		return nil, err
 	}
-	s.start(s.put(d))
+	v := s.put(d)
+	s.start(v)
+	s.awaitStart(v)
 	return s.Get(d.Name)
 }
 
@@ -331,7 +335,21 @@ func (s *Supervisor) Start(name string) (*aosv1.ServiceInfo, error) {
 		return nil, err
 	}
 	s.start(v)
+	s.awaitStart(v)
 	return s.Get(name)
+}
+
+// awaitStart gives a starting Service a moment, so the caller sees it running
+// (or failed) rather than still stopped.
+func (s *Supervisor) awaitStart(v *svc) {
+	for deadline := time.Now().Add(time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		s.mu.Lock()
+		state := v.state
+		s.mu.Unlock()
+		if state != aosv1.ServiceState_SERVICE_STATE_STOPPED {
+			return
+		}
+	}
 }
 
 // Stop stops a Service until it is started again or the Machine restarts.
@@ -355,6 +373,7 @@ func (s *Supervisor) Restart(name string) (*aosv1.ServiceInfo, error) {
 	v.restarts = 0
 	s.mu.Unlock()
 	s.start(v)
+	s.awaitStart(v)
 	return s.Get(name)
 }
 
@@ -589,7 +608,11 @@ func (s *Supervisor) Watch(ctx context.Context) {
 
 // Scan reads the listening ports now.
 func (s *Supervisor) Scan() {
-	found, err := scanListeners(s.procfs())
+	var more map[string]int
+	if s.Owners != nil {
+		more = s.Owners()
+	}
+	found, err := scanListeners(s.procfs(), more)
 	if err != nil {
 		return
 	}

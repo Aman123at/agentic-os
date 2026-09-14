@@ -68,6 +68,7 @@ func (t Tools) Restart(_ context.Context, name string) (tool.ServiceStatus, erro
 }
 
 func (t Tools) Status(name string) ([]tool.ServiceStatus, error) {
+	t.S.Scan() // the Agent may have just started a server: current ports
 	if name != "" {
 		s, err := status(t.S.Get(name))
 		if err != nil {

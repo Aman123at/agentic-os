@@ -17,6 +17,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/daemon"
 	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/amantiwari/agentic-os/internal/service"
 	"github.com/amantiwari/agentic-os/internal/webui"
 )
 
@@ -30,6 +31,9 @@ func main() {
 	}
 	if len(os.Args) > 1 && os.Args[1] == files.WorkerArg {
 		os.Exit(files.WorkerMain())
+	}
+	if len(os.Args) > 1 && os.Args[1] == service.SocketsArg {
+		os.Exit(service.SocketsMain())
 	}
 	log.SetFlags(0)
 	log.SetPrefix("aosd: ")
