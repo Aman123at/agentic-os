@@ -109,13 +109,18 @@ func ui() error {
 }
 
 // playwright runs the Desktop's browser e2e and performance suite (§16, §17).
-// The specs arrive in M3.5; until then this reports that there is nothing to run.
+// The specs drive a real `ui` Machine under Docker Compose with the fake model
+// provider (no spend); the suite's global setup builds and starts it. Chromium
+// is installed once and cached in ~/.cache/ms-playwright.
 func playwright() error {
 	if _, err := os.Stat(filepath.Join(desktopDir, "e2e")); os.IsNotExist(err) {
-		fmt.Println("    no Playwright specs yet (added in M3.5)")
+		fmt.Println("    no Playwright specs")
 		return nil
 	}
 	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "exec", "--", "playwright", "install", "chromium"); err != nil {
 		return err
 	}
 	return run("npm", "--prefix", desktopDir, "run", "e2e")

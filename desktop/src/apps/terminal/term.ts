@@ -86,6 +86,13 @@ export class TermController {
     }
     this.safeFit();
 
+    // A test-only hook: the e2e harness sets window.__AOS_E2E__ before load, and
+    // the perf suite reads this xterm instance to time keystroke echo from the
+    // buffer (which the WebGL renderer would otherwise hide). Inert otherwise.
+    if ((window as unknown as { __AOS_E2E__?: boolean }).__AOS_E2E__) {
+      (window as unknown as { __aosTerm?: Terminal }).__aosTerm = this.term;
+    }
+
     if (!this.opts.readOnly) {
       this.term.onData((data) => {
         if (this.ws?.readyState === WebSocket.OPEN) {

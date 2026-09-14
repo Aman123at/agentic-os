@@ -9,7 +9,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "generate": "cd .. && buf generate"
+    "generate": "cd .. && buf generate",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.9.0",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@bufbuild/protoc-gen-es": "^2.9.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

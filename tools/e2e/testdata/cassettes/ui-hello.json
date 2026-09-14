@@ -1,0 +1,6 @@
+{
+  "prompt": "e2e-ui:",
+  "turns": [
+    { "text": "Hello from the Agent. Nothing to do here." }
+  ]
+}

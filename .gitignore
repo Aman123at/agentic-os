@@ -13,6 +13,12 @@ shared/
 desktop/node_modules/
 desktop/dist/
 desktop/*.tsbuildinfo
+
+# Playwright e2e output (added M3.5)
+desktop/e2e/.artifacts/
+desktop/test-results/
+desktop/playwright-report/
+desktop/blob-report/
 internal/webui/dist/*
 !internal/webui/dist/.keep
 
