@@ -14,6 +14,13 @@
   --window-bg: #ffffff;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
   --accent: #0a84ff;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #6e7781;
+  --code-function: #8250df;
+  --code-type: #953800;
+  --code-tag: #116329;
   color-scheme: light dark;
   font-family: -apple-system, "SF Pro Text", "Inter", system-ui, sans-serif;
   font-size: 14px;
@@ -33,6 +40,13 @@
   --window-bg: #1e1e22;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
   --accent: #0a84ff;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-comment: #8b949e;
+  --code-function: #d2a8ff;
+  --code-type: #ffa657;
+  --code-tag: #7ee787;
 }
 
 /* The manual light choice must win even in a dark Host. */
@@ -48,6 +62,13 @@
   --border: rgba(0, 0, 0, 0.12);
   --window-bg: #ffffff;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-comment: #6e7781;
+  --code-function: #8250df;
+  --code-type: #953800;
+  --code-tag: #116329;
 }
 
 * {
