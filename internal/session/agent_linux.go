@@ -37,6 +37,9 @@ type AgentConfig struct {
 	Outputs    *tool.Outputs
 	// Registry, if set, lists the Session for viewers while it runs.
 	Registry *Registry
+	// OnStart, if set, is told the pid of each process the Agent starts: the
+	// shell, an approved command and a background command.
+	OnStart func(pid int)
 }
 
 const (
@@ -128,10 +131,18 @@ func (a *Agent) shell() (*Session, []string, error) {
 		return nil, notes, err
 	}
 	a.sh, a.rs, a.started = sh, rs, time.Now()
+	a.reportStart(sh.Pid())
 	if a.cfg.Registry != nil {
 		a.cfg.Registry.Add(&Entry{ID: a.cfg.TaskID, TaskID: a.cfg.TaskID, Agent: true, Session: sh, Created: a.started, input: a.userTyped})
 	}
 	return sh, notes, nil
+}
+
+// reportStart tells OnStart about a process the Agent started.
+func (a *Agent) reportStart(pid int) {
+	if a.cfg.OnStart != nil {
+		a.cfg.OnStart(pid)
+	}
 }
 
 func (a *Agent) closeShell() {
@@ -273,6 +284,7 @@ func (a *Agent) RunIsolated(ctx context.Context, command string, widen []string,
 	if err := cmd.Start(); err != nil {
 		return tool.CommandResult{}, err
 	}
+	a.reportStart(cmd.Process.Pid)
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
 	deadline := time.NewTimer(timeout)
@@ -359,6 +371,7 @@ func (a *Agent) Start(ctx context.Context, command string) (tool.Process, error)
 		f.Close()
 		return tool.Process{}, err
 	}
+	a.reportStart(cmd.Process.Pid)
 	p := &process{Process: tool.Process{ID: id, Command: command, PID: cmd.Process.Pid, Running: true, OutputRef: ref}, cmd: cmd, done: make(chan struct{})}
 	a.mu.Lock()
 	a.procs[id] = p

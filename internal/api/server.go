@@ -702,6 +702,13 @@ func (sys systemService) Metrics(context.Context, *connect.Request[aosv1.Metrics
 	return connect.NewResponse(sys.s.Sampler.Metrics()), nil
 }
 
+func (sys systemService) Processes(context.Context, *connect.Request[aosv1.ProcessesRequest]) (*connect.Response[aosv1.ProcessesResponse], error) {
+	if sys.s.Sampler == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("processes are not available"))
+	}
+	return connect.NewResponse(sys.s.Sampler.Processes()), nil
+}
+
 func (sys systemService) Audit(ctx context.Context, req *connect.Request[aosv1.AuditRequest]) (*connect.Response[aosv1.AuditResponse], error) {
 	entries, err := sys.s.Audit.List(ctx, req.Msg.TaskId, int(req.Msg.Limit), req.Msg.BeforeId)
 	if err != nil {

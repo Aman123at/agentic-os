@@ -28,6 +28,10 @@ type Sampler struct {
 
 	mu   sync.Mutex
 	prev cpuSample
+	// For Processes: the Tasks' processes, and each process's CPU ticks at the previous call.
+	owners  map[procKey]string
+	procCPU map[procKey]uint64
+	procsAt time.Time
 }
 
 type cpuSample struct {

@@ -94,6 +94,7 @@ type Daemon struct {
 	software *software.Manager
 	services *service.Supervisor
 	settings *settings.Store
+	sampler  *sysinfo.Sampler
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -102,6 +103,7 @@ type Daemon struct {
 // Run starts aosd and serves until ctx ends.
 func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d := &Daemon{cfg: cfg, layout: sandbox.DefaultLayout(), abi: sandbox.ABI(), git: map[string]map[string]bool{}}
+	d.sampler = &sysinfo.Sampler{Disks: []string{d.layout.Home, d.layout.Shared, StateDir}}
 	if err := d.init(); err != nil {
 		return err
 	}
@@ -163,7 +165,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
-		Sampler: &sysinfo.Sampler{Disks: []string{d.layout.Home, d.layout.Shared, StateDir}},
+		Sampler: d.sampler,
 	}
 	handler := srv.Handler()
 
@@ -326,6 +328,7 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	agentSession := session.NewAgent(session.AgentConfig{
 		TaskID: env.TaskID, Dir: filepath.Join(SessionsDir, env.TaskID), UID: d.uid, GID: d.gid, Home: d.layout.Home,
 		Policy: d.agentPolicy, Confine: d.abi >= 1, PathPrefix: AgentBinDir + ":", Outputs: d.outputs, Registry: d.registry,
+		OnStart: func(pid int) { d.sampler.Started(pid, env.TaskID) },
 		// npm's global prefix is in the home folder (PLAN.md §11).
 		Env: []string{"NPM_CONFIG_PREFIX=" + d.layout.Home + "/.local"},
 	})
