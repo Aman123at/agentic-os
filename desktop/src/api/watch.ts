@@ -7,8 +7,8 @@
 //
 // So a tab keeps one Watch stream, for the folder most recently opened; views
 // of the same folder share it. Other folders are listed every 2 s, the cadence
-// Watch polls at on aosd anyway. A hidden tab watches nothing, and lists again
-// as soon as it is shown.
+// Watch polls at on aosd anyway. A hidden tab only lists a folder it has never
+// listed, and watches again as soon as it is shown.
 import { ConnectError } from "@connectrpc/connect";
 
 import type { FileInfo } from "../gen/aos/v1/services_pb";
@@ -20,7 +20,7 @@ const RETRY = 5000;
 
 export interface FolderListener {
   onEntries: (entries: FileInfo[]) => void;
-  onError: (message: string) => void;
+  onError: (err: ConnectError) => void;
 }
 
 type Mode = "stream" | "poll" | "idle";
@@ -31,7 +31,7 @@ interface Watched {
   entries?: FileInfo[];
   key: string;
   opened: number; // when a view last subscribed; the newest gets the stream
-  mode: Mode;
+  mode?: Mode; // unset until first given one
   stop?: AbortController;
 }
 
@@ -43,7 +43,7 @@ let clock = 0;
 export function watchFolder(path: string, listener: FolderListener): () => void {
   let w = watched.get(path);
   if (!w) {
-    w = { path, listeners: new Set(), key: "", opened: 0, mode: "idle" };
+    w = { path, listeners: new Set(), key: "", opened: 0 };
     watched.set(path, w);
   } else if (w.entries) {
     listener.onEntries(w.entries);
@@ -71,9 +71,8 @@ function rebalance() {
     if (mode === w.mode) return;
     w.stop?.abort();
     w.mode = mode;
-    if (mode === "idle") return;
     w.stop = new AbortController();
-    void (mode === "stream" ? runStream : runPoll)(w, w.stop.signal);
+    void (mode === "stream" ? runStream : runPoll)(w, w.stop.signal, mode === "poll" ? INTERVAL : 0);
   });
 }
 
@@ -88,10 +87,10 @@ function publish(w: Watched, entries: FileInfo[]) {
 }
 
 function fail(w: Watched, err: unknown) {
-  const message = ConnectError.from(err).message;
+  const e = ConnectError.from(err);
   // The next listing is sent even if unchanged, so views clear the error.
   w.entries = undefined;
-  for (const l of [...w.listeners]) l.onError(message);
+  for (const l of [...w.listeners]) l.onError(e);
 }
 
 async function runStream(w: Watched, signal: AbortSignal) {
@@ -106,7 +105,10 @@ async function runStream(w: Watched, signal: AbortSignal) {
   }
 }
 
-async function runPoll(w: Watched, signal: AbortSignal) {
+// runPoll lists the folder every interval, or, with none, once if it has no
+// listing yet.
+async function runPoll(w: Watched, signal: AbortSignal, interval: number) {
+  if (!interval && w.entries) return;
   while (!signal.aborted) {
     try {
       const resp = await files.list({ path: w.path }, { signal });
@@ -115,7 +117,8 @@ async function runPoll(w: Watched, signal: AbortSignal) {
       if (signal.aborted) return;
       fail(w, err);
     }
-    await sleep(INTERVAL, signal);
+    if (!interval) return;
+    await sleep(interval, signal);
   }
 }
 

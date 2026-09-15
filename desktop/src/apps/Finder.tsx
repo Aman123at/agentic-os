@@ -127,8 +127,8 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
         ++loadSeq.current;
         show(listed);
       },
-      onError: (message) => {
-        setError(message);
+      onError: (err) => {
+        setError(err.message);
         setEntries([]);
         setLoading(false);
       },

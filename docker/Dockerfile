@@ -83,8 +83,11 @@ RUN apt-get update \
 COPY --from=node-dist /opt/node/ /usr/local/
 # Ubuntu images ship a `ubuntu` user with uid 1000; the Machine's user is `aos`.
 # aosd arranges the home layout (Protected dotfiles, ~/Shared) at every start.
+# ~/Downloads is where downloads land and the Desktop's Downloads stack looks;
+# a new home volume is seeded with it from the image.
 RUN userdel -r ubuntu 2>/dev/null || true; \
     useradd --uid 1000 --user-group --create-home --shell /bin/bash aos \
+ && install -d -o aos -g aos /home/aos/Downloads \
  && rm -f /etc/apt/apt.conf.d/docker-clean \
  && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos /shared \
  && chmod 0700 /var/lib/aos

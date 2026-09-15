@@ -1,6 +1,7 @@
 // The Downloads stack (PLAN.md §4.3): a Dock tile that fans out the newest files
 // in ~/Downloads above it, with downloads still in progress (DownloadProgress
 // events) on top. The folder is watched only while the fan is open.
+import { Code } from "@connectrpc/connect";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { watchFolder } from "../api/watch";
@@ -42,7 +43,11 @@ export function DownloadsFan({ anchor, onClose }: { anchor: DOMRect; onClose: ()
           setEntries(e);
           setError("");
         },
-        onError: setError,
+        // No ~/Downloads yet just means nothing was downloaded.
+        onError: (err) => {
+          if (err.code === Code.NotFound) setEntries([]);
+          else setError(err.message);
+        },
       }),
     [],
   );
