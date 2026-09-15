@@ -6,9 +6,9 @@
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
-import type { Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
+import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
 import type { Approval, Task, TaskStep } from "./gen/aos/v1/types_pb";
-import { ApprovalDecision, ToolCallStatus } from "./gen/aos/v1/types_pb";
+import { ApprovalDecision, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
 import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
 import { subscribe, type ConnState } from "./api/events";
 import { appForFile } from "./apps/filetypes";
@@ -62,6 +62,9 @@ interface DesktopState {
   approvals: Record<string, Approval>; // pending only
   openTask: string;
   steps: TaskStep[];
+  // Downloads still in progress, by the Tool call's step id, for the Dock's
+  // Downloads stack.
+  downloads: Record<string, DownloadProgress>;
   spotlight: boolean;
   notifCenter: boolean;
   // A file for the Finder to reveal, set by Spotlight; the Finder consumes and
@@ -130,6 +133,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   approvals: {},
   openTask: "",
   steps: [],
+  downloads: {},
   spotlight: false,
   notifCenter: false,
   finderJump: null,
@@ -402,6 +406,11 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let tasks = s.tasks;
   let approvals = s.approvals;
   let steps = s.steps;
+  let downloads = s.downloads;
+  const dropDownloads = (keep: (d: DownloadProgress, stepId: string) => boolean) => {
+    const next = Object.fromEntries(Object.entries(downloads).filter(([id, d]) => keep(d, id)));
+    if (Object.keys(next).length !== Object.keys(downloads).length) downloads = next;
+  };
 
   for (const e of batch) {
     const k = e.kind;
@@ -415,6 +424,8 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "taskChanged": {
         const t = k.value.task;
         if (t) tasks = { ...tasks, [t.id]: t };
+        // A Task that stops ends its downloads, whatever their last progress said.
+        if (t && t.state !== TaskState.RUNNING) dropDownloads((d) => d.taskId !== t.id);
         break;
       }
       case "approval": {
@@ -434,6 +445,13 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "taskStep": {
         const step = k.value.step;
         if (step && step.taskId === s.openTask) steps = upsertStep(steps, step);
+        // A download is over when its Tool call is.
+        if (step && downloads[step.id] && (step.toolCall?.status ?? 0) >= ToolCallStatus.SUCCEEDED) dropDownloads((_, id) => id !== step.id);
+        break;
+      }
+      case "downloadProgress": {
+        const d = k.value;
+        downloads = { ...downloads, [d.stepId]: d };
         break;
       }
       case "textDelta": {
@@ -449,6 +467,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (tasks !== s.tasks) out.tasks = tasks;
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
+  if (downloads !== s.downloads) out.downloads = downloads;
   return out;
 }
 

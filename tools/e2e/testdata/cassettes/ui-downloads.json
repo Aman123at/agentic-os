@@ -1,0 +1,4 @@
+{"prompt": "ui-downloads: fetch the health check", "turns": [
+  {"calls": [{"name": "download", "arguments": {"url": "http://127.0.0.1:7700/healthz", "path": "~/Downloads/ui-downloads-health.txt", "overwrite": true}}]},
+  {"text": "Saved the health check to ~/Downloads/ui-downloads-health.txt."}
+]}
