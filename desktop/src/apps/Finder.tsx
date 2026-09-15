@@ -11,6 +11,7 @@ import { files, tasks, trash } from "../api/client";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
+import { VirtualList } from "../ui/VirtualList";
 import {
   PLACES,
   basename,
@@ -440,58 +441,44 @@ function dragProps(e: FileInfo, onMove: RowsProps["onMove"]) {
   };
 }
 
-// FileList is the virtualised list view: only the visible rows are rendered.
+// FileList is the list view, virtualised: only the visible rows are rendered.
 function FileList({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsProps) {
-  const box = useRef<HTMLDivElement>(null);
-  const [scroll, setScroll] = useState(0);
-  const [height, setHeight] = useState(300);
-
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return;
-    setHeight(el.clientHeight);
-    const ro = new ResizeObserver(() => setHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const first = Math.max(0, Math.floor(scroll / ROW_H) - 6);
-  const count = Math.ceil(height / ROW_H) + 12;
-  const slice = entries.slice(first, first + count);
-
   return (
-    <div className="finder__list" ref={box} onScroll={(e) => setScroll(e.currentTarget.scrollTop)}>
-      <div className="finder__list-head" style={{ top: scroll }}>
-        <span className="finder__col-name">Name</span>
-        <span className="finder__col-size">Size</span>
-        <span className="finder__col-when">Modified</span>
-      </div>
-      <div style={{ height: entries.length * ROW_H, position: "relative" }}>
-        {slice.map((e, i) => (
-          <div
-            key={e.path}
-            className={`finder__row${selected === e.path ? " finder__row--on" : ""}`}
-            style={{ top: (first + i) * ROW_H }}
-            onClick={() => onSelect(e.path)}
-            onDoubleClick={() => onOpen(e)}
-            onContextMenu={(ev) => {
-              ev.preventDefault();
-              onSelect(e.path);
-              onMenu(ev.clientX, ev.clientY, e);
-            }}
-            {...dragProps(e, onMove)}
-          >
-            <span className="finder__col-name">
-              <span className="finder__icon">{iconFor(e)}</span>
-              <span className="finder__name">{e.name}</span>
-              {e.protected && <span className="finder__lock" title="Protected">🔒</span>}
-            </span>
-            <span className="finder__col-size">{formatSize(e.size, e.dir)}</span>
-            <span className="finder__col-when">{formatWhen(e.modifiedAt)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <VirtualList
+      className="finder__list"
+      items={entries}
+      rowHeight={ROW_H}
+      header={
+        <div className="finder__list-head">
+          <span className="finder__col-name">Name</span>
+          <span className="finder__col-size">Size</span>
+          <span className="finder__col-when">Modified</span>
+        </div>
+      }
+      renderRow={(e, style) => (
+        <div
+          key={e.path}
+          className={`finder__row${selected === e.path ? " finder__row--on" : ""}`}
+          style={style}
+          onClick={() => onSelect(e.path)}
+          onDoubleClick={() => onOpen(e)}
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            onSelect(e.path);
+            onMenu(ev.clientX, ev.clientY, e);
+          }}
+          {...dragProps(e, onMove)}
+        >
+          <span className="finder__col-name">
+            <span className="finder__icon">{iconFor(e)}</span>
+            <span className="finder__name">{e.name}</span>
+            {e.protected && <span className="finder__lock" title="Protected">🔒</span>}
+          </span>
+          <span className="finder__col-size">{formatSize(e.size, e.dir)}</span>
+          <span className="finder__col-when">{formatWhen(e.modifiedAt)}</span>
+        </div>
+      )}
+    />
   );
 }
 
