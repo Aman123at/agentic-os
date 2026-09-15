@@ -10,7 +10,9 @@ import (
 )
 
 // machine returns Ops for a home folder and a Shared Folder in a temp dir, with
-// a fixed clock.
+// a fixed clock. The Machine's scratch folder is inside the temp dir too: on
+// Linux the temp dir is under /tmp, which would otherwise count as scratch and
+// make every delete permanent.
 func machine(t *testing.T) (Ops, string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -21,7 +23,7 @@ func machine(t *testing.T) (Ops, string, string) {
 		}
 	}
 	now := time.Date(2026, 9, 14, 10, 30, 0, 0, time.Local)
-	return Ops{Home: home, Shared: shared, UID: 1000, Now: func() time.Time { return now }}, home, shared
+	return Ops{Home: home, Shared: shared, UID: 1000, Scratch: []string{filepath.Join(root, "tmp")}, Now: func() time.Time { return now }}, home, shared
 }
 
 func writeFile(t *testing.T, path, content string) {
