@@ -164,13 +164,14 @@ type Tracker struct {
 	Now    func() time.Time
 }
 
-func (t *Tracker) day() string {
-	now := time.Now()
+func (t *Tracker) now() time.Time {
 	if t.Now != nil {
-		now = t.Now()
+		return t.Now()
 	}
-	return now.Format("2006-01-02")
+	return time.Now()
 }
+
+func (t *Tracker) day() string { return t.now().Format("2006-01-02") }
 
 // Cost estimates what u cost with model; a broken prices.yaml means unknown.
 func (t *Tracker) Cost(model string, u llm.Usage) (float64, bool) {
@@ -207,4 +208,39 @@ func (t *Tracker) Today(ctx context.Context) (*aosv1.Usage, error) {
 		COALESCE(SUM(output_tokens), 0), COALESCE(SUM(reasoning_tokens), 0), COALESCE(SUM(cost_usd), 0), COALESCE(MIN(cost_known), 1)
 		FROM usage WHERE day = ?`, t.day()).Scan(&u.InputTokens, &u.CachedInputTokens, &u.OutputTokens, &u.ReasoningTokens, &u.CostUsd, &u.CostKnown)
 	return u, err
+}
+
+// Days returns the last n days' usage over every model, today included and
+// oldest first. A day without usage has zeros, so a chart needs no gaps filled.
+func (t *Tracker) Days(ctx context.Context, n int) ([]*aosv1.DailyUsage, error) {
+	now := t.now()
+	rows, err := t.DB.Read().QueryContext(ctx, `SELECT day, SUM(input_tokens), SUM(cached_input_tokens), SUM(output_tokens),
+		SUM(reasoning_tokens), SUM(cost_usd), MIN(cost_known) FROM usage WHERE day >= ? GROUP BY day`,
+		now.AddDate(0, 0, -(n-1)).Format("2006-01-02"))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byDay := map[string]*aosv1.Usage{}
+	for rows.Next() {
+		var day string
+		u := &aosv1.Usage{}
+		if err := rows.Scan(&day, &u.InputTokens, &u.CachedInputTokens, &u.OutputTokens, &u.ReasoningTokens, &u.CostUsd, &u.CostKnown); err != nil {
+			return nil, err
+		}
+		byDay[day] = u
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]*aosv1.DailyUsage, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		day := now.AddDate(0, 0, -i).Format("2006-01-02")
+		u := byDay[day]
+		if u == nil {
+			u = &aosv1.Usage{CostKnown: true}
+		}
+		out = append(out, &aosv1.DailyUsage{Day: day, Usage: u})
+	}
+	return out, nil
 }

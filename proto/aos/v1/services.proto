@@ -603,6 +603,23 @@ message SaveDesktopStateResponse {}
 service SystemService {
   rpc Info(InfoRequest) returns (InfoResponse);
   rpc Audit(AuditRequest) returns (AuditResponse);
+  // Model usage per day over every model, for the Agent app's chart.
+  rpc Usage(UsageRequest) returns (UsageResponse);
+}
+
+message UsageRequest {
+  // How many days back, today included: 1 to 366; 0 means 30.
+  int32 days = 1;
+}
+message UsageResponse {
+  // Oldest first; a day without usage has zeros.
+  repeated DailyUsage days = 1;
+}
+
+message DailyUsage {
+  // YYYY-MM-DD, in the Machine's time zone.
+  string day = 1;
+  Usage usage = 2;
 }
 
 message InfoRequest {}

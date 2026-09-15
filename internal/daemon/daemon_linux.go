@@ -161,7 +161,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Info: d.info, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
 	}
 	handler := srv.Handler()
 

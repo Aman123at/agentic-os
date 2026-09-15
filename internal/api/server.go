@@ -24,6 +24,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/task"
+	"github.com/amantiwari/agentic-os/internal/usage"
 )
 
 // Protected stores the paths the user locked.
@@ -78,6 +79,8 @@ type Server struct {
 	APIKey APIKey
 	// WatchInterval is how often FileService.Watch lists a folder again; 0 means 2 s.
 	WatchInterval time.Duration
+	// Usage is model usage per day.
+	Usage *usage.Tracker
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -669,6 +672,24 @@ type systemService struct{ s *Server }
 
 func (sys systemService) Info(context.Context, *connect.Request[aosv1.InfoRequest]) (*connect.Response[aosv1.InfoResponse], error) {
 	return connect.NewResponse(sys.s.Info()), nil
+}
+
+func (sys systemService) Usage(ctx context.Context, req *connect.Request[aosv1.UsageRequest]) (*connect.Response[aosv1.UsageResponse], error) {
+	if sys.s.Usage == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("usage is not available"))
+	}
+	n := int(req.Msg.Days)
+	switch {
+	case n == 0:
+		n = 30
+	case n < 0 || n > 366:
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("usage covers 1 to 366 days"))
+	}
+	days, err := sys.s.Usage.Days(ctx, n)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.UsageResponse{Days: days}), nil
 }
 
 func (sys systemService) Audit(ctx context.Context, req *connect.Request[aosv1.AuditRequest]) (*connect.Response[aosv1.AuditResponse], error) {

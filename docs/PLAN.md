@@ -621,7 +621,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
 | `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
 | `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `GetDesktopState`, `SaveDesktopState` (M3); `Get`, `Update` (M4: the settings that can change while AOS runs, §6.4, each with where its value comes from), `SetApiKey` (M4) |
-| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes`, `Audit` |
+| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes`, `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart) |
 
 **Plain HTTP routes:**
 - `GET /` serves the Desktop.
