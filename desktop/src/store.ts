@@ -8,7 +8,7 @@ import { create } from "zustand";
 
 import type { Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
 import type { Approval, Task, TaskStep } from "./gen/aos/v1/types_pb";
-import { ApprovalDecision } from "./gen/aos/v1/types_pb";
+import { ApprovalDecision, ToolCallStatus } from "./gen/aos/v1/types_pb";
 import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
 import { subscribe, type ConnState } from "./api/events";
 import { APPS, type AppId } from "./apps/registry";
@@ -255,18 +255,22 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   loadTask: async (id) => {
     const resp = await taskApi.getTask({ id }).catch(() => null);
     if (!resp?.task) return;
-    const task = resp.task;
+    const loaded = resp.task;
+    // Events may have overtaken this reply: a fast Task can finish while
+    // GetTask is in flight, and then no later event would correct an older
+    // snapshot. So the newer copy of the Task and of each step wins.
     set((s) => {
       const approvals = { ...s.approvals };
       for (const a of resp.approvals) {
         if (a.decision === ApprovalDecision.UNSPECIFIED) approvals[a.id] = a;
         else delete approvals[a.id];
       }
+      const current = s.tasks[id];
       return {
-        tasks: { ...s.tasks, [task.id]: task },
+        tasks: current && newerTask(current, loaded) === current ? s.tasks : { ...s.tasks, [id]: loaded },
         approvals,
         // Only the open Task keeps a live step feed.
-        steps: s.openTask === id ? resp.steps : s.steps,
+        steps: s.openTask === id ? mergeSteps(resp.steps, s.steps) : s.steps,
       };
     });
   },
@@ -406,6 +410,42 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
   return out;
+}
+
+// newerTask picks the later of two copies of a Task: by update time, then by
+// usage, which grows without changing the update time.
+function newerTask(a: Task, b: Task): Task {
+  const at = millisOf(a.updatedAt);
+  const bt = millisOf(b.updatedAt);
+  if (at !== bt) return at > bt ? a : b;
+  return tokensOf(b) > tokensOf(a) ? b : a;
+}
+
+function millisOf(ts?: { seconds: bigint; nanos: number }): number {
+  return ts ? Number(ts.seconds) * 1000 + Math.floor(ts.nanos / 1e6) : 0;
+}
+
+function tokensOf(t: Task): number {
+  return t.usage ? Number(t.usage.inputTokens) + Number(t.usage.outputTokens) : 0;
+}
+
+// mergeSteps combines a loaded step feed with the steps events brought, keeping
+// the further-along copy of each step, in step order.
+function mergeSteps(loaded: TaskStep[], live: TaskStep[]): TaskStep[] {
+  const byId = new Map(loaded.map((st) => [st.id, st]));
+  for (const st of live) {
+    const other = byId.get(st.id);
+    if (!other || stepProgress(st) >= stepProgress(other)) byId.set(st.id, st);
+  }
+  return [...byId.values()].sort((a, b) => Number(a.seq - b.seq));
+}
+
+// stepProgress orders copies of one step: a tool call moves from pending to a
+// final status, and streamed text only grows.
+function stepProgress(st: TaskStep): number {
+  const status = st.toolCall?.status ?? ToolCallStatus.UNSPECIFIED;
+  const rank = status >= ToolCallStatus.SUCCEEDED ? 3 : status === ToolCallStatus.RUNNING ? 2 : status === ToolCallStatus.UNSPECIFIED ? 0 : 1;
+  return rank * 1e9 + st.text.length + (st.toolCall?.result.length ?? 0);
 }
 
 function upsertStep(steps: TaskStep[], step: TaskStep): TaskStep[] {
