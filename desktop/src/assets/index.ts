@@ -7,8 +7,12 @@
 import type { AppId } from "../apps/registry";
 import aboutIcon from "./about.svg?url";
 import agentIcon from "./agent.svg?url";
+import downloadsIcon from "./downloads.svg?url";
 import finderIcon from "./finder.svg?url";
+import previewIcon from "./preview.svg?url";
 import terminalIcon from "./terminal.svg?url";
+import texteditIcon from "./textedit.svg?url";
+import trashIcon from "./trash.svg?url";
 import wallpaperDark from "./wallpaper-dark.svg?url";
 import wallpaperLight from "./wallpaper-light.svg?url";
 
@@ -23,4 +27,10 @@ export const appArt: Partial<Record<AppId, string>> = {
   terminal: terminalIcon,
   agent: agentIcon,
   about: aboutIcon,
+  preview: previewIcon,
+  textedit: texteditIcon,
+  trash: trashIcon,
 };
+
+// The Dock's Downloads stack, which is not an app.
+export const downloadsArt = downloadsIcon;

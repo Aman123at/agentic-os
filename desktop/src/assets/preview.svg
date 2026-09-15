@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Preview">
+  <defs>
+    <linearGradient id="pbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f9fc"/>
+      <stop offset="1" stop-color="#d9e1ec"/>
+    </linearGradient>
+    <linearGradient id="psky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7cc4ff"/>
+      <stop offset="1" stop-color="#3a86e8"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#pbg)"/>
+  <rect x="26" y="30" width="76" height="60" rx="6" fill="url(#psky)"/>
+  <circle cx="84" cy="46" r="7" fill="#fff4b8"/>
+  <path d="M26 82 L50 58 L66 72 L78 62 L102 84 V84 A6 6 0 0 1 96 90 H32 A6 6 0 0 1 26 84 Z" fill="#2f9e5b"/>
+  <circle cx="82" cy="86" r="16" fill="none" stroke="#3b4658" stroke-width="7"/>
+  <path d="M93 97 L106 110" stroke="#3b4658" stroke-width="9" stroke-linecap="round"/>
+</svg>

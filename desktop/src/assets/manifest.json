@@ -10,6 +10,10 @@
     "finder": "finder.svg",
     "terminal": "terminal.svg",
     "agent": "agent.svg",
-    "about": "about.svg"
+    "about": "about.svg",
+    "preview": "preview.svg",
+    "textedit": "textedit.svg",
+    "trash": "trash.svg",
+    "downloads": "downloads.svg"
   }
 }

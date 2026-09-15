@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { watchFolder } from "../api/watch";
+import { downloadsArt } from "../assets";
 import type { FileInfo } from "../gen/aos/v1/services_pb";
 import { formatSize, iconFor } from "../apps/finder/fs";
 import { useDesktop } from "../store";
@@ -15,7 +16,7 @@ export function DownloadsTile({ open, onToggle }: { open: boolean; onToggle: () 
   const active = useDesktop((s) => Object.keys(s.downloads).length);
   return (
     <button className={`dock__tile${open ? " dock__tile--open" : ""}`} title="Downloads" aria-expanded={open} onClick={onToggle}>
-      <span className="dock__icon dock__stack">⬇️</span>
+      <img className="dock__icon dock__icon--art" src={downloadsArt} alt="" draggable={false} />
       {active > 0 && (
         <span className="dock__badge" aria-label={`${active} downloading`}>
           {active}

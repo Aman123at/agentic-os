@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="TextEdit">
+  <defs>
+    <linearGradient id="tbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e6e8ee"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#tbg)"/>
+  <path d="M34 36 H80 M34 50 H94 M34 64 H90 M34 78 H70 M34 92 H58" stroke="#aab2c0" stroke-width="5" stroke-linecap="round"/>
+  <g transform="rotate(40 82 78)">
+    <rect x="74" y="36" width="16" height="58" rx="3" fill="#f5a623"/>
+    <rect x="74" y="36" width="16" height="10" rx="3" fill="#e46c6c"/>
+    <path d="M74 94 H90 L82 110 Z" fill="#f3d7a8"/>
+    <path d="M79.5 105 H84.5 L82 110 Z" fill="#3b4658"/>
+  </g>
+</svg>
