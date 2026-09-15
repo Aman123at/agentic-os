@@ -1,6 +1,6 @@
-// The Appearance pane (PLAN.md §4.3, M4.5): the theme and the wallpaper. Both are
-// saved in the Desktop state, so a new tab starts from them. Liquid Glass joins
-// this pane in M4.6.
+// The Appearance pane (PLAN.md §4.3, M4.5): the theme, the wallpaper and Liquid
+// Glass (M4.6). All are saved in the Desktop state, so a new tab starts from
+// them. Glass is off by default; the frame watchdog can turn it back off.
 import { useDesktop } from "../../store";
 import type { WallpaperPref } from "../../store";
 import type { ThemePref } from "../../theme";
@@ -21,6 +21,8 @@ export default function AppearancePane() {
   const setTheme = useDesktop((s) => s.setTheme);
   const wallpaper = useDesktop((s) => s.wallpaper);
   const setWallpaper = useDesktop((s) => s.setWallpaper);
+  const glass = useDesktop((s) => s.glass);
+  const setGlass = useDesktop((s) => s.setGlass);
 
   return (
     <div className="set__pane">
@@ -61,6 +63,27 @@ export default function AppearancePane() {
               {w.hint && <span className="appr__chint">{w.hint}</span>}
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="set__group">
+        <h3 className="set__grouphead">Liquid Glass</h3>
+        <div className="set__row">
+          <div className="set__label">
+            <span className="set__name">Liquid Glass</span>
+            <span className="set__hint">A more translucent menu bar, Dock and panels. Needs a capable GPU; the Desktop turns it off if frames drop.</span>
+          </div>
+          <div className="set__control">
+            <button
+              className={`appr__switch${glass ? " appr__switch--on" : ""}`}
+              role="switch"
+              aria-checked={glass}
+              aria-label="Liquid Glass"
+              onClick={() => setGlass(!glass)}
+            >
+              <span className="appr__knob" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </section>
     </div>

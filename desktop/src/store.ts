@@ -3,10 +3,12 @@
 // state arrives over the event stream, so several tabs converge. The window
 // layout is kept per tab (sessionStorage, so a reload restores this tab's own
 // windows) and saved on the server (debounced) to seed new tabs.
+import { create as createMessage } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
 import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
+import { NotificationSchema } from "./gen/aos/v1/services_pb";
 import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
 import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
@@ -14,7 +16,7 @@ import { subscribe, type ConnState } from "./api/events";
 import { appForFile } from "./apps/filetypes";
 import { APPS, type AppId } from "./apps/registry";
 import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
-import { applyTheme, type ThemePref } from "./theme";
+import { applyGlass, applyTheme, type ThemePref } from "./theme";
 
 export type Phase = "loading" | "needs-signin" | "ready" | "error";
 
@@ -48,6 +50,8 @@ interface Persisted {
   // (PLAN.md §4.3). Absent in layouts saved before M4.5, so both are optional.
   wallpaper?: WallpaperPref;
   shortcuts?: Partial<ShortcutMap>;
+  // Liquid Glass (M4.6), off unless saved on. Absent in older layouts.
+  glass?: boolean;
   // Layouts saved before M4.2 kept the open Task here, for the old Tasks window.
   openTask?: string;
 }
@@ -59,6 +63,8 @@ interface DesktopState {
   conn: ConnState;
   theme: ThemePref;
   wallpaper: WallpaperPref;
+  // Liquid Glass on (M4.6); the frame watchdog turns it off if frames drop.
+  glass: boolean;
   // The keyboard remap in force, read by shell/keyboard.ts. Seeded from the
   // Host defaults, then overridden by what System Settings saved.
   shortcuts: ShortcutMap;
@@ -98,6 +104,10 @@ interface DesktopState {
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
   setWallpaper: (pref: WallpaperPref) => void;
+  /** Turns Liquid Glass on or off; shared with every tab through the saved layout. */
+  setGlass: (on: boolean) => void;
+  /** Adds a client-only notification (e.g. the watchdog's), kept until dismissed here. */
+  pushLocalNotification: (n: { title: string; body?: string }) => void;
   /** Remaps one keyboard shortcut; shared with every tab through the saved layout. */
   setShortcut: (action: keyof ShortcutMap, combo: string) => void;
   /** Opens an app; given a document, opens it in its own window, or focuses the window already showing it. */
@@ -137,6 +147,9 @@ interface DesktopState {
 }
 
 let nextId = 1;
+// Ids for client-only notifications (the watchdog's), namespaced so they never
+// collide with the server's and so dismissal can tell them apart.
+let localNoteId = 1;
 const desktopSize = () => ({ w: window.innerWidth, h: window.innerHeight });
 
 // signIn exchanges a one-time code from the URL hash (#code=…) for the session
@@ -155,6 +168,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   conn: "connecting",
   theme: "auto",
   wallpaper: "aurora",
+  glass: false,
   shortcuts: defaultShortcuts(),
   windows: [],
   focused: "",
@@ -214,6 +228,18 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   setWallpaper: (pref) => {
     set({ wallpaper: pref });
     save(get);
+  },
+
+  setGlass: (on) => {
+    applyGlass(on);
+    set({ glass: on });
+    save(get);
+  },
+
+  pushLocalNotification: (n) => {
+    // A local id so dismissNotification removes it here without a server call.
+    const note = createMessage(NotificationSchema, { id: `local-${localNoteId++}`, title: n.title, body: n.body ?? "" });
+    set((s) => ({ notifications: [note, ...s.notifications].slice(0, MAX_NOTIFICATIONS) }));
   },
 
   setShortcut: (action, combo) => {
@@ -398,6 +424,13 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   toggleSpotlight: (open) => set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false })),
   toggleNotifCenter: (open) => set((s) => ({ notifCenter: open ?? !s.notifCenter, spotlight: false })),
   dismissNotification: (id) => {
+    // Client-only notifications live only in this tab, so drop them here.
+    if (id?.startsWith("local-")) {
+      set((s) => ({ notifications: s.notifications.filter((n) => n.id !== id) }));
+      return;
+    }
+    // Clearing all also clears any local ones the server won't know about.
+    if (!id) set((s) => ({ notifications: s.notifications.filter((n) => !n.id.startsWith("local-")) }));
     void system.dismissNotification(id ? { id } : { all: true }).catch(() => {});
   },
 
@@ -610,6 +643,7 @@ function flushSave(get: () => DesktopState) {
   const state: Persisted = {
     theme: s.theme,
     wallpaper: s.wallpaper,
+    glass: s.glass,
     shortcuts: s.shortcuts,
     focused: s.focused,
     windows: s.windows.map(({ id, appId, title, rect, minimized, maximized, state }) => ({ id, appId, title, rect, minimized, maximized, state })),
@@ -646,6 +680,7 @@ function restore(json: string, set: SetState) {
     return;
   }
   applyTheme(saved.theme ?? "auto");
+  applyGlass(saved.glass ?? false);
   // Re-key the windows so restored ids never collide with freshly opened ones.
   let focused = "";
   const windows: Win[] = (saved.windows ?? [])
@@ -659,7 +694,7 @@ function restore(json: string, set: SetState) {
   // A saved remap may cover only some actions (or come from an older layout);
   // the Host defaults fill in the rest.
   const shortcuts = { ...defaultShortcuts(), ...saved.shortcuts };
-  set({ theme: saved.theme ?? "auto", wallpaper: saved.wallpaper ?? "aurora", shortcuts, windows, focused, topZ: windows.length + 1 });
+  set({ theme: saved.theme ?? "auto", wallpaper: saved.wallpaper ?? "aurora", glass: saved.glass ?? false, shortcuts, windows, focused, topZ: windows.length + 1 });
 }
 
 // upgradeWindow turns the M3 Tasks window of an older saved layout into the

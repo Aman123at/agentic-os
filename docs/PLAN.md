@@ -172,7 +172,7 @@ flowchart LR
 
 - A macOS Sonoma/Sequoia-style look, themed with CSS custom properties.
 - Frosted "vibrancy" panels, using a single `backdrop-filter` blur layer per surface.
-- **Optional "Liquid Glass" appearance** (macOS Tahoe style: refraction and layered translucency), off by default. It switches itself off, with a notification, if frame times exceed budget.
+- **Optional "Liquid Glass" appearance** (macOS Tahoe style: refraction and layered translucency), off by default, turned on in System Settings → Appearance. It thins the frosted panels and boosts the backdrop blur and saturation on the menu bar, Dock and panels. A frame watchdog runs only while it is on — it measures frames with `requestAnimationFrame` gaps plus the Long Animation Frames API where the browser supports it — and switches Liquid Glass off, with a notification, if frames stay over budget for a sustained stretch.
 - Follows the Host's `prefers-color-scheme`, with a manual override.
 - System font stack (SF on macOS Hosts), with bundled Inter as the fallback on Windows and Linux.
 - **Assets:**
@@ -659,6 +659,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 |---|---|---|
 | `docker compose up` to usable (after build) | < 5 s | CI timer from container start to `SystemService.Info` OK and Desktop first paint |
 | Window drag and animations | 60 fps (p95 frame < 16.7 ms) | Playwright + Chrome tracing on a scripted drag |
+| Window drag with eight windows open | main-thread p95 stays cheap | Playwright + Chrome tracing on a scripted drag; gates on main-thread p95 only (headless has no GPU compositor). The real-GPU eight-plus-window run is reported from the live suite |
 | Terminal keystroke echo | < 30 ms p95 | Input-to-render timing in the e2e perf test |
 | Tool dispatch overhead | < 10 ms p95 | Go benchmark: policy + sandbox + framing around `true` |
 | First visible Agent step | < 1 s after submit | Time to first `TextDelta` or `TaskStep` (real-model live suite) |

@@ -2736,7 +2736,61 @@ button.stack__item:hover {
 .appr__cname { font-weight: 500; }
 .appr__chint { color: var(--muted); font-size: 11px; text-align: center; }
 
+/* The Liquid Glass toggle. */
+.appr__switch {
+  width: 44px;
+  height: 26px;
+  padding: 2px;
+  border: none;
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--text) 22%, transparent);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.appr__switch--on { background: var(--accent); }
+.appr__knob {
+  display: block;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s ease;
+}
+.appr__switch--on .appr__knob { transform: translateX(18px); }
+
 /* Status */
 .status__facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 20px; margin: 12px 0; }
 .status__facts dt { color: var(--muted); }
 .status__facts dd { margin: 0; }
+
+/* Liquid Glass (PLAN.md §4.3, §22, M4.6): an optional, more translucent look for
+   the menu bar, Dock and panels, keyed off the data-glass root attribute that
+   theme.ts sets. It makes the frosted panels thinner and boosts the backdrop
+   blur and saturation, plus a faint top sheen. Off unless data-glass="on". */
+:root[data-glass="on"] {
+  --panel: rgba(246, 246, 248, 0.45);
+  --panel-strong: rgba(252, 252, 253, 0.6);
+}
+:root[data-theme="dark"][data-glass="on"],
+:root:not([data-theme="light"])[data-glass="on"] {
+  --panel: rgba(40, 40, 46, 0.4);
+  --panel-strong: rgba(30, 30, 34, 0.55);
+}
+:root[data-theme="light"][data-glass="on"] {
+  --panel: rgba(246, 246, 248, 0.45);
+  --panel-strong: rgba(252, 252, 253, 0.6);
+}
+
+:root[data-glass="on"] .menubar,
+:root[data-glass="on"] .dock,
+:root[data-glass="on"] .window__bar,
+:root[data-glass="on"] .spot,
+:root[data-glass="on"] .nc {
+  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(30px) saturate(180%);
+}
+:root[data-glass="on"] .menubar,
+:root[data-glass="on"] .dock {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 24px rgba(0, 0, 0, 0.18);
+}

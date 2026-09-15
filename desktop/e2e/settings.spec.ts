@@ -69,6 +69,15 @@ test("System Settings shows the panes and saves a setting", async ({ page }) => 
   await win.locator(".appr__choice", { hasText: "Auto" }).click();
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", "dark");
 
+  // Liquid Glass: the toggle marks the Desktop (data-glass), off by default; the
+  // watchdog turning it off from dropped frames is an M4.7 check. Leave it off.
+  const glass = win.getByRole("switch", { name: "Liquid Glass" });
+  await expect(glass).toHaveAttribute("aria-checked", "false");
+  await glass.click();
+  await expect(page.locator("html")).toHaveAttribute("data-glass", "on");
+  await glass.click();
+  await expect(page.locator("html")).not.toHaveAttribute("data-glass", "on");
+
   // Status reports the Machine's Mode read-only.
   await win.locator(".set__navitem", { hasText: "Status" }).click();
   await expect(win.locator(".status__facts")).toContainText("Mode");

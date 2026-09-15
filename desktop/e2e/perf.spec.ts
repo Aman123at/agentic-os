@@ -67,6 +67,61 @@ test("window drag holds 60fps with no dropped frames", async ({ page, browser })
   expect(after!.x).toBeGreaterThan(before.x + 100);
 });
 
+// The open item from M3 (PLAN.md §22, M4.6): dragging with many windows open.
+// Eight windows are open, one is dragged across the others, and the trace must
+// show the main thread still keeping frames cheap. This gates only on main-thread
+// p95 — headless Chromium's software compositor doesn't represent real GPU drops,
+// so `missed`/`dropped` (checked in the single-window test above) are not asserted
+// here. The live run (real Chrome, a GPU, eight-plus windows) is reported in M4.7.
+test("dragging stays cheap on the main thread with eight windows open", async ({ page, browser }) => {
+  await page.goto("/");
+  // Finder is not a singleton, so opening it repeatedly gives distinct windows —
+  // a real, cascaded scene rather than empty frames.
+  const WINDOWS = 8;
+  for (let i = 0; i < WINDOWS; i++) {
+    await page.locator('.dock__tile[title="Finder"]').click();
+    await expect(page.locator('.window[aria-label="Finder"]')).toHaveCount(i + 1);
+  }
+  expect(await page.locator(".window").count()).toBeGreaterThanOrEqual(WINDOWS);
+
+  // Drag the last-opened (topmost, focused) window.
+  const win = page.locator('.window[aria-label="Finder"]').last();
+  const bar = win.locator(".window__bar");
+  const before = await win.boundingBox();
+  const box = await bar.boundingBox();
+  if (!before || !box) throw new Error("no Finder window to drag");
+
+  // Let the open animations finish before measuring.
+  await page.waitForTimeout(500);
+
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  for (let i = 1; i <= 15; i++) await page.mouse.move(x + i * 3, y); // warm up
+
+  await browser.startTracing(page, { categories: FRAME_CATEGORIES });
+  await page.evaluate(() => performance.mark("aos-multi-start"));
+  for (let i = 1; i <= 60; i++) {
+    await page.mouse.move(x + (15 + i) * 3, y + Math.sin(i / 6) * 4);
+    await page.waitForTimeout(8);
+  }
+  await page.evaluate(() => performance.mark("aos-multi-end"));
+  await page.mouse.up();
+  const stats = frameStats(await browser.stopTracing(), "aos-multi-start", "aos-multi-end");
+  console.log(
+    `[perf] drag (${await page.locator(".window").count()} windows): ${stats.frames} frames · p95 main-thread ${stats.p95.toFixed(2)}ms · max ${stats.max.toFixed(2)}ms`,
+  );
+
+  expect(stats.frames, "the drag should have rendered many frames").toBeGreaterThan(30);
+  // Two 60 Hz frames of headroom: a regression that made a drag do per-window
+  // main-thread work would blow past this, while normal jitter stays under it.
+  expect(stats.p95, "p95 main-thread frame cost stays cheap with many windows").toBeLessThan(33);
+
+  const after = await win.boundingBox();
+  expect(after!.x).toBeGreaterThan(before.x + 100);
+});
+
 test("keystroke echo is under 30ms p95", async ({ page }) => {
   await page.goto("/");
   await openApp(page, "Terminal");

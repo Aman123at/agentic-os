@@ -9,14 +9,31 @@ import NotificationCenter from "./NotificationCenter";
 import Spotlight from "./Spotlight";
 import Window from "./Window";
 import { installShortcuts } from "./keyboard";
+import { startWatchdog } from "./watchdog";
 
 // Shell is the Desktop itself: wallpaper, the menu bar, the windows layer and the
 // Dock (PLAN.md §4.3). Server state flows in through the store's event stream.
 export default function Shell() {
   const windows = useDesktop((s) => s.windows);
   const wallpaper = useDesktop((s) => s.wallpaper);
+  const glass = useDesktop((s) => s.glass);
   // The remap in force; re-installing when it changes keeps every tab current.
   const shortcuts = useDesktop((s) => s.shortcuts);
+
+  // The frame watchdog runs only while Liquid Glass is on. If frames drop for a
+  // sustained stretch it trips once: switch Glass off (which stops the watchdog
+  // through this effect) and tell the user why (PLAN.md §22, M4.6).
+  useEffect(() => {
+    if (!glass) return;
+    return startWatchdog(() => {
+      const s = useDesktop.getState();
+      s.setGlass(false);
+      s.pushLocalNotification({
+        title: "Liquid Glass turned off",
+        body: "Frames were dropping, so the Desktop switched back to the plain panels.",
+      });
+    });
+  }, [glass]);
 
   useEffect(() => {
     return installShortcuts(
