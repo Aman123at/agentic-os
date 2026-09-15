@@ -72,7 +72,11 @@ type Server struct {
 // Handler returns every route; wrap it with Auth.TCP or Auth.Socket.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	opts := []connect.HandlerOption{}
+	// No response compression: the API serves this computer (PLAN.md §7.6),
+	// where gzip saves nothing, and each response's compressor holds about 1 MB.
+	// A heap profile after the Desktop suite had Connect's gzip pool at two
+	// thirds of aosd's live heap, pushing idle memory over its §16 target.
+	opts := []connect.HandlerOption{connect.WithCompression("gzip", nil, nil)}
 	mux.Handle(aosv1connect.NewAuthServiceHandler(authService{s}, opts...))
 	mux.Handle(aosv1connect.NewTaskServiceHandler(taskService{s}, opts...))
 	mux.Handle(aosv1connect.NewApprovalServiceHandler(approvalService{s}, opts...))
