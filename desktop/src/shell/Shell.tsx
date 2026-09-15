@@ -14,32 +14,41 @@ import { installShortcuts } from "./keyboard";
 // Dock (PLAN.md §4.3). Server state flows in through the store's event stream.
 export default function Shell() {
   const windows = useDesktop((s) => s.windows);
+  const wallpaper = useDesktop((s) => s.wallpaper);
+  // The remap in force; re-installing when it changes keeps every tab current.
+  const shortcuts = useDesktop((s) => s.shortcuts);
 
   useEffect(() => {
-    return installShortcuts({
-      spotlight: () => useDesktop.getState().toggleSpotlight(),
-      closeWindow: () => {
-        const s = useDesktop.getState();
-        if (s.focused) s.closeWindow(s.focused);
+    return installShortcuts(
+      {
+        spotlight: () => useDesktop.getState().toggleSpotlight(),
+        closeWindow: () => {
+          const s = useDesktop.getState();
+          if (s.focused) s.closeWindow(s.focused);
+        },
+        switchWindow: () => {
+          const s = useDesktop.getState();
+          const open = s.windows.filter((w) => !w.minimized);
+          if (open.length < 2) return;
+          const i = open.findIndex((w) => w.id === s.focused);
+          s.focusWindow(open[(i + 1) % open.length].id);
+        },
       },
-      switchWindow: () => {
-        const s = useDesktop.getState();
-        const open = s.windows.filter((w) => !w.minimized);
-        if (open.length < 2) return;
-        const i = open.findIndex((w) => w.id === s.focused);
-        s.focusWindow(open[(i + 1) % open.length].id);
-      },
-    });
-  }, []);
+      shortcuts,
+    );
+  }, [shortcuts]);
 
   return (
     <div className="desktop">
       {/* The gradient base paints instantly; the drawn wallpapers layer over it,
-          the right one revealed by the theme (see index.css). */}
-      <div className="wallpaper">
-        <img className="wallpaper__art wallpaper__art--light" src={wallpapers.light} alt="" draggable={false} />
-        <img className="wallpaper__art wallpaper__art--dark" src={wallpapers.dark} alt="" draggable={false} />
-      </div>
+          the right one revealed by the theme (see index.css). "None" keeps just
+          the gradient. */}
+      {wallpaper === "aurora" && (
+        <div className="wallpaper">
+          <img className="wallpaper__art wallpaper__art--light" src={wallpapers.light} alt="" draggable={false} />
+          <img className="wallpaper__art wallpaper__art--dark" src={wallpapers.dark} alt="" draggable={false} />
+        </div>
+      )}
       <MenuBar />
       <div className="windows">
         {windows.map((win) => (

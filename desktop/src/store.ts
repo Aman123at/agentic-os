@@ -13,9 +13,13 @@ import { approvals as approvalApi, auth, settings, system, tasks as taskApi } fr
 import { subscribe, type ConnState } from "./api/events";
 import { appForFile } from "./apps/filetypes";
 import { APPS, type AppId } from "./apps/registry";
+import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
 import { applyTheme, type ThemePref } from "./theme";
 
 export type Phase = "loading" | "needs-signin" | "ready" | "error";
+
+// The Desktop wallpaper: the drawn Aurora art, or none (the plain gradient base).
+export type WallpaperPref = "aurora" | "none";
 
 export interface Rect {
   x: number;
@@ -40,6 +44,10 @@ interface Persisted {
   theme: ThemePref;
   windows: Array<Pick<Win, "id" | "appId" | "title" | "rect" | "minimized" | "maximized" | "state">>;
   focused: string;
+  // The Desktop appearance and keyboard remap, saved so every tab shares them
+  // (PLAN.md §4.3). Absent in layouts saved before M4.5, so both are optional.
+  wallpaper?: WallpaperPref;
+  shortcuts?: Partial<ShortcutMap>;
   // Layouts saved before M4.2 kept the open Task here, for the old Tasks window.
   openTask?: string;
 }
@@ -50,6 +58,10 @@ interface DesktopState {
   info?: InfoResponse;
   conn: ConnState;
   theme: ThemePref;
+  wallpaper: WallpaperPref;
+  // The keyboard remap in force, read by shell/keyboard.ts. Seeded from the
+  // Host defaults, then overridden by what System Settings saved.
+  shortcuts: ShortcutMap;
   windows: Win[];
   focused: string;
   notifications: Notification[];
@@ -85,6 +97,9 @@ interface DesktopState {
 
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
+  setWallpaper: (pref: WallpaperPref) => void;
+  /** Remaps one keyboard shortcut; shared with every tab through the saved layout. */
+  setShortcut: (action: keyof ShortcutMap, combo: string) => void;
   /** Opens an app; given a document, opens it in its own window, or focuses the window already showing it. */
   openApp: (appId: AppId, doc?: string) => void;
   /** Opens a file in the app for its type, or shows it in the Finder when none opens it. */
@@ -139,6 +154,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   error: "",
   conn: "connecting",
   theme: "auto",
+  wallpaper: "aurora",
+  shortcuts: defaultShortcuts(),
   windows: [],
   focused: "",
   notifications: [],
@@ -191,6 +208,16 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   setTheme: (pref) => {
     applyTheme(pref);
     set({ theme: pref });
+    save(get);
+  },
+
+  setWallpaper: (pref) => {
+    set({ wallpaper: pref });
+    save(get);
+  },
+
+  setShortcut: (action, combo) => {
+    set((s) => ({ shortcuts: { ...s.shortcuts, [action]: combo } }));
     save(get);
   },
 
@@ -582,6 +609,8 @@ function flushSave(get: () => DesktopState) {
   const s = get();
   const state: Persisted = {
     theme: s.theme,
+    wallpaper: s.wallpaper,
+    shortcuts: s.shortcuts,
     focused: s.focused,
     windows: s.windows.map(({ id, appId, title, rect, minimized, maximized, state }) => ({ id, appId, title, rect, minimized, maximized, state })),
   };
@@ -627,7 +656,10 @@ function restore(json: string, set: SetState) {
       if (w.id === saved.focused) focused = id;
       return { ...w, id, z: i + 1, restore: undefined };
     });
-  set({ theme: saved.theme ?? "auto", windows, focused, topZ: windows.length + 1 });
+  // A saved remap may cover only some actions (or come from an older layout);
+  // the Host defaults fill in the rest.
+  const shortcuts = { ...defaultShortcuts(), ...saved.shortcuts };
+  set({ theme: saved.theme ?? "auto", wallpaper: saved.wallpaper ?? "aurora", shortcuts, windows, focused, topZ: windows.length + 1 });
 }
 
 // upgradeWindow turns the M3 Tasks window of an older saved layout into the

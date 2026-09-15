@@ -1,7 +1,9 @@
 // Host-aware keyboard shortcuts (PLAN.md §4.3). The container is always Linux;
-// the Host is the user's own machine, so we read it from the browser. Only
-// Spotlight differs per Host (Ctrl+Space on Windows); Close and Switch use Alt
-// everywhere. Remapping in System Settings arrives in M4.
+// the Host is the user's own machine, so we read it from the browser, which
+// decides the per-Host defaults (see shortcuts.ts). System Settings remaps them,
+// and the map installShortcuts matches against comes from there.
+import { matches, type ShortcutMap } from "./shortcuts";
+
 type HostOS = "mac" | "win" | "linux";
 
 interface NavigatorUAData {
@@ -22,17 +24,15 @@ export interface Shortcuts {
   switchWindow: () => void;
 }
 
-export function installShortcuts(handlers: Shortcuts): () => void {
-  const spotlightWithCtrl = hostOS() === "win";
+export function installShortcuts(handlers: Shortcuts, map: ShortcutMap): () => void {
   const onKey = (e: KeyboardEvent) => {
-    const spotlight = spotlightWithCtrl ? e.ctrlKey : e.altKey;
-    if (spotlight && e.code === "Space") {
+    if (matches(e, map.spotlight)) {
       e.preventDefault();
       handlers.spotlight();
-    } else if (e.altKey && (e.key === "w" || e.key === "W")) {
+    } else if (matches(e, map.closeWindow)) {
       e.preventDefault();
       handlers.closeWindow();
-    } else if (e.altKey && e.key === "`") {
+    } else if (matches(e, map.switchWindow)) {
       e.preventDefault();
       handlers.switchWindow();
     }

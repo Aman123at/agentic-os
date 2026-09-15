@@ -1,0 +1,61 @@
+// Loads the runtime settings (PLAN.md §6.4) and saves changes back. The Agent
+// and Trash panes both read these; each gets the list on open and updates it in
+// place, so a saved value's new source ("settings") and fallback come from the
+// server, not a guess.
+import { ConnectError } from "@connectrpc/connect";
+import { useCallback, useEffect, useState } from "react";
+
+import { settings as settingsApi } from "../../api/client";
+import type { Setting } from "../../gen/aos/v1/services_pb";
+
+export interface Settings {
+  byKey: Record<string, Setting>;
+  loading: boolean;
+  error: string;
+  saving: string;
+  /** Saves one setting; an empty value clears the saved one, so env or the default returns. Returns true on success. */
+  update: (key: string, value: string) => Promise<boolean>;
+}
+
+export function useSettings(): Settings {
+  const [byKey, setByKey] = useState<Record<string, Setting>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const resp = await settingsApi.get({});
+        if (!live) return;
+        setByKey(Object.fromEntries(resp.settings.map((s) => [s.key, s])));
+        setError("");
+      } catch (err) {
+        if (live) setError(ConnectError.from(err).message);
+      } finally {
+        if (live) setLoading(false);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const update = useCallback(async (key: string, value: string) => {
+    setSaving(key);
+    setError("");
+    try {
+      const resp = await settingsApi.update({ key, value });
+      if (resp.setting) setByKey((m) => ({ ...m, [key]: resp.setting! }));
+      return true;
+    } catch (err) {
+      setError(ConnectError.from(err).message);
+      return false;
+    } finally {
+      setSaving("");
+    }
+  }, []);
+
+  return { byKey, loading, error, saving, update };
+}

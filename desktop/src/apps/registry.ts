@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash" | "activity" | "software";
+export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
 
 export interface AppDef {
   id: AppId;
@@ -86,6 +86,17 @@ export const APPS: Record<AppId, AppDef> = {
     size: { w: 820, h: 560 },
     singleton: true,
     Component: lazy(() => import("./software/Software")),
+  },
+  // System Settings: the Agent's model and limits, the API key, Protected Paths,
+  // Memory, Trash, Keyboard, Appearance and Status (PLAN.md §4.3, M4.5). Opened
+  // from the menu bar or Spotlight; one is enough.
+  settings: {
+    id: "settings",
+    name: "System Settings",
+    icon: "⚙️",
+    size: { w: 820, h: 580 },
+    singleton: true,
+    Component: lazy(() => import("./settings/Settings")),
   },
   // The Trash sits at the Dock's end, as on macOS.
   trash: {

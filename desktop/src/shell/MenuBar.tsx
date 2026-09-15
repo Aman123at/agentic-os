@@ -55,6 +55,9 @@ export default function MenuBar() {
         <button className="menubar__item" title="Appearance" onClick={() => setTheme(nextTheme[theme])}>
           {themeLabel[theme]}
         </button>
+        <button className="menubar__item" title="System Settings" aria-label="System Settings" onClick={() => openApp("settings")}>
+          ⚙️
+        </button>
         <Clock />
       </div>
     </div>

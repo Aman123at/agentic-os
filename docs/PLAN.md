@@ -379,7 +379,9 @@ A plain `docker compose exec aos …` runs as root (aosd is the container's main
 - **Process isolation:** a confined process cannot ptrace an unconfined one. On kernels with Landlock ABI ≥ 6, signals and abstract Unix sockets are also scoped, so Agents cannot signal or reach User Sessions or `aosd`.
 - **Files Tools** (§9) run as `aos` in a confined helper with the same ruleset, never as root inside `aosd`, so symlink tricks cannot turn them into root file access.
 
-### 7.3 Protected Paths (defaults, editable in System Settings)
+### 7.3 Protected Paths (built-in defaults, plus your own in System Settings)
+
+The built-in defaults below are read-only in System Settings — weakening `~/.ssh` and the like from a browser isn't worth the risk. You can add and remove your *own* locked paths there (and with 🔒 in Finder or `aos protect`).
 
 **Enforced by the kernel** (Landlock, §7.2) and by policy:
 
