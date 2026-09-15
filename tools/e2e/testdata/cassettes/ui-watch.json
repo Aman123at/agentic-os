@@ -1,0 +1,4 @@
+{"prompt": "e2e-ui-watch:", "turns": [
+  {"calls": [{"name": "run_command", "arguments": {"command": "printf 'watch-replay-%s\\n' ok"}}]},
+  {"text": "Printed the marker."}
+]}

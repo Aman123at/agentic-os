@@ -547,6 +547,7 @@ stateDiagram-v2
 
 - Any number of viewers (Desktop "Watch", `aos attach`).
 - If the user types into an Agent's Session, the Agent is told what was typed.
+- An Agent's Session stays listed after its Task ends (15 minutes, the newest 8), so a late viewer still replays its last 64 KB of output; an ended Session takes no input.
 
 **Transport**
 

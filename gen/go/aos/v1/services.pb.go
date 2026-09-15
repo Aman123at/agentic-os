@@ -3180,10 +3180,13 @@ type SessionInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Empty for User Sessions.
-	TaskId        string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	Agent         bool                   `protobuf:"varint,3,opt,name=agent,proto3" json:"agent,omitempty"`
-	Pid           int32                  `protobuf:"varint,4,opt,name=pid,proto3" json:"pid,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	TaskId    string                 `protobuf:"bytes,2,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Agent     bool                   `protobuf:"varint,3,opt,name=agent,proto3" json:"agent,omitempty"`
+	Pid       int32                  `protobuf:"varint,4,opt,name=pid,proto3" json:"pid,omitempty"`
+	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	// An Agent Session whose Task has ended, kept a while so a viewer can still
+	// replay what it showed. It takes no input.
+	Ended         bool `protobuf:"varint,6,opt,name=ended,proto3" json:"ended,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3251,6 +3254,13 @@ func (x *SessionInfo) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
+}
+
+func (x *SessionInfo) GetEnded() bool {
+	if x != nil {
+		return x.Ended
+	}
+	return false
 }
 
 type CreateSessionRequest struct {
@@ -5521,14 +5531,15 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"\x0e\n" +
 	"\fEmptyRequest\")\n" +
 	"\rEmptyResponse\x12\x18\n" +
-	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\x99\x01\n" +
+	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\xaf\x01\n" +
 	"\vSessionInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05agent\x18\x03 \x01(\bR\x05agent\x12\x10\n" +
 	"\x03pid\x18\x04 \x01(\x05R\x03pid\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\">\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
+	"\x05ended\x18\x06 \x01(\bR\x05ended\">\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04cols\x18\x01 \x01(\rR\x04cols\x12\x12\n" +
 	"\x04rows\x18\x02 \x01(\rR\x04rows\"F\n" +

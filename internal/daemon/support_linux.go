@@ -184,7 +184,7 @@ func (u *userSessions) Create(ctx context.Context, cols, rows uint16) (*aosv1.Se
 }
 
 func sessionInfo(e *session.Entry) *aosv1.SessionInfo {
-	return &aosv1.SessionInfo{Id: e.ID, TaskId: e.TaskID, Agent: e.Agent, Pid: int32(e.Session.Pid()), CreatedAt: timestamppb.New(e.Created)}
+	return &aosv1.SessionInfo{Id: e.ID, TaskId: e.TaskID, Agent: e.Agent, Ended: !e.Ended.IsZero(), Pid: int32(e.Session.Pid()), CreatedAt: timestamppb.New(e.Created)}
 }
 
 func (u *userSessions) List() []*aosv1.SessionInfo {
@@ -221,6 +221,9 @@ type terminal struct{ e *session.Entry }
 func (t terminal) Watch() ([]byte, <-chan []byte, func()) { return t.e.Session.Watch() }
 func (t terminal) Resize(cols, rows uint16) error         { return t.e.Session.Resize(cols, rows) }
 func (t terminal) Write(b []byte) error {
+	if !t.e.Ended.IsZero() {
+		return errors.New("the Session has ended")
+	}
 	t.e.Typed(b)
 	return t.e.Session.Input(b)
 }

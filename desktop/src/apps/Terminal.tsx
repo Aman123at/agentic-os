@@ -1,8 +1,9 @@
 // Terminal — xterm.js panes over aosd Sessions (PLAN.md §4.3, §10, M3.3). Each
-// tab is a live Session: "New" opens a User Session (unconfined, as aos) and
-// "Watch" attaches read-only to a running Agent's Session. The xterm instances
-// are owned by TermController and live outside React (§4.3 rule 6); this
-// component only tracks which tabs exist and which one is showing.
+// tab is a Session: "New" opens a User Session (unconfined, as aos) and "Watch"
+// attaches read-only to an Agent's Session — a running one, or one whose Task
+// ended recently, which replays what it showed. The xterm instances are owned by
+// TermController and live outside React (§4.3 rule 6); this component only
+// tracks which tabs exist and which one is showing.
 import { useCallback, useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 
@@ -64,7 +65,8 @@ export default function Terminal() {
     }
     try {
       const resp = await sessions.listSessions({});
-      setWatch(resp.sessions.filter((s) => s.agent));
+      // Running Sessions first, then the ones that ended recently.
+      setWatch(resp.sessions.filter((s) => s.agent).sort((a, b) => Number(a.ended) - Number(b.ended)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -118,17 +120,18 @@ export default function Terminal() {
         </div>
         <div className="term__actions">
           <div className="term__watch">
-            <button className="term__btn" onClick={openWatchMenu} title="Watch a running Agent Session (read-only)">
+            <button className="term__btn" onClick={openWatchMenu} title="Watch an Agent Session (read-only)">
               👁️ Watch
             </button>
             {watch && (
               <div className="term__menu" onClick={(e) => e.stopPropagation()}>
                 {watch.length === 0 ? (
-                  <div className="term__menu-empty">No Agent Sessions running</div>
+                  <div className="term__menu-empty">No Agent Sessions to watch</div>
                 ) : (
                   watch.map((s) => (
                     <button key={s.id} className="term__menu-item" onClick={() => watchAgent(s)}>
                       👁️ {agentTitle(s)}
+                      {s.ended && <span className="term__menu-note"> · ended</span>}
                     </button>
                   ))
                 )}

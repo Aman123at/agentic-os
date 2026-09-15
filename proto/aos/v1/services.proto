@@ -350,6 +350,9 @@ message SessionInfo {
   bool agent = 3;
   int32 pid = 4;
   google.protobuf.Timestamp created_at = 5;
+  // An Agent Session whose Task has ended, kept a while so a viewer can still
+  // replay what it showed. It takes no input.
+  bool ended = 6;
 }
 
 message CreateSessionRequest {
