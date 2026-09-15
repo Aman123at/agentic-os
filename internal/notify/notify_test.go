@@ -38,7 +38,7 @@ func TestNotificationsSurviveUntilDismissed(t *testing.T) {
 	c, sub, clock := newCenter(t)
 	ctx := context.Background()
 
-	posted, err := c.Post(ctx, &aosv1.Notification{Title: "Remember this?", Body: "The user deploys with rsync.", TaskId: "t_1", MemoryId: "m_1"})
+	posted, err := c.Post(ctx, &aosv1.Notification{Title: "Remember this?", Body: "The user deploys with rsync.", TaskId: "t_1", MemoryId: "m_1", Port: 8080})
 	if err != nil || posted.Id == "" || !posted.CreatedAt.AsTime().Equal(*clock) {
 		t.Fatalf("Post = %+v, %v", posted, err)
 	}
@@ -51,7 +51,7 @@ func TestNotificationsSurviveUntilDismissed(t *testing.T) {
 
 	// Newest first, and a fresh read has every field (the Center reloads them after a restart).
 	list, err := c.List(ctx)
-	if err != nil || titles(list) != "Replay;Remember this?;" || list[1].TaskId != "t_1" || list[1].Body != "The user deploys with rsync." ||
+	if err != nil || titles(list) != "Replay;Remember this?;" || list[1].TaskId != "t_1" || list[1].Port != 8080 || list[1].Body != "The user deploys with rsync." ||
 		!list[1].CreatedAt.AsTime().Equal(posted.CreatedAt.AsTime()) {
 		t.Fatalf("List = %v, %v", list, err)
 	}

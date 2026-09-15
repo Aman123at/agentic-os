@@ -87,6 +87,8 @@ func TaskID(e *aosv1.Event) string {
 		return k.DownloadProgress.GetTaskId()
 	case *aosv1.Event_Notification:
 		return k.Notification.GetTaskId()
+	case *aosv1.Event_OpenInDesktop:
+		return k.OpenInDesktop.GetTaskId()
 	}
 	return ""
 }

@@ -8,6 +8,13 @@ import { TaskState } from "../gen/aos/v1/types_pb";
 import { useDesktop } from "../store";
 import { isLive, stateLabel, taskTitle } from "../apps/tasks/format";
 
+// A port opens through aosd's forwarding at <port>.localhost (PLAN.md §12), in a
+// new tab from this click, which browsers allow where a pushed pop-up is blocked.
+function openPort(port: number) {
+  const { protocol, port: hostPort } = window.location;
+  window.open(`${protocol}//${port}.localhost${hostPort ? `:${hostPort}` : ""}/`, "_blank", "noopener");
+}
+
 export default function NotificationCenter() {
   const open = useDesktop((s) => s.notifCenter);
   const toggle = useDesktop((s) => s.toggleNotifCenter);
@@ -81,6 +88,11 @@ export default function NotificationCenter() {
                     {n.body ? ` — ${n.body}` : ""}
                   </span>
                 </button>
+                {n.port > 0 && (
+                  <button className="nc__open" onClick={() => openPort(n.port)}>
+                    Open
+                  </button>
+                )}
                 <button className="nc__dismiss" aria-label={`Dismiss ${n.title}`} onClick={() => dismiss(n.id)}>
                   ×
                 </button>

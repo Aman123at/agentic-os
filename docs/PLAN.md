@@ -529,7 +529,7 @@ stateDiagram-v2
 | `download` | Internet | No | Resumable, progress events, `~/Downloads` by default |
 | `http_request` | Internet | Only when sending a body (upload) | HTML converted to readable Markdown |
 | `web_search` | Internet | No | OpenAI hosted tool |
-| `open_in_desktop` · `notify` | Desktop | No | Do nothing in `cli` Mode |
+| `open_in_desktop` · `notify` | Desktop | No | Offered only in `ui` Mode. `open_in_desktop` shows a file or folder in the Finder, or, for a port, sends a notification with an Open button (browsers block pop-ups no click started); it never opens web addresses. `notify` is capped at 5 per Task |
 | `ask_user` | Coordination | — | Makes the Task Awaiting User with a question |
 | `remember` | Coordination | — | Proposal; the user accepts |
 | `create_checkpoint` | Coordination | No | |
@@ -614,7 +614,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `AuthService` | `ExchangeLoginCode` |
 | `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
-| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification`. Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
+| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
 | `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |

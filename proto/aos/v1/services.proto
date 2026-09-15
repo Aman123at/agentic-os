@@ -150,7 +150,15 @@ message Event {
     Notification notification = 7;
     ServiceChanged service_changed = 8;
     ReplayProgress replay_progress = 9;
+    OpenInDesktop open_in_desktop = 10;
   }
+}
+
+// An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool).
+message OpenInDesktop {
+  string task_id = 1;
+  string path = 2;
+  bool dir = 3;
 }
 
 message ServiceChanged {
@@ -201,6 +209,10 @@ message Notification {
   google.protobuf.Timestamp created_at = 6;
   // Set on the event sent when the notification is dismissed, so every tab drops it.
   bool dismissed = 7;
+  // Set when an Agent offers a page a program in the Machine serves on this
+  // port: the Desktop shows an Open button, since browsers block pop-ups
+  // that no click started.
+  int32 port = 8;
 }
 
 // ---------------------------------------------------------------- Files and Trash

@@ -145,7 +145,12 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Archives: aptArchives, Lists: aptLists, AsUser: d.asUser, Services: d.services, Bus: d.bus, Notify: d.post, Logf: log.Printf}
 	tools := append(tool.SessionTools(), tool.FilesTools()...)
 	tools = append(append(append(tools, tool.InternetTools()...), tool.SoftwareTools()...), tool.ServiceTools()...)
-	registry := tool.NewRegistry(append(tools, tool.CoordinationTools()...)...)
+	tools = append(tools, tool.CoordinationTools()...)
+	if cfg.Mode == "ui" {
+		// In cli Mode there is no Desktop to show anything (PLAN.md §9).
+		tools = append(tools, tool.DesktopTools()...)
+	}
+	registry := tool.NewRegistry(tools...)
 	d.tasks, err = task.New(task.Config{
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
@@ -354,6 +359,9 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	}
 	env.Software = software.Tools{M: d.software}
 	env.Services = service.Tools{S: d.services, Checkpoint: d.taskCheckpoint}
+	if d.cfg.Mode == "ui" {
+		env.Desktop = d.desktop(env.TaskID)
+	}
 	env.Files = func(widen []string) files.Runner {
 		return files.Confined{Ops: ops, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
 			p := d.agentPolicy()
@@ -601,5 +609,19 @@ func randomHex(n int) string {
 func (d *Daemon) post(ctx context.Context, n *aosv1.Notification) {
 	if _, err := d.notify.Post(context.WithoutCancel(ctx), n); err != nil {
 		log.Printf("notification %q: %v", n.Title, err)
+	}
+}
+
+// desktop gives a Task's Agent the Desktop Tools' way to the Desktop.
+func (d *Daemon) desktop(taskID string) *tool.Desktop {
+	return &tool.Desktop{
+		Notify: func(ctx context.Context, n tool.Notice) error {
+			_, err := d.notify.Post(context.WithoutCancel(ctx), &aosv1.Notification{Title: n.Title, Body: n.Body, TaskId: taskID, Port: int32(n.Port)})
+			return err
+		},
+		Open: func(_ context.Context, path string, dir bool) error {
+			d.bus.Publish(&aosv1.Event{Kind: &aosv1.Event_OpenInDesktop{OpenInDesktop: &aosv1.OpenInDesktop{TaskId: taskID, Path: path, Dir: dir}}})
+			return nil
+		},
 	}
 }

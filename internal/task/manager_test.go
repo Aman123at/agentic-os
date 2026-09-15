@@ -24,8 +24,8 @@ import (
 	"github.com/amantiwari/agentic-os/internal/tool"
 )
 
-// harness is a Manager on a temp database and home folder, with the Files and
-// Coordination Tools running in-process and a scripted model.
+// harness is a Manager on a temp database and home folder, with the Files,
+// Coordination and Desktop Tools running in-process and a scripted model.
 type harness struct {
 	m     *Manager
 	home  string
@@ -53,7 +53,7 @@ func newHarness(t *testing.T, autonomy policy.Autonomy, turns ...fake.Turn) *har
 		DB:         db,
 		Bus:        h.bus,
 		Provider:   h.model,
-		Tools:      tool.NewRegistry(append(tool.FilesTools(), tool.CoordinationTools()...)...),
+		Tools:      tool.NewRegistry(append(append(tool.FilesTools(), tool.CoordinationTools()...), tool.DesktopTools()...)...),
 		Model:      "gpt-test",
 		Autonomy:   autonomy,
 		MaxTasks:   2,
@@ -582,5 +582,113 @@ func TestLongCommandOutputIsShapedAndPagedWithReadOutput(t *testing.T) {
 	}
 	if !strings.Contains(page, "Bytes 50000-50022 of 100008:\n") || !strings.Contains(page, "\nline 004167\n") {
 		t.Errorf("read_output page: %q", page)
+	}
+}
+
+// outputsInOrder returns the Tool results a turn sends back, in call order.
+func outputsInOrder(req llm.Request) []string {
+	var out []string
+	for _, it := range req.Input {
+		if it.Type == llm.FunctionCallOutput {
+			out = append(out, it.Output)
+		}
+	}
+	return out
+}
+
+func TestAgentsCanNotifyAndOpenThingsInTheDesktop(t *testing.T) {
+	notify := func(title string) fake.Call {
+		return fake.Call{Name: "notify", Args: map[string]any{"title": title, "body": "details"}}
+	}
+	open := func(args map[string]any) fake.Call { return fake.Call{Name: "open_in_desktop", Args: args} }
+	var turns [][]string
+	record := func(next fake.Turn) fake.Turn {
+		return func(req llm.Request) (llm.Response, error) {
+			turns = append(turns, outputsInOrder(req))
+			return next(req)
+		}
+	}
+	h := newHarness(t, policy.ConfirmRisky,
+		fake.Calls("",
+			notify("Site ready"),
+			open(map[string]any{"path": "~/report.txt"}),
+			open(map[string]any{"path": "~"}),
+			open(map[string]any{"path": "~/missing.txt"}),
+			open(map[string]any{"path": "https://example.com"}),
+			open(map[string]any{"port": 8080}),
+			open(map[string]any{"port": 8080, "path": "~/report.txt"}),
+		),
+		record(fake.Calls("", notify("2"), notify("3"), notify("4"), notify("5"), notify("6"))),
+		record(fake.Say("done")),
+	)
+	if err := os.WriteFile(filepath.Join(h.home, "report.txt"), []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var got []string
+	newEnv := h.cfg.NewEnv
+	h.cfg.NewEnv = func(env *tool.Env) (func(), error) {
+		env.Desktop = &tool.Desktop{
+			Notify: func(_ context.Context, n tool.Notice) error {
+				mu.Lock()
+				defer mu.Unlock()
+				got = append(got, fmt.Sprintf("notify %s|%s|%d", n.Title, n.Body, n.Port))
+				return nil
+			},
+			Open: func(_ context.Context, path string, dir bool) error {
+				mu.Lock()
+				defer mu.Unlock()
+				got = append(got, fmt.Sprintf("open %s dir=%v", path, dir))
+				return nil
+			},
+		}
+		return newEnv(env)
+	}
+	h.m.Close()
+	m, err := New(h.cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+	h.m = m
+	created, _ := h.m.Create(context.Background(), "build the site", 0, true)
+	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_SUCCEEDED)
+
+	want := []string{
+		"notify Site ready|details|0",
+		"open " + filepath.Join(h.home, "report.txt") + " dir=false",
+		"open " + h.home + " dir=true",
+		"notify Open port 8080|The Agent offers a page served on port 8080.|8080",
+		"notify 2|details|0", "notify 3|details|0", "notify 4|details|0", "notify 5|details|0",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("the Desktop was asked:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+	if len(turns) != 2 || len(turns[0]) != 7 || len(turns[1]) != 5 {
+		t.Fatalf("outputs %q", turns)
+	}
+	for i, frag := range []string{"notification", "Opened", "Opened", "no such file", "web address", "Open button", "either path or port"} {
+		if !strings.Contains(turns[0][i], frag) {
+			t.Errorf("call %d output %q, want it to mention %q", i+1, turns[0][i], frag)
+		}
+	}
+	if !strings.Contains(turns[1][4], "limit") {
+		t.Errorf("the sixth notification: %q", turns[1][4])
+	}
+}
+
+func TestWithoutTheDesktopTheDesktopToolsDoNothing(t *testing.T) {
+	var outputs []string
+	h := newHarness(t, policy.ConfirmRisky,
+		fake.Calls("", fake.Call{Name: "notify", Args: map[string]any{"title": "Done"}}, fake.Call{Name: "open_in_desktop", Args: map[string]any{"path": "~"}}),
+		func(req llm.Request) (llm.Response, error) {
+			outputs = outputsInOrder(req)
+			return fake.Say("ok")(req)
+		},
+	)
+	created, _ := h.m.Create(context.Background(), "say hi", 0, true)
+	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_SUCCEEDED)
+	if len(outputs) != 2 || !strings.Contains(outputs[0], "cli Mode") || !strings.Contains(outputs[1], "cli Mode") {
+		t.Errorf("outputs %q", outputs)
 	}
 }

@@ -1,0 +1,5 @@
+{"prompt": "ui-open: write a report and show it", "turns": [
+  {"calls": [{"name": "write_file", "arguments": {"path": "~/ui-open/report.txt", "content": "The report.\n", "overwrite": null}}]},
+  {"calls": [{"name": "open_in_desktop", "arguments": {"path": "~/ui-open/report.txt", "port": null}}]},
+  {"text": "The report is open in the Finder."}
+]}

@@ -1,0 +1,7 @@
+{"prompt": "ui-notify: tell me when the site is up", "turns": [
+  {"calls": [
+    {"name": "notify", "arguments": {"title": "Site is up", "body": "It answers on port 8080."}},
+    {"name": "open_in_desktop", "arguments": {"path": null, "port": 8080}}
+  ]},
+  {"text": "I sent a notification with an Open button."}
+]}

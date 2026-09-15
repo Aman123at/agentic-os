@@ -45,10 +45,10 @@ func (c *Center) Post(ctx context.Context, n *aosv1.Notification) (*aosv1.Notifi
 	_, _ = rand.Read(b)
 	now := c.now()
 	saved := &aosv1.Notification{Id: "n_" + hex.EncodeToString(b), Title: n.Title, Body: n.Body, TaskId: n.TaskId,
-		MemoryId: n.MemoryId, CreatedAt: timestamppb.New(now)}
+		MemoryId: n.MemoryId, Port: n.Port, CreatedAt: timestamppb.New(now)}
 	err := c.DB.Write(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO notifications (id, title, body, task_id, memory_id, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			saved.Id, saved.Title, saved.Body, saved.TaskId, saved.MemoryId, store.Millis(now)); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO notifications (id, title, body, task_id, memory_id, port, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			saved.Id, saved.Title, saved.Body, saved.TaskId, saved.MemoryId, saved.Port, store.Millis(now)); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY created_at DESC, rowid DESC LIMIT ?)`, Keep)
@@ -64,7 +64,7 @@ func (c *Center) Post(ctx context.Context, n *aosv1.Notification) (*aosv1.Notifi
 // List returns the notifications not yet dismissed, newest first.
 func (c *Center) List(ctx context.Context) ([]*aosv1.Notification, error) {
 	rows, err := c.DB.Read().QueryContext(ctx,
-		`SELECT id, title, body, task_id, memory_id, created_at FROM notifications WHERE dismissed_at IS NULL ORDER BY created_at DESC, rowid DESC`)
+		`SELECT id, title, body, task_id, memory_id, port, created_at FROM notifications WHERE dismissed_at IS NULL ORDER BY created_at DESC, rowid DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (c *Center) List(ctx context.Context) ([]*aosv1.Notification, error) {
 	for rows.Next() {
 		n := &aosv1.Notification{}
 		var created int64
-		if err := rows.Scan(&n.Id, &n.Title, &n.Body, &n.TaskId, &n.MemoryId, &created); err != nil {
+		if err := rows.Scan(&n.Id, &n.Title, &n.Body, &n.TaskId, &n.MemoryId, &n.Port, &created); err != nil {
 			return nil, err
 		}
 		n.CreatedAt = timestamppb.New(store.Time(created))

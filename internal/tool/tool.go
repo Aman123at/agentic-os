@@ -94,6 +94,8 @@ type Env struct {
 	Services Services
 	// SetCheckpoint records the Checkpoint taken before the Task's first software change.
 	SetCheckpoint func(id string)
+	// Desktop shows notifications and opens things in the Desktop; nil in cli Mode.
+	Desktop *Desktop
 }
 
 func (e *Env) stat(path string) (exists, dir bool) {

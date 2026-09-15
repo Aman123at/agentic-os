@@ -330,6 +330,13 @@ function startStream(set: SetState) {
     const batch = queue;
     queue = [];
     set((s) => reduce(s, batch));
+    // An Agent's open_in_desktop shows the folder, or the file selected in its folder.
+    for (const e of batch) {
+      if (e.kind?.case !== "openInDesktop") continue;
+      const { path, dir } = e.kind.value;
+      if (dir) useDesktop.getState().revealInFinder(path, "");
+      else useDesktop.getState().revealInFinder(path.slice(0, path.lastIndexOf("/")) || "/", path);
+    }
   };
   subscribe({
     onState: (conn) => set({ conn }),
