@@ -1,0 +1,4 @@
+{"prompt": "ui-autonomy: jot a quick note", "turns": [
+  {"calls": [{"name": "write_file", "arguments": {"path": "~/ui-autonomy/note.txt", "content": "A quick note.\n", "overwrite": null}}]},
+  {"text": "Saved your note."}
+]}

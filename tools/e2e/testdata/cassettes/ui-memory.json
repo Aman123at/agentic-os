@@ -1,0 +1,4 @@
+{"prompt": "ui-memory: note my editor preference", "turns": [
+  {"calls": [{"name": "remember", "arguments": {"text": "The user prefers two-space indentation.", "user_asked": false}}]},
+  {"text": "I proposed that as a memory for you to accept."}
+]}

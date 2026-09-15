@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
 
 // A Host port of our own, apart from the user's Machine (7700) and tools/e2e
 // (7793). The Host guard accepts 127.0.0.1, and the browser sends a matching
@@ -141,6 +141,20 @@ export async function startTask(page: Page, prompt: string): Promise<void> {
   await expect(page.getByText(`Ask the Agent: “${prompt}”`)).toBeVisible();
   await input.press("Enter");
   await expect(page.locator(".tasks__title")).toBeVisible();
+}
+
+// clearLayout makes a context's pages open on an empty desktop, ignoring the
+// windows earlier specs left in the shared server state. The same reset perf.spec
+// uses, for specs that need a known starting scene rather than whatever debris the
+// serial suite has accumulated. Call it from a beforeEach.
+export async function clearLayout(context: BrowserContext): Promise<void> {
+  await context.addInitScript(() => {
+    try {
+      sessionStorage.setItem("aos.layout", JSON.stringify({ theme: "auto", windows: [], focused: "" }));
+    } catch {
+      // Without storage the page restores the server layout; the spec still runs.
+    }
+  });
 }
 
 // openApp opens an app from the Dock by its name and waits for its (newest)

@@ -2,9 +2,17 @@
 // Machine. This opens the app from Spotlight (it is not in the Dock), walks the
 // panes, and exercises the two writes that are safe to make and undo on the
 // shared test Machine: saving then resetting the Agent's Autonomy, and adding
-// then removing a Protected Path. The fuller behavioural checks (a remapped
-// shortcut firing, a Memory proposal, a masked key) come with cassettes in M4.7.
-import { expect, exec, loadCompose, openViaSpotlight, sh, test } from "./harness";
+// then removing a Protected Path. The fuller behavioural checks — a remapped
+// shortcut firing, a Memory proposal accepted, a masked key, a changed Autonomy
+// reaching the next Task — live in settings-behaviour.spec.ts (M4.7).
+import { clearLayout, expect, exec, loadCompose, openViaSpotlight, sh, test } from "./harness";
+
+// A singleton System Settings window left open by an earlier spec would otherwise
+// be re-focused on whatever pane it last showed; start from an empty desktop so
+// this opens a fresh window on its default (Agent) pane.
+test.beforeEach(async ({ context }) => {
+  await clearLayout(context);
+});
 
 test("System Settings shows the panes and saves a setting", async ({ page }) => {
   await page.goto("/");
@@ -70,7 +78,8 @@ test("System Settings shows the panes and saves a setting", async ({ page }) => 
   await expect(page.locator("html")).not.toHaveAttribute("data-theme", "dark");
 
   // Liquid Glass: the toggle marks the Desktop (data-glass), off by default; the
-  // watchdog turning it off from dropped frames is an M4.7 check. Leave it off.
+  // watchdog turning it off from dropped frames is covered in glass.spec.ts. Leave
+  // it off here.
   const glass = win.getByRole("switch", { name: "Liquid Glass" });
   await expect(glass).toHaveAttribute("aria-checked", "false");
   await glass.click();
