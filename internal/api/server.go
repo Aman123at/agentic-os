@@ -23,6 +23,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/service"
 	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/software"
+	"github.com/amantiwari/agentic-os/internal/sysinfo"
 	"github.com/amantiwari/agentic-os/internal/task"
 	"github.com/amantiwari/agentic-os/internal/usage"
 )
@@ -81,6 +82,8 @@ type Server struct {
 	WatchInterval time.Duration
 	// Usage is model usage per day.
 	Usage *usage.Tracker
+	// Sampler samples the Machine for Activity Monitor.
+	Sampler *sysinfo.Sampler
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -690,6 +693,13 @@ func (sys systemService) Usage(ctx context.Context, req *connect.Request[aosv1.U
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&aosv1.UsageResponse{Days: days}), nil
+}
+
+func (sys systemService) Metrics(context.Context, *connect.Request[aosv1.MetricsRequest]) (*connect.Response[aosv1.MetricsResponse], error) {
+	if sys.s.Sampler == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("metrics are not available"))
+	}
+	return connect.NewResponse(sys.s.Sampler.Metrics()), nil
 }
 
 func (sys systemService) Audit(ctx context.Context, req *connect.Request[aosv1.AuditRequest]) (*connect.Response[aosv1.AuditResponse], error) {

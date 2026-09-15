@@ -45,6 +45,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/amantiwari/agentic-os/internal/sysinfo"
 	"github.com/amantiwari/agentic-os/internal/task"
 	"github.com/amantiwari/agentic-os/internal/tool"
 	"github.com/amantiwari/agentic-os/internal/usage"
@@ -162,6 +163,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
+		Sampler: &sysinfo.Sampler{Disks: []string{d.layout.Home, d.layout.Shared, StateDir}},
 	}
 	handler := srv.Handler()
 

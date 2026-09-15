@@ -189,6 +189,8 @@ const (
 	SystemServiceAuditProcedure = "/aos.v1.SystemService/Audit"
 	// SystemServiceUsageProcedure is the fully-qualified name of the SystemService's Usage RPC.
 	SystemServiceUsageProcedure = "/aos.v1.SystemService/Usage"
+	// SystemServiceMetricsProcedure is the fully-qualified name of the SystemService's Metrics RPC.
+	SystemServiceMetricsProcedure = "/aos.v1.SystemService/Metrics"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2019,6 +2021,9 @@ type SystemServiceClient interface {
 	Audit(context.Context, *connect.Request[v1.AuditRequest]) (*connect.Response[v1.AuditResponse], error)
 	// Model usage per day over every model, for the Agent app's chart.
 	Usage(context.Context, *connect.Request[v1.UsageRequest]) (*connect.Response[v1.UsageResponse], error)
+	// The Machine's CPU, memory, disks and network, sampled when asked:
+	// Activity Monitor polls it while open, so an idle aosd samples nothing.
+	Metrics(context.Context, *connect.Request[v1.MetricsRequest]) (*connect.Response[v1.MetricsResponse], error)
 }
 
 // NewSystemServiceClient constructs a client for the aos.v1.SystemService service. By default, it
@@ -2050,14 +2055,21 @@ func NewSystemServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(systemServiceMethods.ByName("Usage")),
 			connect.WithClientOptions(opts...),
 		),
+		metrics: connect.NewClient[v1.MetricsRequest, v1.MetricsResponse](
+			httpClient,
+			baseURL+SystemServiceMetricsProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("Metrics")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // systemServiceClient implements SystemServiceClient.
 type systemServiceClient struct {
-	info  *connect.Client[v1.InfoRequest, v1.InfoResponse]
-	audit *connect.Client[v1.AuditRequest, v1.AuditResponse]
-	usage *connect.Client[v1.UsageRequest, v1.UsageResponse]
+	info    *connect.Client[v1.InfoRequest, v1.InfoResponse]
+	audit   *connect.Client[v1.AuditRequest, v1.AuditResponse]
+	usage   *connect.Client[v1.UsageRequest, v1.UsageResponse]
+	metrics *connect.Client[v1.MetricsRequest, v1.MetricsResponse]
 }
 
 // Info calls aos.v1.SystemService.Info.
@@ -2075,12 +2087,20 @@ func (c *systemServiceClient) Usage(ctx context.Context, req *connect.Request[v1
 	return c.usage.CallUnary(ctx, req)
 }
 
+// Metrics calls aos.v1.SystemService.Metrics.
+func (c *systemServiceClient) Metrics(ctx context.Context, req *connect.Request[v1.MetricsRequest]) (*connect.Response[v1.MetricsResponse], error) {
+	return c.metrics.CallUnary(ctx, req)
+}
+
 // SystemServiceHandler is an implementation of the aos.v1.SystemService service.
 type SystemServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
 	Audit(context.Context, *connect.Request[v1.AuditRequest]) (*connect.Response[v1.AuditResponse], error)
 	// Model usage per day over every model, for the Agent app's chart.
 	Usage(context.Context, *connect.Request[v1.UsageRequest]) (*connect.Response[v1.UsageResponse], error)
+	// The Machine's CPU, memory, disks and network, sampled when asked:
+	// Activity Monitor polls it while open, so an idle aosd samples nothing.
+	Metrics(context.Context, *connect.Request[v1.MetricsRequest]) (*connect.Response[v1.MetricsResponse], error)
 }
 
 // NewSystemServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2108,6 +2128,12 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(systemServiceMethods.ByName("Usage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemServiceMetricsHandler := connect.NewUnaryHandler(
+		SystemServiceMetricsProcedure,
+		svc.Metrics,
+		connect.WithSchema(systemServiceMethods.ByName("Metrics")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SystemService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemServiceInfoProcedure:
@@ -2116,6 +2142,8 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 			systemServiceAuditHandler.ServeHTTP(w, r)
 		case SystemServiceUsageProcedure:
 			systemServiceUsageHandler.ServeHTTP(w, r)
+		case SystemServiceMetricsProcedure:
+			systemServiceMetricsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2135,4 +2163,8 @@ func (UnimplementedSystemServiceHandler) Audit(context.Context, *connect.Request
 
 func (UnimplementedSystemServiceHandler) Usage(context.Context, *connect.Request[v1.UsageRequest]) (*connect.Response[v1.UsageResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.Usage is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) Metrics(context.Context, *connect.Request[v1.MetricsRequest]) (*connect.Response[v1.MetricsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.Metrics is not implemented"))
 }

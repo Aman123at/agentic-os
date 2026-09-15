@@ -605,6 +605,35 @@ service SystemService {
   rpc Audit(AuditRequest) returns (AuditResponse);
   // Model usage per day over every model, for the Agent app's chart.
   rpc Usage(UsageRequest) returns (UsageResponse);
+  // The Machine's CPU, memory, disks and network, sampled when asked:
+  // Activity Monitor polls it while open, so an idle aosd samples nothing.
+  rpc Metrics(MetricsRequest) returns (MetricsResponse);
+}
+
+message MetricsRequest {}
+message MetricsResponse {
+  // The busy share of the CPU the Machine may use, 0 to 100, since the
+  // previous call; cpu_known is false on the first.
+  double cpu_percent = 1;
+  bool cpu_known = 2;
+  // CPUs the Machine may use: its cgroup's quota, or the Host's CPUs.
+  double cpus = 3;
+  uint64 memory_used_bytes = 4;
+  // The Machine's memory limit, or the Host's memory when it has none.
+  uint64 memory_total_bytes = 5;
+  repeated DiskUsage disks = 6;
+  // Since the Machine started, over every interface but loopback; the
+  // client works out rates from successive samples.
+  uint64 net_rx_bytes = 7;
+  uint64 net_tx_bytes = 8;
+}
+
+message DiskUsage {
+  // A folder on the file system, such as /home/aos or /shared.
+  string path = 1;
+  uint64 total_bytes = 2;
+  uint64 used_bytes = 3;
+  uint64 available_bytes = 4;
 }
 
 message UsageRequest {
