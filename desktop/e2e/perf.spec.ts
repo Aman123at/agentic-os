@@ -1,15 +1,16 @@
 // The performance gate (PLAN.md §16, §18, M3.5). Two interactions guard the
 // §4.3 smoothness rules:
 //   • Window drag stays at 60fps — dragging writes transform in rAF and commits
-//     to the store only on pointer-up, so no frame does over-budget work. We
-//     assert no long animation frame (≥ one 60Hz budget spilling past ~50 ms)
-//     occurs across a scripted drag, and report the p95 frame interval.
+//     to the store only on pointer-up, so no frame does over-budget work. A Chrome
+//     trace of a scripted drag must show p95 main-thread frame cost < 16.7 ms and
+//     no frame dropped or presented without its update (see trace.ts).
 //   • Keystroke echo is under 30 ms p95 — output goes straight into xterm, never
 //     through React state, so echo does not wait on a render.
 import { expect, openApp, test } from "./harness";
 import { measureKeystrokeEcho } from "./term-helpers";
+import { FRAME_CATEGORIES, frameStats } from "./trace";
 
-test("window drag holds 60fps with no dropped frames", async ({ page }) => {
+test("window drag holds 60fps with no dropped frames", async ({ page, browser }) => {
   await page.goto("/");
   await openApp(page, "Finder");
   // Drive the window we just opened (newest, on top), not one a reload restored.
@@ -29,42 +30,24 @@ test("window drag holds 60fps with no dropped frames", async ({ page }) => {
   // Warm up (compositor/layout) before the measured segment.
   for (let i = 1; i <= 15; i++) await page.mouse.move(x + i * 3, y);
 
-  // Record every animation frame while we drag the measured segment.
-  await page.evaluate(() => {
-    const w = window as unknown as { __frames: number[]; __raf: boolean };
-    w.__frames = [];
-    w.__raf = true;
-    const loop = (t: number) => {
-      if (!w.__raf) return;
-      w.__frames.push(t);
-      requestAnimationFrame(loop);
-    };
-    requestAnimationFrame(loop);
-  });
-
+  // Trace the measured segment, bracketed by marks so setup frames don't count.
+  await browser.startTracing(page, { categories: FRAME_CATEGORIES });
+  await page.evaluate(() => performance.mark("aos-drag-start"));
   for (let i = 1; i <= 60; i++) {
     await page.mouse.move(x + (15 + i) * 3, y + Math.sin(i / 6) * 4);
     await page.waitForTimeout(8);
   }
+  await page.evaluate(() => performance.mark("aos-drag-end"));
   await page.mouse.up();
+  const stats = frameStats(await browser.stopTracing(), "aos-drag-start", "aos-drag-end");
+  console.log(
+    `[perf] drag: ${stats.frames} frames · p95 frame ${stats.p95.toFixed(2)}ms · max ${stats.max.toFixed(2)}ms · missed ${stats.missed}`,
+  );
 
-  const res = await page.evaluate(() => {
-    const w = window as unknown as { __frames: number[]; __raf: boolean };
-    w.__raf = false;
-    const f = w.__frames;
-    const d: number[] = [];
-    // Drop the first delta: it spans the gap before the first rAF after we began.
-    for (let i = 2; i < f.length; i++) d.push(f[i] - f[i - 1]);
-    d.sort((a, b) => a - b);
-    const p95 = d.length ? d[Math.min(d.length - 1, Math.floor(d.length * 0.95))] : 0;
-    return { frames: f.length, p95, max: d.length ? d[d.length - 1] : 0, long: d.filter((x) => x > 50).length };
-  });
-  console.log(`[perf] drag (steady state): ${res.frames} frames · p95 interval ${res.p95.toFixed(1)}ms · max ${res.max.toFixed(1)}ms · long(>50ms) ${res.long}`);
-
-  expect(res.frames, "the drag should have animated many frames").toBeGreaterThan(15);
-  // Dragging writes transform in rAF and never re-renders React, so no frame in
-  // the steady-state segment overruns badly (a dropped frame would exceed 50 ms).
-  expect(res.long, "no dropped frames during the steady-state drag").toBe(0);
+  // Every move asks for a frame, so the drag must have rendered many of them.
+  expect(stats.frames, "the drag should have rendered many frames").toBeGreaterThan(30);
+  expect(stats.p95, "p95 main-thread frame cost fits a 60 Hz frame").toBeLessThan(16.7);
+  expect(stats.missed, "no frame dropped or presented without its update").toBe(0);
 
   // The window actually moved (the drag was real, and committed on pointer-up).
   const after = await win.boundingBox();
