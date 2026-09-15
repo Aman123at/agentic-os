@@ -666,7 +666,7 @@ A CI run that misses any deterministic target fails.
 
 ## 17. Testing strategy
 
-1. **Go unit tests** per package.
+1. **Go unit tests** per package, run twice: on the macOS Host (`unit`) and under Linux in Docker (`unit-linux`), so the `_linux.go` code (Sessions, the sandbox, the socket guard) is tested too.
    - Policy decision tables.
    - Shell analysis corpus.
    - Retry guard and Cost Limit logic.

@@ -1,13 +1,14 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, ui, image, integration, e2e, playwright. With no arguments,
-// all run in order.
+// Stages: lint, unit, unit-linux, ui, image, integration, e2e, playwright. With
+// no arguments, all run in order.
 package main
 
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,6 +35,7 @@ var stages = []struct {
 }{
 	{"lint", lint},
 	{"unit", unit},
+	{"unit-linux", unitLinux},
 	{"ui", ui},
 	{"image", image},
 	{"integration", integration},
@@ -87,6 +89,92 @@ func lint() error {
 
 func unit() error {
 	return run("go", "test", "./...")
+}
+
+// unitLinux runs the unit tests under Linux (docker/Dockerfile's go-test
+// target), where the _linux.go code (Sessions, the sandbox, the socket guard)
+// builds and runs. The repository goes in as build context, never a bind mount,
+// which hangs Docker Desktop for folders under ~/Desktop.
+func unitLinux() error {
+	dir, err := os.MkdirTemp("", "aos-unit-linux-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	if err := run("docker", "buildx", "build", "-f", "docker/Dockerfile", "--target", "go-test",
+		"--output", "type=local,dest="+dir, "."); err != nil {
+		return err
+	}
+	report, err := os.ReadFile(filepath.Join(dir, "test.json"))
+	if err != nil {
+		return err
+	}
+	r := readTestReport(report)
+	fmt.Printf("    linux: %d passed, %d skipped, %d failed\n", r.passed, len(r.skipped), len(r.failed))
+	for _, name := range r.skipped {
+		fmt.Printf("    skipped: %s\n", name)
+	}
+	status, err := os.ReadFile(filepath.Join(dir, "status"))
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(status)) == "0" {
+		return nil
+	}
+	for _, name := range r.failed {
+		fmt.Printf("--- FAIL: %s\n%s", name, r.output[name])
+	}
+	if len(r.failed) == 0 {
+		// Nothing failed by name, so a package failed to build or panicked.
+		stderr, _ := os.ReadFile(filepath.Join(dir, "stderr.txt"))
+		fmt.Print(string(stderr))
+		for _, pkg := range r.brokenPkgs {
+			fmt.Printf("--- FAIL: %s\n%s", pkg, r.output[pkg])
+		}
+	}
+	return fmt.Errorf("go test failed under Linux (exit status %s)", strings.TrimSpace(string(status)))
+}
+
+// testReport sums up `go test -json` output. Names are "package TestName"; a
+// package's own output is kept under its bare import path.
+type testReport struct {
+	passed          int
+	skipped, failed []string
+	brokenPkgs      []string
+	output          map[string]string
+}
+
+func readTestReport(data []byte) testReport {
+	r := testReport{output: map[string]string{}}
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		var ev struct{ Action, Package, Test, Output string }
+		if json.Unmarshal(line, &ev) != nil {
+			continue
+		}
+		name := ev.Package
+		if ev.Test != "" {
+			name += " " + ev.Test
+		}
+		switch ev.Action {
+		case "output":
+			r.output[name] += ev.Output
+		case "pass":
+			if ev.Test != "" {
+				r.passed++
+			}
+		case "skip":
+			if ev.Test != "" {
+				r.skipped = append(r.skipped, name)
+			}
+		case "fail":
+			if ev.Test != "" {
+				r.failed = append(r.failed, name)
+			} else {
+				r.brokenPkgs = append(r.brokenPkgs, name)
+			}
+		}
+	}
+	return r
 }
 
 // ui builds the Desktop and checks its initial bundle against the §16 budget.

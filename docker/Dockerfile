@@ -26,6 +26,18 @@ COPY cmd/ cmd/
 COPY internal/ internal/
 COPY tools/ tools/
 
+# Linux unit tests (CI only): `go run ./tools/ci unit-linux` exports this target,
+# so the _linux.go code the macOS Host can't run is tested too. The run records
+# go test's exit status instead of failing, so its report comes out either way.
+FROM go-base AS go-test-run
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    mkdir /report; \
+    CGO_ENABLED=0 go test -count=1 -json ./... >/report/test.json 2>/report/stderr.txt; \
+    echo $? >/report/status
+
+FROM scratch AS go-test
+COPY --from=go-test-run /report/ /
+
 FROM go-base AS aosd-cli
 ARG TARGETOS TARGETARCH
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
