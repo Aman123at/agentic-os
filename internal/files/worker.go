@@ -156,10 +156,13 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	return enc.Encode(resp)
 }
 
-// ReadResponse reads a worker's output, reporting progress, into result.
+// ReadResponse reads a worker's output, reporting progress, into result. The
+// line buffer starts small and grows only for a long response (a 1 MiB Read):
+// most operations answer in a few hundred bytes, and aosd runs one per Finder
+// listing, so a large buffer each time was mostly garbage.
 func ReadResponse(r io.Reader, result any, progress func(n, total int64)) error {
 	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 1<<20), 256<<20)
+	sc.Buffer(make([]byte, 0, 64<<10), 256<<20)
 	for sc.Scan() {
 		var resp response
 		if err := json.Unmarshal(sc.Bytes(), &resp); err != nil {
