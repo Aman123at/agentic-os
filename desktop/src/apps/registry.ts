@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash";
+export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash" | "activity" | "software";
 
 export interface AppDef {
   id: AppId;
@@ -66,6 +66,26 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "📝",
     size: { w: 680, h: 520 },
     Component: lazy(() => import("./textedit/TextEdit")),
+  },
+  // Activity Monitor: Processes, the CPU/Memory/Disk/Network graphs, the running
+  // Agents, and Services & Ports. Opened from Spotlight; one is enough.
+  activity: {
+    id: "activity",
+    name: "Activity Monitor",
+    icon: "📊",
+    size: { w: 820, h: 560 },
+    singleton: true,
+    Component: lazy(() => import("./activity/ActivityMonitor")),
+  },
+  // Software: the installed Packages, the Install Ledger, Checkpoints and Replay
+  // progress (PLAN.md §11). Opened from Spotlight; one is enough.
+  software: {
+    id: "software",
+    name: "Software",
+    icon: "📦",
+    size: { w: 820, h: 560 },
+    singleton: true,
+    Component: lazy(() => import("./software/Software")),
   },
   // The Trash sits at the Dock's end, as on macOS.
   trash: {

@@ -122,6 +122,16 @@ export async function openSpotlight(page: Page): Promise<void> {
   await expect(input).toBeVisible();
 }
 
+// openViaSpotlight opens an app that is not in the Dock (Activity Monitor,
+// Software) the way a user would: Spotlight, type its name, click the app row.
+export async function openViaSpotlight(page: Page, name: string): Promise<void> {
+  await openSpotlight(page);
+  const input = page.getByLabel("Spotlight search");
+  await input.fill(name);
+  await page.locator(".spot__row").filter({ hasText: name }).first().click();
+  await expect(page.locator(`.window[aria-label="${name}"]`).last()).toBeVisible();
+}
+
 // startTask hands a prompt to the Agent through Spotlight, the way a user would,
 // and waits for the Tasks surface to open on it.
 export async function startTask(page: Page, prompt: string): Promise<void> {

@@ -11,6 +11,8 @@ import {
   FileService,
   SessionService,
   SettingsService,
+  SoftwareService,
+  SupervisorService,
   SystemService,
   TaskService,
   TrashService,
@@ -35,3 +37,5 @@ export const trash = client(TrashService);
 export const tasks = client(TaskService);
 export const sessions = client(SessionService);
 export const approvals = client(ApprovalService);
+export const software = client(SoftwareService);
+export const supervisor = client(SupervisorService);

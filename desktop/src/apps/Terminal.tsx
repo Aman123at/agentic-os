@@ -92,6 +92,29 @@ export default function Terminal() {
     [],
   );
 
+  // Activity Monitor's Agents tab opens the Terminal to Watch one Session: it
+  // sets watchSession, which we resolve to that Session and open read-only.
+  const watchSession = useDesktop((s) => s.watchSession);
+  const clearWatchSession = useDesktop((s) => s.clearWatchSession);
+  useEffect(() => {
+    if (!watchSession) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await sessions.listSessions({});
+        const s = resp.sessions.find((x) => x.id === watchSession);
+        if (!cancelled && s) watchAgent(s);
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (!cancelled) clearWatchSession();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [watchSession, watchAgent, clearWatchSession]);
+
   return (
     <div className="term" onClick={() => watch && setWatch(null)}>
       <div className="term__tabs">

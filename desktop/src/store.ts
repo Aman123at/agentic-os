@@ -7,7 +7,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
 import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
-import type { Approval, Task, TaskStep } from "./gen/aos/v1/types_pb";
+import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
 import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
 import { subscribe, type ConnState } from "./api/events";
@@ -72,6 +72,17 @@ interface DesktopState {
   // entry's absolute path.
   finderJump: { dir: string; select: string } | null;
 
+  // The progress of re-applying the Install Ledger at startup (PLAN.md §11),
+  // shown in the menu bar while it runs and in Software's Replay view. Seeded
+  // from Info at boot, then kept current by ReplayProgress events.
+  replay?: ReplayStatus;
+  // Bumped on every ServiceChanged event, so Activity Monitor's Services view
+  // re-fetches without the store holding the whole Services list.
+  serviceEpoch: number;
+  // An Agent Session for the Terminal to Watch, set by Activity Monitor's Agents
+  // tab; the Terminal consumes and clears it.
+  watchSession: string;
+
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
   /** Opens an app; given a document, opens it in its own window, or focuses the window already showing it. */
@@ -105,6 +116,9 @@ interface DesktopState {
   dismissNotification: (id?: string) => void;
   revealInFinder: (dir: string, select: string) => void;
   clearFinderJump: () => void;
+  /** Opens the Terminal and asks it to Watch an Agent Session read-only. */
+  watchInTerminal: (sessionId: string) => void;
+  clearWatchSession: () => void;
 }
 
 let nextId = 1;
@@ -137,6 +151,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   spotlight: false,
   notifCenter: false,
   finderJump: null,
+  serviceEpoch: 0,
+  watchSession: "",
 
   boot: async () => {
     try {
@@ -161,7 +177,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
         approvals: Object.fromEntries(pending.approvals.map((a) => [a.id, a])),
         notifications: kept.notifications.slice(0, MAX_NOTIFICATIONS),
       });
-      set({ phase: "ready", info });
+      set({ phase: "ready", info, replay: info.replay });
       startStream(set);
     } catch (err) {
       if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
@@ -363,6 +379,12 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     get().openApp("finder");
   },
   clearFinderJump: () => set({ finderJump: null }),
+
+  watchInTerminal: (sessionId) => {
+    set({ watchSession: sessionId });
+    get().openApp("terminal");
+  },
+  clearWatchSession: () => set({ watchSession: "" }),
 }));
 
 // ---------------------------------------------------------------- event stream
@@ -407,6 +429,8 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let approvals = s.approvals;
   let steps = s.steps;
   let downloads = s.downloads;
+  let replay = s.replay;
+  let serviceEpoch = s.serviceEpoch;
   const dropDownloads = (keep: (d: DownloadProgress, stepId: string) => boolean) => {
     const next = Object.fromEntries(Object.entries(downloads).filter(([id, d]) => keep(d, id)));
     if (Object.keys(next).length !== Object.keys(downloads).length) downloads = next;
@@ -459,6 +483,16 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
         if (d.taskId === s.openTask) steps = appendDelta(steps, d.stepId, d.delta);
         break;
       }
+      case "replayProgress": {
+        if (k.value.status) replay = k.value.status;
+        break;
+      }
+      // The Services view re-fetches when a Service changes; the store keeps only
+      // a counter, not the list.
+      case "serviceChanged": {
+        serviceEpoch++;
+        break;
+      }
     }
   }
 
@@ -468,6 +502,8 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
   if (downloads !== s.downloads) out.downloads = downloads;
+  if (replay !== s.replay) out.replay = replay;
+  if (serviceEpoch !== s.serviceEpoch) out.serviceEpoch = serviceEpoch;
   return out;
 }
 
