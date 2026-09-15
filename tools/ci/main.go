@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -185,11 +186,14 @@ func ui() error {
 	if err := run("npm", "--prefix", desktopDir, "run", "build"); err != nil {
 		return err
 	}
-	kb, err := bundleKB()
+	kb, lazy, err := bundleSizes()
 	if err != nil {
 		return err
 	}
 	fmt.Printf("    initial bundle: %d KB gzipped (target < %d KB)\n", kb, bundleBudgetKB)
+	for _, c := range lazy {
+		fmt.Printf("    lazy chunk %-24s %4d KB gzipped\n", c.name, c.kb)
+	}
 	if kb >= bundleBudgetKB {
 		return fmt.Errorf("the Desktop's initial bundle is over its %d KB budget", bundleBudgetKB)
 	}
@@ -223,24 +227,59 @@ func npmInstall() error {
 	return run("npm", "ci", "--prefix", desktopDir)
 }
 
-// bundleKB is the gzipped size of the initial bundle: the assets index.html
-// pulls in (entry script, its module preloads and stylesheets). Lazily loaded
-// app chunks are not referenced there, so they do not count against the budget.
-func bundleKB() (int, error) {
-	index, err := os.ReadFile(filepath.Join(desktopDir, "dist", "index.html"))
+// chunkName splits Vite's [name]-[hash] file names; the hash is 8 characters
+// that may themselves include '-' or '_'.
+var chunkName = regexp.MustCompile(`^(.+)-[\w-]{8}$`)
+
+// chunk is a lazily loaded script or stylesheet, named without its hash.
+type chunk struct {
+	name string
+	kb   int
+}
+
+// bundleSizes reports gzipped sizes: the initial bundle, meaning the assets
+// index.html pulls in (entry script, its module preloads and stylesheets), and
+// each lazily loaded chunk, largest first. Lazy chunks are not referenced there,
+// so they do not count against the budget.
+func bundleSizes() (initialKB int, lazy []chunk, err error) {
+	dist := filepath.Join(desktopDir, "dist")
+	index, err := os.ReadFile(filepath.Join(dist, "index.html"))
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	ref := regexp.MustCompile(`(?:src|href)="(/assets/[^"]+)"`)
+	initial := map[string]bool{}
+	ref := regexp.MustCompile(`(?:src|href)="/assets/([^"]+)"`)
 	total := 0
 	for _, m := range ref.FindAllStringSubmatch(string(index), -1) {
-		size, err := gzipSize(filepath.Join(desktopDir, "dist", filepath.FromSlash(m[1])))
+		initial[m[1]] = true
+		size, err := gzipSize(filepath.Join(dist, "assets", m[1]))
 		if err != nil {
-			return 0, err
+			return 0, nil, err
 		}
 		total += size
 	}
-	return total / 1024, nil
+	assets, err := os.ReadDir(filepath.Join(dist, "assets"))
+	if err != nil {
+		return 0, nil, err
+	}
+	for _, a := range assets {
+		n := a.Name()
+		ext := filepath.Ext(n)
+		if initial[n] || (ext != ".js" && ext != ".css") {
+			continue
+		}
+		size, err := gzipSize(filepath.Join(dist, "assets", n))
+		if err != nil {
+			return 0, nil, err
+		}
+		name := strings.TrimSuffix(n, ext)
+		if m := chunkName.FindStringSubmatch(name); m != nil {
+			name = m[1]
+		}
+		lazy = append(lazy, chunk{name + ext, (size + 1023) / 1024})
+	}
+	sort.Slice(lazy, func(i, j int) bool { return lazy[i].kb > lazy[j].kb })
+	return total / 1024, lazy, nil
 }
 
 // gzipSize reports how many bytes a file takes after gzip -9, matching how a
