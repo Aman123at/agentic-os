@@ -114,7 +114,7 @@ export function isImage(e: FileInfo): boolean {
 const MAX_PREVIEW = 4 << 20; // stop pulling a file for Quick Look past 4 MiB
 
 // readAll pulls a whole file in 1 MiB chunks (FileService.Read caps each call),
-// up to max bytes. Used for Quick Look and download-to-Host.
+// up to max bytes.
 export async function readAll(path: string, max = MAX_PREVIEW): Promise<Uint8Array> {
   const parts: Uint8Array[] = [];
   let offset = 0n;
@@ -135,20 +135,41 @@ export async function readAll(path: string, max = MAX_PREVIEW): Promise<Uint8Arr
   return out;
 }
 
-const MAX_DOWNLOAD = 256 << 20; // a safety ceiling for a whole-file download
+// rawUrl is where aosd serves a file's bytes (PLAN.md §13): Range requests for
+// media, inline for types that cannot run script, and a download otherwise.
+export function rawUrl(path: string, download = false): string {
+  const q = new URLSearchParams({ path });
+  if (download) q.set("download", "1");
+  return `/files/raw?${q}`;
+}
 
-// downloadToHost pulls a file's bytes and hands them to the browser as a save,
-// so the user's own Host machine receives it.
-export async function downloadToHost(path: string, name: string): Promise<void> {
-  const bytes = await readAll(path, MAX_DOWNLOAD);
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart]));
+// downloadToHost saves a file to the user's own computer. The browser streams
+// it from /files/raw, so its size is no concern.
+export function downloadToHost(path: string, name: string): void {
   const a = document.createElement("a");
-  a.href = url;
+  a.href = rawUrl(path, true);
   a.download = name;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+// UploadError is a refused upload; status 409 means the file already exists.
+export class UploadError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+// uploadFile streams a file from this computer to path through /upload.
+export async function uploadFile(path: string, file: Blob, overwrite: boolean): Promise<void> {
+  const q = new URLSearchParams({ path });
+  if (overwrite) q.set("overwrite", "1");
+  const resp = await fetch(`/upload?${q}`, { method: "POST", body: file, credentials: "same-origin" });
+  if (!resp.ok) throw new UploadError((await resp.text()).trim() || resp.statusText, resp.status);
 }
 
 const decoder = new TextDecoder("utf-8", { fatal: false });

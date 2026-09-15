@@ -1,19 +1,21 @@
 // Finder browses the Machine's files over FileService, with the Trash over
-// TrashService (PLAN.md §4.3, §13). Navigation and the two views sit alongside
-// the file actions: upload/download to the Host, move (drag-and-drop), Protect,
-// move to Trash, restore/empty, and "Ask Agent…", which starts a Task — the
-// minimal task surface the shell offers in M3. Long folders are virtualised
-// (§4.3 rule 5).
+// TrashService (PLAN.md §4.3, §13). Navigation and the list, icon and column
+// views sit alongside the file actions: upload/download to the Host, move
+// (drag-and-drop), Protect, move to Trash, restore/empty, and "Ask Agent…",
+// which starts a Task. The open folder refreshes live through Watch (§15), and
+// long folders are virtualised (§4.3 rule 5).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConnectError, Code } from "@connectrpc/connect";
+import { ConnectError } from "@connectrpc/connect";
 
-import { files, tasks, trash } from "../api/client";
+import { files, trash } from "../api/client";
+import { watchFolder } from "../api/watch";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import { VirtualList } from "../ui/VirtualList";
 import {
   PLACES,
+  UploadError,
   basename,
   crumbs,
   decodeText,
@@ -26,11 +28,13 @@ import {
   looksBinary,
   parent,
   readAll,
+  uploadFile,
 } from "./finder/fs";
 
-type View = "list" | "icon";
+type View = "list" | "icon" | "column";
 
 const ROW_H = 28;
+const COL_ROW_H = 24;
 const TRASH = ""; // the Trash "folder" browses TrashService, not FileService
 const DRAG_TYPE = "application/x-aos-path"; // an internal move, told apart from a Host-file drop
 
@@ -50,7 +54,7 @@ export default function Finder() {
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState<View>(savedView === "icon" ? "icon" : "list");
+  const [view, setView] = useState<View>(savedView === "icon" || savedView === "column" ? savedView : "list");
   const [selected, setSelected] = useState<string>("");
   const [quick, setQuick] = useState<FileInfo | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -65,45 +69,69 @@ export default function Finder() {
   useEffect(() => saveDir(dir), [dir, saveDir]);
   useEffect(() => saveView(view), [view, saveView]);
 
-  // Only the latest load may show its result: moving on before a listing
-  // arrives (a reveal into a Finder that is still loading ~) must not let the
-  // older, slower listing land last.
+  // Only the latest listing of the current folder may show: moving on before a
+  // listing arrives (a reveal into a Finder that is still loading ~) must not let
+  // the older, slower one land last.
   const loadSeq = useRef(0);
-  const load = useCallback(async (loc: string) => {
-    const seq = ++loadSeq.current;
-    const current = () => seq === loadSeq.current;
+  const show = useCallback((listed: FileInfo[]) => {
+    setEntries(listed);
+    setTrashItems([]);
+    setError("");
+    setLoading(false);
+    if (revealRef.current) {
+      setSelected(revealRef.current);
+      revealRef.current = "";
+    }
+  }, []);
+  const load = useCallback(
+    async (loc: string) => {
+      const seq = ++loadSeq.current;
+      const current = () => seq === loadSeq.current;
+      try {
+        if (loc === TRASH) {
+          const items = (await trash.listTrash({})).items;
+          if (!current()) return;
+          setTrashItems(items);
+          setEntries([]);
+          setLoading(false);
+        } else {
+          const listed = (await files.list({ path: loc })).entries;
+          if (current()) show(listed);
+        }
+      } catch (err) {
+        if (!current()) return;
+        setError(ConnectError.from(err).message);
+        setEntries([]);
+        setTrashItems([]);
+        setLoading(false);
+      }
+    },
+    [show],
+  );
+
+  // A folder follows the Machine through Watch; the Trash is listed when opened
+  // and after each change made here.
+  useEffect(() => {
+    ++loadSeq.current;
     setLoading(true);
     setError("");
     setSelected("");
-    try {
-      if (loc === TRASH) {
-        const items = (await trash.listTrash({})).items;
-        if (!current()) return;
-        setTrashItems(items);
-        setEntries([]);
-      } else {
-        const listed = (await files.list({ path: loc })).entries;
-        if (!current()) return;
-        setEntries(listed);
-        setTrashItems([]);
-        if (revealRef.current) {
-          setSelected(revealRef.current);
-          revealRef.current = "";
-        }
-      }
-    } catch (err) {
-      if (!current()) return;
-      setError(ConnectError.from(err).message);
-      setEntries([]);
-      setTrashItems([]);
-    } finally {
-      if (current()) setLoading(false);
+    if (dir === TRASH) {
+      void load(dir);
+      return;
     }
-  }, []);
-
-  useEffect(() => {
-    void load(dir);
-  }, [dir, load]);
+    return watchFolder(dir, {
+      onEntries: (listed) => {
+        ++loadSeq.current;
+        show(listed);
+      },
+      onError: (message) => {
+        setError(message);
+        setEntries([]);
+        setLoading(false);
+      },
+    });
+  }, [dir, load, show]);
   const reload = useCallback(() => void load(dir), [dir, load]);
 
   const go = useCallback(
@@ -124,17 +152,22 @@ export default function Finder() {
   // select it if we are already there) and clear the request.
   const finderJump = useDesktop((s) => s.finderJump);
   const clearFinderJump = useDesktop((s) => s.clearFinderJump);
+  const reveal = useCallback(
+    (folder: string, select: string) => {
+      if (folder === dir) {
+        setSelected(select);
+      } else {
+        revealRef.current = select;
+        go(folder);
+      }
+    },
+    [dir, go],
+  );
   useEffect(() => {
     if (!finderJump) return;
-    const { dir: jdir, select } = finderJump;
     clearFinderJump();
-    if (jdir === dir) {
-      setSelected(select);
-    } else {
-      revealRef.current = select;
-      go(jdir);
-    }
-  }, [finderJump, dir, go, clearFinderJump]);
+    reveal(finderJump.dir, finderJump.select);
+  }, [finderJump, reveal, clearFinderJump]);
 
   // Folders are entered by their logical path (so a Home-rooted walk stays
   // "~/…" rather than flipping to an absolute path); files open Quick Look.
@@ -179,7 +212,7 @@ export default function Finder() {
     [reload],
   );
 
-  const doDownload = (e: FileInfo) => run(`Downloading ${e.name}…`, () => downloadToHost(e.path, e.name));
+  const doDownload = (e: FileInfo) => downloadToHost(e.path, e.name);
   const doProtect = (e: FileInfo) =>
     run(e.protected ? "Unprotecting…" : "Protecting…", () =>
       e.protected ? files.unprotect({ path: e.path }) : files.protect({ path: e.path }),
@@ -200,25 +233,22 @@ export default function Finder() {
     if (!list || list.length === 0 || dir === TRASH) return;
     void run(`Uploading ${list.length} item${list.length === 1 ? "" : "s"}…`, async () => {
       for (const f of Array.from(list)) {
-        const bytes = new Uint8Array(await f.arrayBuffer());
         const path = join(dir, f.name);
         try {
-          await files.write({ path, content: bytes, overwrite: false });
+          await uploadFile(path, f, false);
         } catch (err) {
-          if (err instanceof ConnectError && err.code === Code.AlreadyExists) {
-            if (!window.confirm(`${f.name} already exists here. Replace it?`)) continue;
-            await files.write({ path, content: bytes, overwrite: true });
-          } else {
-            throw err;
-          }
+          if (!(err instanceof UploadError && err.status === 409)) throw err;
+          if (!window.confirm(`${f.name} already exists here. Replace it?`)) continue;
+          await uploadFile(path, f, true);
         }
       }
     });
   };
 
+  const createTask = useDesktop((s) => s.createTask);
   const doAsk = (prompt: string) => {
     setAsk(null);
-    void run("Starting Task…", () => tasks.createTask({ prompt }));
+    void run("Starting Task…", () => createTask(prompt));
   };
 
   // act runs a context-menu choice and closes the menu.
@@ -333,11 +363,29 @@ export default function Finder() {
             >
               ▦
             </button>
+            <button
+              className={`finder__btn${view === "column" ? " finder__btn--on" : ""}`}
+              title="Column view"
+              onClick={() => setView("column")}
+            >
+              ▥
+            </button>
           </div>
         </div>
 
         <div className="finder__body">
-          {loading ? (
+          {view === "column" && !inTrash ? (
+            // The columns stay up while the next folder loads, so walking down
+            // a path does not flash.
+            <ColumnView
+              dir={dir}
+              entries={loading || error ? [] : entries}
+              selected={selected}
+              onReveal={reveal}
+              onOpen={open}
+              onMenu={(x, y, file) => setMenu({ x, y, file })}
+            />
+          ) : loading ? (
             <div className="finder__empty">Loading…</div>
           ) : error ? (
             <div className="finder__empty finder__empty--error">{error}</div>
@@ -348,6 +396,7 @@ export default function Finder() {
               onSelect={setSelected}
               onMenu={(x, y, item) => setMenu({ x, y, item })}
             />
+
           ) : entries.length === 0 ? (
             <div className="finder__empty">This folder is empty.</div>
           ) : view === "list" ? (
@@ -373,6 +422,7 @@ export default function Finder() {
 
         <div className="finder__status">
           {busy ||
+            (view === "column" && error) ||
             (inTrash
               ? `${trashItems.length} item${trashItems.length === 1 ? "" : "s"} in Trash`
               : `${entries.length} item${entries.length === 1 ? "" : "s"}`)}
@@ -518,6 +568,123 @@ function IconGrid({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsP
   );
 }
 
+// ColumnView shows each folder from the place's root down to the open one side
+// by side, then the selected file. The open folder is the live listing; the
+// folders above it are listed when the path changes. Clicking a folder opens it,
+// and clicking a file selects it in its folder.
+function ColumnView({
+  dir,
+  entries,
+  selected,
+  onReveal,
+  onOpen,
+  onMenu,
+}: {
+  dir: string;
+  entries: FileInfo[];
+  selected: string;
+  onReveal: (dir: string, select: string) => void;
+  onOpen: (e: FileInfo) => void;
+  onMenu: (x: number, y: number, file: FileInfo) => void;
+}) {
+  const path = crumbs(dir);
+  const box = useRef<HTMLDivElement>(null);
+  const file = entries.find((e) => e.path === selected && !e.dir);
+
+  // The open folder, and the file picked in it, stay in view.
+  useEffect(() => {
+    const el = box.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [dir, file]);
+
+  return (
+    <div className="finder__columns" ref={box}>
+      {path.map((c, i) => {
+        const last = i === path.length - 1;
+        const next = path[i + 1]?.name;
+        return (
+          <Column
+            key={c.path}
+            path={c.path}
+            live={last ? entries : undefined}
+            isOn={(e) => (last ? e.path === selected : e.name === next)}
+            onClick={(e) => (e.dir ? onReveal(join(c.path, e.name), "") : onReveal(c.path, e.path))}
+            onOpen={onOpen}
+            onMenu={onMenu}
+          />
+        );
+      })}
+      {file && (
+        <div className="finder__colpreview">
+          <span className="finder__colpreview-icon">{iconFor(file)}</span>
+          <span className="finder__colpreview-name">{file.name}</span>
+          <span className="finder__colpreview-meta">
+            {formatSize(file.size, false)} · {formatWhen(file.modifiedAt)}
+          </span>
+          <button className="finder__btn" onClick={() => onOpen(file)}>
+            Open
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Column({
+  path,
+  live,
+  isOn,
+  onClick,
+  onOpen,
+  onMenu,
+}: {
+  path: string;
+  live?: FileInfo[];
+  isOn: (e: FileInfo) => boolean;
+  onClick: (e: FileInfo) => void;
+  onOpen: (e: FileInfo) => void;
+  onMenu: (x: number, y: number, file: FileInfo) => void;
+}) {
+  const [listed, setListed] = useState<FileInfo[]>([]);
+  useEffect(() => {
+    if (live) return;
+    let gone = false;
+    files.list({ path }).then(
+      (r) => !gone && setListed(r.entries),
+      () => !gone && setListed([]),
+    );
+    return () => {
+      gone = true;
+    };
+  }, [path, live]);
+  const items = live ?? listed;
+  return (
+    <VirtualList
+      className="finder__column"
+      items={items}
+      rowHeight={COL_ROW_H}
+      renderRow={(e, style) => (
+        <div
+          key={e.path}
+          style={style}
+          className={`finder__colrow${isOn(e) ? " finder__colrow--on" : ""}`}
+          onClick={() => onClick(e)}
+          onDoubleClick={() => !e.dir && onOpen(e)}
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            onMenu(ev.clientX, ev.clientY, e);
+          }}
+        >
+          <span className="finder__icon">{iconFor(e)}</span>
+          <span className="finder__name">{e.name}</span>
+          {e.protected && <span className="finder__lock" title="Protected">🔒</span>}
+          {e.dir && <span className="finder__colchev">›</span>}
+        </div>
+      )}
+    />
+  );
+}
+
 function TrashList({
   items,
   selected,
@@ -576,8 +743,8 @@ function MenuItem({ label, onClick, danger }: { label: string; onClick: () => vo
   );
 }
 
-// AskDialog collects a request and starts a Task that references the file — the
-// minimal task surface Finder offers (the full Agent app is M4).
+// AskDialog collects a request and starts a Task that references the file; the
+// Agent app opens on it.
 function AskDialog({ file, onCancel, onSubmit }: { file: FileInfo; onCancel: () => void; onSubmit: (prompt: string) => void }) {
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -593,6 +760,7 @@ function AskDialog({ file, onCancel, onSubmit }: { file: FileInfo; onCancel: () 
         <textarea
           ref={ref}
           className="ask__text"
+          aria-label="What should the Agent do?"
           placeholder="e.g. Summarise this file, or rename it to something clearer"
           value={text}
           onChange={(e) => setText(e.target.value)}

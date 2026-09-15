@@ -728,6 +728,64 @@ button {
 }
 
 /* ---------------------------------------------------------------- finder: menu, ask, drop */
+.finder__columns {
+  display: flex;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.finder__column {
+  flex: none;
+  width: 210px;
+  height: 100%;
+  overflow-y: auto;
+  position: relative;
+  border-right: 1px solid var(--border);
+}
+.finder__colrow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  cursor: default;
+  white-space: nowrap;
+}
+.finder__colrow .finder__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.finder__colrow--on {
+  background: var(--accent);
+  color: #fff;
+}
+.finder__colchev {
+  opacity: 0.6;
+  padding-left: 4px;
+}
+.finder__colpreview {
+  flex: none;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  text-align: center;
+}
+.finder__colpreview-icon {
+  font-size: 56px;
+}
+.finder__colpreview-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+.finder__colpreview-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
 .finder--drop .finder__body {
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
