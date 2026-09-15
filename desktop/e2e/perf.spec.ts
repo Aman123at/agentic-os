@@ -6,14 +6,27 @@
 //     no frame dropped or presented without its update (see trace.ts).
 //   • Keystroke echo is under 30 ms p95 — output goes straight into xterm, never
 //     through React state, so echo does not wait on a render.
+// Both measure a known scene, not whatever layout earlier specs left on aosd:
+// each page starts from an empty desktop.
 import { expect, openApp, test } from "./harness";
 import { measureKeystrokeEcho } from "./term-helpers";
 import { FRAME_CATEGORIES, frameStats } from "./trace";
 
+test.beforeEach(async ({ context }) => {
+  await context.addInitScript(() => {
+    try {
+      sessionStorage.setItem("aos.layout", JSON.stringify({ theme: "auto", windows: [], focused: "" }));
+    } catch {
+      // Without storage the page restores aosd's layout; the checks still run.
+    }
+  });
+});
+
 test("window drag holds 60fps with no dropped frames", async ({ page, browser }) => {
   await page.goto("/");
+  // A Terminal (a live WebGL canvas) behind the Finder we drag across it.
+  await openApp(page, "Terminal");
   await openApp(page, "Finder");
-  // Drive the window we just opened (newest, on top), not one a reload restored.
   const win = page.locator('.window[aria-label="Finder"]').last();
   const bar = win.locator(".window__bar");
   const before = await win.boundingBox();
@@ -41,7 +54,7 @@ test("window drag holds 60fps with no dropped frames", async ({ page, browser })
   await page.mouse.up();
   const stats = frameStats(await browser.stopTracing(), "aos-drag-start", "aos-drag-end");
   console.log(
-    `[perf] drag: ${stats.frames} frames · p95 frame ${stats.p95.toFixed(2)}ms · max ${stats.max.toFixed(2)}ms · missed ${stats.missed}`,
+    `[perf] drag: ${stats.frames} frames · p95 frame ${stats.p95.toFixed(2)}ms · max ${stats.max.toFixed(2)}ms · missed ${stats.missed} (dropped ${stats.dropped}, partial ${stats.partial}) · ${await page.locator(".window").count()} windows`,
   );
 
   // Every move asks for a frame, so the drag must have rendered many of them.

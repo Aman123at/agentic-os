@@ -34,6 +34,8 @@ export interface FrameStats {
   p95: number; // ms of main-thread work per frame
   max: number; // ms
   missed: number; // frames dropped or presented without the main thread's update
+  dropped: number; // of which: dropped outright
+  partial: number; // of which: presented without the main thread's update
 }
 
 // frameStats measures the page's renderer frames between two performance.mark()
@@ -63,25 +65,22 @@ export function frameStats(trace: Buffer, startMark: string, endMark: string): F
     perThread.set(key, [...(perThread.get(key) ?? []), e]);
   }
   const [main] = [...perThread.entries()].sort((a, b) => b[1].length - a[1].length);
-  if (!main) return { frames: 0, p95: 0, max: 0, missed: 0 };
+  if (!main) return { frames: 0, p95: 0, max: 0, missed: 0, dropped: 0, partial: 0 };
   const pid = main[1][0].pid;
 
   const costs = main[1].map((e) => (e.dur ?? 0) / 1000).sort((a, b) => a - b);
-  const missed = events.filter(
-    (e) =>
-      e.name === "PipelineReporter" &&
-      e.ph === "b" &&
-      e.pid === pid &&
-      e.ts >= from &&
-      e.ts <= to &&
-      (e.args?.frame_reporter?.state === "STATE_DROPPED" ||
-        e.args?.frame_reporter?.state === "STATE_PRESENTED_PARTIAL"),
-  ).length;
+  const states = events
+    .filter((e) => e.name === "PipelineReporter" && e.ph === "b" && e.pid === pid && e.ts >= from && e.ts <= to)
+    .map((e) => e.args?.frame_reporter?.state);
+  const dropped = states.filter((s) => s === "STATE_DROPPED").length;
+  const partial = states.filter((s) => s === "STATE_PRESENTED_PARTIAL").length;
 
   return {
     frames: costs.length,
     p95: costs[Math.min(costs.length - 1, Math.floor(costs.length * 0.95))],
     max: costs[costs.length - 1],
-    missed,
+    missed: dropped + partial,
+    dropped,
+    partial,
   };
 }
