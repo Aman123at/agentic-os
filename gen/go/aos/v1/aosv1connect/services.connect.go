@@ -193,6 +193,12 @@ const (
 	SystemServiceMetricsProcedure = "/aos.v1.SystemService/Metrics"
 	// SystemServiceProcessesProcedure is the fully-qualified name of the SystemService's Processes RPC.
 	SystemServiceProcessesProcedure = "/aos.v1.SystemService/Processes"
+	// SystemServiceListNotificationsProcedure is the fully-qualified name of the SystemService's
+	// ListNotifications RPC.
+	SystemServiceListNotificationsProcedure = "/aos.v1.SystemService/ListNotifications"
+	// SystemServiceDismissNotificationProcedure is the fully-qualified name of the SystemService's
+	// DismissNotification RPC.
+	SystemServiceDismissNotificationProcedure = "/aos.v1.SystemService/DismissNotification"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2029,6 +2035,9 @@ type SystemServiceClient interface {
 	// The Machine's processes, read from /proc when asked (Activity Monitor
 	// polls it while open).
 	Processes(context.Context, *connect.Request[v1.ProcessesRequest]) (*connect.Response[v1.ProcessesResponse], error)
+	// Notifications not yet dismissed, newest first, so they survive a reload.
+	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
+	DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error)
 }
 
 // NewSystemServiceClient constructs a client for the aos.v1.SystemService service. By default, it
@@ -2072,16 +2081,30 @@ func NewSystemServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(systemServiceMethods.ByName("Processes")),
 			connect.WithClientOptions(opts...),
 		),
+		listNotifications: connect.NewClient[v1.ListNotificationsRequest, v1.ListNotificationsResponse](
+			httpClient,
+			baseURL+SystemServiceListNotificationsProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("ListNotifications")),
+			connect.WithClientOptions(opts...),
+		),
+		dismissNotification: connect.NewClient[v1.DismissNotificationRequest, v1.DismissNotificationResponse](
+			httpClient,
+			baseURL+SystemServiceDismissNotificationProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("DismissNotification")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // systemServiceClient implements SystemServiceClient.
 type systemServiceClient struct {
-	info      *connect.Client[v1.InfoRequest, v1.InfoResponse]
-	audit     *connect.Client[v1.AuditRequest, v1.AuditResponse]
-	usage     *connect.Client[v1.UsageRequest, v1.UsageResponse]
-	metrics   *connect.Client[v1.MetricsRequest, v1.MetricsResponse]
-	processes *connect.Client[v1.ProcessesRequest, v1.ProcessesResponse]
+	info                *connect.Client[v1.InfoRequest, v1.InfoResponse]
+	audit               *connect.Client[v1.AuditRequest, v1.AuditResponse]
+	usage               *connect.Client[v1.UsageRequest, v1.UsageResponse]
+	metrics             *connect.Client[v1.MetricsRequest, v1.MetricsResponse]
+	processes           *connect.Client[v1.ProcessesRequest, v1.ProcessesResponse]
+	listNotifications   *connect.Client[v1.ListNotificationsRequest, v1.ListNotificationsResponse]
+	dismissNotification *connect.Client[v1.DismissNotificationRequest, v1.DismissNotificationResponse]
 }
 
 // Info calls aos.v1.SystemService.Info.
@@ -2109,6 +2132,16 @@ func (c *systemServiceClient) Processes(ctx context.Context, req *connect.Reques
 	return c.processes.CallUnary(ctx, req)
 }
 
+// ListNotifications calls aos.v1.SystemService.ListNotifications.
+func (c *systemServiceClient) ListNotifications(ctx context.Context, req *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error) {
+	return c.listNotifications.CallUnary(ctx, req)
+}
+
+// DismissNotification calls aos.v1.SystemService.DismissNotification.
+func (c *systemServiceClient) DismissNotification(ctx context.Context, req *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error) {
+	return c.dismissNotification.CallUnary(ctx, req)
+}
+
 // SystemServiceHandler is an implementation of the aos.v1.SystemService service.
 type SystemServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
@@ -2121,6 +2154,9 @@ type SystemServiceHandler interface {
 	// The Machine's processes, read from /proc when asked (Activity Monitor
 	// polls it while open).
 	Processes(context.Context, *connect.Request[v1.ProcessesRequest]) (*connect.Response[v1.ProcessesResponse], error)
+	// Notifications not yet dismissed, newest first, so they survive a reload.
+	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
+	DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error)
 }
 
 // NewSystemServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2160,6 +2196,18 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(systemServiceMethods.ByName("Processes")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemServiceListNotificationsHandler := connect.NewUnaryHandler(
+		SystemServiceListNotificationsProcedure,
+		svc.ListNotifications,
+		connect.WithSchema(systemServiceMethods.ByName("ListNotifications")),
+		connect.WithHandlerOptions(opts...),
+	)
+	systemServiceDismissNotificationHandler := connect.NewUnaryHandler(
+		SystemServiceDismissNotificationProcedure,
+		svc.DismissNotification,
+		connect.WithSchema(systemServiceMethods.ByName("DismissNotification")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SystemService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemServiceInfoProcedure:
@@ -2172,6 +2220,10 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 			systemServiceMetricsHandler.ServeHTTP(w, r)
 		case SystemServiceProcessesProcedure:
 			systemServiceProcessesHandler.ServeHTTP(w, r)
+		case SystemServiceListNotificationsProcedure:
+			systemServiceListNotificationsHandler.ServeHTTP(w, r)
+		case SystemServiceDismissNotificationProcedure:
+			systemServiceDismissNotificationHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2199,4 +2251,12 @@ func (UnimplementedSystemServiceHandler) Metrics(context.Context, *connect.Reque
 
 func (UnimplementedSystemServiceHandler) Processes(context.Context, *connect.Request[v1.ProcessesRequest]) (*connect.Response[v1.ProcessesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.Processes is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.ListNotifications is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.DismissNotification is not implemented"))
 }

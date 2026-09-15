@@ -36,6 +36,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/llm"
 	"github.com/amantiwari/agentic-os/internal/llm/fake"
 	"github.com/amantiwari/agentic-os/internal/llm/openai"
+	"github.com/amantiwari/agentic-os/internal/notify"
 	"github.com/amantiwari/agentic-os/internal/policy"
 	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/proxy"
@@ -95,6 +96,7 @@ type Daemon struct {
 	services *service.Supervisor
 	settings *settings.Store
 	sampler  *sysinfo.Sampler
+	notify   *notify.Center
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -140,7 +142,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		return fmt.Errorf("loading the Services: %w", err)
 	}
 	d.software = &software.Manager{Ledger: ledger, Etc: &software.Tree{Root: "/etc", Blobs: blobsDir, Skip: software.EtcSkip},
-		Archives: aptArchives, Lists: aptLists, AsUser: d.asUser, Services: d.services, Bus: d.bus, Logf: log.Printf}
+		Archives: aptArchives, Lists: aptLists, AsUser: d.asUser, Services: d.services, Bus: d.bus, Notify: d.post, Logf: log.Printf}
 	tools := append(tool.SessionTools(), tool.FilesTools()...)
 	tools = append(append(append(tools, tool.InternetTools()...), tool.SoftwareTools()...), tool.ServiceTools()...)
 	registry := tool.NewRegistry(append(tools, tool.CoordinationTools()...)...)
@@ -165,7 +167,8 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
-		Sampler: d.sampler,
+		Sampler:       d.sampler,
+		Notifications: d.notify,
 	}
 	handler := srv.Handler()
 
@@ -264,8 +267,9 @@ func (d *Daemon) init() error {
 		f.Close()
 	}
 	d.usage = &usage.Tracker{DB: d.db, Prices: &usage.File{Path: pricesFile}}
-	d.memories = &profile.Memories{DB: d.db, Bus: d.bus}
 	d.bus = events.New()
+	d.notify = &notify.Center{DB: d.db, Bus: d.bus}
+	d.memories = &profile.Memories{DB: d.db, Notify: d.post}
 	d.audit = &audit.Log{DB: d.db}
 	d.registry = session.NewRegistry()
 	d.outputs = &tool.Outputs{Dir: outputsDir}
@@ -591,4 +595,11 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// post saves and publishes a notification; failing to save it is only logged.
+func (d *Daemon) post(ctx context.Context, n *aosv1.Notification) {
+	if _, err := d.notify.Post(context.WithoutCancel(ctx), n); err != nil {
+		log.Printf("notification %q: %v", n.Title, err)
+	}
 }

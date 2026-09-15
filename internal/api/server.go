@@ -19,6 +19,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/desktop"
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
+	"github.com/amantiwari/agentic-os/internal/notify"
 	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/service"
 	"github.com/amantiwari/agentic-os/internal/settings"
@@ -84,6 +85,8 @@ type Server struct {
 	Usage *usage.Tracker
 	// Sampler samples the Machine for Activity Monitor.
 	Sampler *sysinfo.Sampler
+	// Notifications are kept until dismissed.
+	Notifications *notify.Center
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -138,7 +141,7 @@ func connectError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, task.ErrNotFound), errors.Is(err, files.ErrNotExist), errors.Is(err, profile.ErrNoMemory),
-		errors.Is(err, software.ErrNoCheckpoint), errors.Is(err, service.ErrNoService):
+		errors.Is(err, software.ErrNoCheckpoint), errors.Is(err, service.ErrNoService), errors.Is(err, notify.ErrNoNotification):
 		return connect.NewError(connect.CodeNotFound, err)
 	case errors.Is(err, files.ErrExists):
 		return connect.NewError(connect.CodeAlreadyExists, err)
@@ -707,6 +710,33 @@ func (sys systemService) Processes(context.Context, *connect.Request[aosv1.Proce
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("processes are not available"))
 	}
 	return connect.NewResponse(sys.s.Sampler.Processes()), nil
+}
+
+func (sys systemService) ListNotifications(ctx context.Context, _ *connect.Request[aosv1.ListNotificationsRequest]) (*connect.Response[aosv1.ListNotificationsResponse], error) {
+	if sys.s.Notifications == nil {
+		return connect.NewResponse(&aosv1.ListNotificationsResponse{}), nil
+	}
+	list, err := sys.s.Notifications.List(ctx)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ListNotificationsResponse{Notifications: list}), nil
+}
+
+func (sys systemService) DismissNotification(ctx context.Context, req *connect.Request[aosv1.DismissNotificationRequest]) (*connect.Response[aosv1.DismissNotificationResponse], error) {
+	if sys.s.Notifications == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("notifications are not available"))
+	}
+	var err error
+	if req.Msg.All {
+		err = sys.s.Notifications.DismissAll(ctx)
+	} else {
+		err = sys.s.Notifications.Dismiss(ctx, req.Msg.Id)
+	}
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.DismissNotificationResponse{}), nil
 }
 
 func (sys systemService) Audit(ctx context.Context, req *connect.Request[aosv1.AuditRequest]) (*connect.Response[aosv1.AuditResponse], error) {

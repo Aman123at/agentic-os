@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/events"
+	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
 	"github.com/amantiwari/agentic-os/internal/store"
 )
 
@@ -58,17 +58,16 @@ func TestMemoryProposalsWaitForTheUser(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	bus := events.New()
-	sub := bus.Subscribe(t.Context(), "")
-	s := &Memories{DB: db, Bus: bus}
+	var notified []*aosv1.Notification
+	s := &Memories{DB: db, Notify: func(_ context.Context, n *aosv1.Notification) { notified = append(notified, n) }}
 	ctx := context.Background()
 
 	proposal, err := s.Propose(ctx, "t_1", "The user deploys with rsync.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := (<-sub).GetNotification(); n.GetMemoryId() != proposal.Id || n.Body != "The user deploys with rsync." || n.TaskId != "t_1" {
-		t.Errorf("notification %+v", n)
+	if len(notified) != 1 || notified[0].MemoryId != proposal.Id || notified[0].Body != "The user deploys with rsync." || notified[0].TaskId != "t_1" {
+		t.Errorf("notifications %+v", notified)
 	}
 	written, _ := s.Add(ctx, "", "I prefer tabs.")
 	if accepted, _ := s.Accepted(ctx); len(accepted) != 1 || accepted[0] != "I prefer tabs." {

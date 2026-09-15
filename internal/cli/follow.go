@@ -113,7 +113,7 @@ func (f *follower) follow(ctx context.Context) (*aosv1.Task, error) {
 func (f *follower) notify(n *aosv1.Notification) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.json {
+	if f.json || n.Dismissed {
 		return
 	}
 	line := fmt.Sprintf("%s• %s%s %s", f.st.cyan, n.Title, f.st.reset, n.Body)

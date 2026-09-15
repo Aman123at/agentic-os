@@ -47,7 +47,9 @@ type Manager struct {
 	// Services, if set, takes part in Restores.
 	Services Services
 	Bus      *events.Bus
-	Logf     func(format string, args ...any)
+	// Notify, if set, tells the user a Replay failed or left notes.
+	Notify func(context.Context, *aosv1.Notification)
+	Logf   func(format string, args ...any)
 
 	once sync.Once
 	sem  chan struct{}
@@ -798,9 +800,8 @@ func (m *Manager) Replay(ctx context.Context) error {
 			s.Message += "\n" + strings.Join(notes, "\n")
 		}
 	})
-	if (err != nil || len(notes) > 0) && m.Bus != nil {
-		m.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_Notification{Notification: &aosv1.Notification{
-			Title: "Replay", Body: m.ReplayStatus().Message}}})
+	if (err != nil || len(notes) > 0) && m.Notify != nil {
+		m.Notify(ctx, &aosv1.Notification{Title: "Replay", Body: m.ReplayStatus().Message})
 	}
 	return err
 }

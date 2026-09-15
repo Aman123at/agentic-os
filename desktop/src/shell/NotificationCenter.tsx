@@ -15,6 +15,7 @@ export default function NotificationCenter() {
   const approvals = useDesktop((s) => s.approvals);
   const tasks = useDesktop((s) => s.tasks);
   const notifications = useDesktop((s) => s.notifications);
+  const dismiss = useDesktop((s) => s.dismissNotification);
 
   const pending = useMemo(() => Object.values(approvals), [approvals]);
   const taskList = useMemo(
@@ -65,20 +66,25 @@ export default function NotificationCenter() {
 
         {notifications.length > 0 && (
           <section className="nc__section">
-            <h3 className="nc__title">Notifications</h3>
-            {notifications.slice(0, 12).map((n, i) => (
-              <button
-                key={i}
-                className="nc__row"
-                onClick={() => n.taskId && openTaskView(n.taskId)}
-                disabled={!n.taskId}
-              >
-                <span className="nc__icon">🔔</span>
-                <span className="nc__text">
-                  <strong>{n.title}</strong>
-                  {n.body ? ` — ${n.body}` : ""}
-                </span>
+            <h3 className="nc__title nc__title--row">
+              Notifications
+              <button className="nc__clear" onClick={() => dismiss()}>
+                Clear all
               </button>
+            </h3>
+            {notifications.slice(0, 12).map((n) => (
+              <div key={n.id} className="nc__item">
+                <button className="nc__row" onClick={() => n.taskId && openTaskView(n.taskId)} disabled={!n.taskId}>
+                  <span className="nc__icon">🔔</span>
+                  <span className="nc__text">
+                    <strong>{n.title}</strong>
+                    {n.body ? ` — ${n.body}` : ""}
+                  </span>
+                </button>
+                <button className="nc__dismiss" aria-label={`Dismiss ${n.title}`} onClick={() => dismiss(n.id)}>
+                  ×
+                </button>
+              </div>
             ))}
           </section>
         )}

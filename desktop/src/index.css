@@ -1334,6 +1334,37 @@ button {
   font-size: 12.5px;
 }
 .nc__row:hover { background: var(--panel); }
+.nc__title--row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.nc__clear {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: none;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.nc__item {
+  display: flex;
+  align-items: center;
+}
+.nc__dismiss {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nc__dismiss:hover { background: var(--panel); color: var(--text); }
 .nc__row:disabled { cursor: default; }
 .nc__row--await { background: rgba(217, 138, 0, 0.14); }
 .nc__icon { flex: none; }

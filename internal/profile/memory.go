@@ -13,7 +13,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/store"
 )
 
@@ -29,9 +28,10 @@ const (
 // Memories stores Memory: the Agents' proposals and the entries the user
 // accepted or wrote, which every Agent is given (PLAN.md §8.5).
 type Memories struct {
-	DB  *store.DB
-	Bus *events.Bus
-	Now func() time.Time
+	DB *store.DB
+	// Notify, if set, asks the user about a proposal.
+	Notify func(context.Context, *aosv1.Notification)
+	Now    func() time.Time
 }
 
 func (s *Memories) now() time.Time {
@@ -44,9 +44,8 @@ func (s *Memories) now() time.Time {
 // Propose records an Agent's proposal and asks the user about it.
 func (s *Memories) Propose(ctx context.Context, taskID, text string) (*aosv1.Memory, error) {
 	m, err := s.insert(ctx, taskID, text, Proposed)
-	if err == nil && s.Bus != nil {
-		s.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_Notification{Notification: &aosv1.Notification{
-			Title: "Remember this?", Body: m.Text, TaskId: taskID, MemoryId: m.Id}}})
+	if err == nil && s.Notify != nil {
+		s.Notify(ctx, &aosv1.Notification{Title: "Remember this?", Body: m.Text, TaskId: taskID, MemoryId: m.Id})
 	}
 	return m, err
 }

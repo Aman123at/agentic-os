@@ -196,6 +196,11 @@ message Notification {
   string task_id = 3;
   // Set when an Agent proposes a Memory; SettingsService.AcceptMemory saves it.
   string memory_id = 4;
+  // Notifications are kept until dismissed (SystemService.ListNotifications).
+  string id = 5;
+  google.protobuf.Timestamp created_at = 6;
+  // Set on the event sent when the notification is dismissed, so every tab drops it.
+  bool dismissed = 7;
 }
 
 // ---------------------------------------------------------------- Files and Trash
@@ -611,7 +616,22 @@ service SystemService {
   // The Machine's processes, read from /proc when asked (Activity Monitor
   // polls it while open).
   rpc Processes(ProcessesRequest) returns (ProcessesResponse);
+  // Notifications not yet dismissed, newest first, so they survive a reload.
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc DismissNotification(DismissNotificationRequest) returns (DismissNotificationResponse);
 }
+
+message ListNotificationsRequest {}
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+}
+
+message DismissNotificationRequest {
+  string id = 1;
+  // Dismiss every notification instead; id is then ignored.
+  bool all = 2;
+}
+message DismissNotificationResponse {}
 
 message ProcessesRequest {}
 message ProcessesResponse {

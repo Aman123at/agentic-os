@@ -87,6 +87,8 @@ interface DesktopState {
   stopAll: () => Promise<void>;
   toggleSpotlight: (open?: boolean) => void;
   toggleNotifCenter: (open?: boolean) => void;
+  /** Dismisses one notification, or every one without an id; the event updates every tab. */
+  dismissNotification: (id?: string) => void;
   revealInFinder: (dir: string, select: string) => void;
   clearFinderJump: () => void;
 }
@@ -134,13 +136,15 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       window.addEventListener("pagehide", () => flushSave(get));
       // Seed the Agent surface: Tasks already running and Approvals already
       // waiting when the Desktop loads (a later tab, or a reload).
-      const [taskList, pending] = await Promise.all([
+      const [taskList, pending, kept] = await Promise.all([
         taskApi.listTasks({ limit: 50 }).catch(() => ({ tasks: [] })),
         approvalApi.listPending({}).catch(() => ({ approvals: [] })),
+        system.listNotifications({}).catch(() => ({ notifications: [] })),
       ]);
       set({
         tasks: Object.fromEntries(taskList.tasks.map((t) => [t.id, t])),
         approvals: Object.fromEntries(pending.approvals.map((a) => [a.id, a])),
+        notifications: kept.notifications.slice(0, MAX_NOTIFICATIONS),
       });
       set({ phase: "ready", info });
       startStream(set);
@@ -303,6 +307,9 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
   toggleSpotlight: (open) => set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false })),
   toggleNotifCenter: (open) => set((s) => ({ notifCenter: open ?? !s.notifCenter, spotlight: false })),
+  dismissNotification: (id) => {
+    void system.dismissNotification(id ? { id } : { all: true }).catch(() => {});
+  },
 
   revealInFinder: (dir, select) => {
     set({ finderJump: { dir, select }, spotlight: false });
@@ -336,6 +343,9 @@ function startStream(set: SetState) {
   });
 }
 
+// Notifications stay until dismissed; the store holds the newest of them.
+const MAX_NOTIFICATIONS = 50;
+
 function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let notifications = s.notifications;
   let tasks = s.tasks;
@@ -345,9 +355,12 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   for (const e of batch) {
     const k = e.kind;
     switch (k?.case) {
-      case "notification":
-        notifications = [k.value, ...notifications].slice(0, 50);
+      case "notification": {
+        const n = k.value;
+        const others = notifications.filter((o) => o.id !== n.id);
+        notifications = n.dismissed ? others : [n, ...others].slice(0, MAX_NOTIFICATIONS);
         break;
+      }
       case "taskChanged": {
         const t = k.value.task;
         if (t) tasks = { ...tasks, [t.id]: t };
