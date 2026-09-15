@@ -4,7 +4,6 @@
 import { timestampDate } from "@bufbuild/protobuf/wkt";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
-import { files } from "../../api/client";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
 
 // A Place is a sidebar shortcut. `path` is the folder it opens; the Trash place
@@ -107,33 +106,6 @@ const IMAGE_EXTS = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg", "ico", "a
 export function isImageExt(ext: string): boolean {
   return IMAGE_EXTS.includes(ext);
 }
-export function isImage(e: FileInfo): boolean {
-  return !e.dir && isImageExt(e.name.slice(e.name.lastIndexOf(".") + 1).toLowerCase());
-}
-
-const MAX_PREVIEW = 4 << 20; // stop pulling a file for Quick Look past 4 MiB
-
-// readAll pulls a whole file in 1 MiB chunks (FileService.Read caps each call),
-// up to max bytes.
-export async function readAll(path: string, max = MAX_PREVIEW): Promise<Uint8Array> {
-  const parts: Uint8Array[] = [];
-  let offset = 0n;
-  for (;;) {
-    const resp = await files.read({ path, offset, limit: 0n });
-    parts.push(resp.content);
-    offset += BigInt(resp.content.length);
-    if (resp.eof || offset >= BigInt(max) || resp.content.length === 0) break;
-  }
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let at = 0;
-  for (const p of parts) {
-    out.set(p, at);
-    at += p.length;
-  }
-  return out;
-}
 
 // rawUrl is where aosd serves a file's bytes (PLAN.md §13): Range requests for
 // media, inline for types that cannot run script, and a download otherwise.
@@ -172,13 +144,8 @@ export async function uploadFile(path: string, file: Blob, overwrite: boolean): 
   if (!resp.ok) throw new UploadError((await resp.text()).trim() || resp.statusText, resp.status);
 }
 
-const decoder = new TextDecoder("utf-8", { fatal: false });
-export function decodeText(bytes: Uint8Array): string {
-  return decoder.decode(bytes);
-}
-
-// looksBinary is a quick NUL-byte check so Quick Look shows "no preview" instead
-// of garbage for binaries it does not recognise.
+// looksBinary is a quick NUL-byte check, so a preview shows "no preview" and
+// TextEdit refuses instead of showing garbage for a binary file.
 export function looksBinary(bytes: Uint8Array): boolean {
   const n = Math.min(bytes.length, 4000);
   for (let i = 0; i < n; i++) if (bytes[i] === 0) return true;

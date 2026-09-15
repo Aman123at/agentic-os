@@ -11,6 +11,7 @@ import type { Approval, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, ToolCallStatus } from "./gen/aos/v1/types_pb";
 import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
 import { subscribe, type ConnState } from "./api/events";
+import { appForFile } from "./apps/filetypes";
 import { APPS, type AppId } from "./apps/registry";
 import { applyTheme, type ThemePref } from "./theme";
 
@@ -70,7 +71,10 @@ interface DesktopState {
 
   boot: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
-  openApp: (appId: AppId) => void;
+  /** Opens an app; given a document, opens it in its own window, or focuses the window already showing it. */
+  openApp: (appId: AppId, doc?: string) => void;
+  /** Opens a file in the app for its type, or shows it in the Finder when none opens it. */
+  openFile: (path: string) => void;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   setRect: (id: string, rect: Rect) => void;
@@ -170,12 +174,13 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     save(get);
   },
 
-  openApp: (appId) => {
+  openApp: (appId, doc) => {
     const app = APPS[appId];
     if (!app) return;
-    // Singleton apps focus their existing window instead of opening another.
-    if (app.singleton) {
-      const open = get().windows.find((w) => w.appId === appId);
+    // Singleton apps focus their existing window instead of opening another,
+    // and so does a document that is already open.
+    if (app.singleton || doc) {
+      const open = get().windows.find((w) => w.appId === appId && (!doc || w.state?.path === doc));
       if (open) {
         get().focusWindow(open.id);
         set((s) => ({ windows: s.windows.map((w) => (w.id === open.id ? { ...w, minimized: false } : w)) }));
@@ -192,8 +197,18 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     };
     const id = `win-${nextId++}`;
     const z = get().topZ + 1;
-    set((s) => ({ windows: [...s.windows, { id, appId, title: app.name, rect, z, minimized: false, maximized: false }], focused: id, topZ: z }));
+    // A document window is titled with the file's name, as on macOS.
+    const title = doc ? doc.slice(doc.lastIndexOf("/") + 1) : app.name;
+    const state = doc ? { path: doc } : undefined;
+    set((s) => ({ windows: [...s.windows, { id, appId, title, rect, z, minimized: false, maximized: false, state }], focused: id, topZ: z }));
     save(get);
+  },
+
+  openFile: (path) => {
+    const app = appForFile(path);
+    set({ spotlight: false });
+    if (app) get().openApp(app, path);
+    else get().revealInFinder(path.slice(0, path.lastIndexOf("/")) || "/", path);
   },
 
   closeWindow: (id) => {
@@ -356,12 +371,13 @@ function startStream(set: SetState) {
     const batch = queue;
     queue = [];
     set((s) => reduce(s, batch));
-    // An Agent's open_in_desktop shows the folder, or the file selected in its folder.
+    // An Agent's open_in_desktop shows a folder in the Finder, and opens a file
+    // in the app for its type.
     for (const e of batch) {
       if (e.kind?.case !== "openInDesktop") continue;
       const { path, dir } = e.kind.value;
       if (dir) useDesktop.getState().revealInFinder(path, "");
-      else useDesktop.getState().revealInFinder(path.slice(0, path.lastIndexOf("/")) || "/", path);
+      else useDesktop.getState().openFile(path);
     }
   };
   subscribe({

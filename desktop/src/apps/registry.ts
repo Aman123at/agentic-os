@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent";
+export type AppId = "about" | "finder" | "terminal" | "agent" | "preview";
 
 export interface AppDef {
   id: AppId;
@@ -49,6 +49,14 @@ export const APPS: Record<AppId, AppDef> = {
     singleton: true,
     inDock: true,
     Component: lazy(() => import("./agent/Agent")),
+  },
+  // Preview shows one file per window; the store's openFile opens it.
+  preview: {
+    id: "preview",
+    name: "Preview",
+    icon: "🖼️",
+    size: { w: 720, h: 540 },
+    Component: lazy(() => import("./preview/Preview")),
   },
 };
 

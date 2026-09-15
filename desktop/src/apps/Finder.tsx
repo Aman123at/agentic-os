@@ -18,18 +18,15 @@ import {
   UploadError,
   basename,
   crumbs,
-  decodeText,
   downloadToHost,
   formatSize,
   formatWhen,
   iconFor,
-  isImage,
   join,
-  looksBinary,
   parent,
-  readAll,
   uploadFile,
 } from "./finder/fs";
+import PreviewBody from "./preview/PreviewBody";
 
 type View = "list" | "icon" | "column";
 
@@ -170,8 +167,9 @@ export default function Finder() {
   }, [finderJump, reveal, clearFinderJump]);
 
   // Folders are entered by their logical path (so a Home-rooted walk stays
-  // "~/…" rather than flipping to an absolute path); files open Quick Look.
-  const open = useCallback((e: FileInfo) => (e.dir ? go(join(dir, e.name)) : setQuick(e)), [go, dir]);
+  // "~/…" rather than flipping to an absolute path); files open in their app.
+  const openFile = useDesktop((s) => s.openFile);
+  const open = useCallback((e: FileInfo) => (e.dir ? go(join(dir, e.name)) : openFile(e.path)), [go, dir, openFile]);
 
   // Space toggles Quick Look on the selected file while this window has the
   // focus, as on macOS. Typing in a field, and ⌥Space for Spotlight, pass through.
@@ -446,6 +444,7 @@ export default function Finder() {
             <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
           ) : (
             <>
+              <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
               <MenuItem label="Quick Look" onClick={() => act(() => setQuick(menu.file!))} />
               <MenuItem label="Download…" onClick={() => act(() => doDownload(menu.file!))} />
             </>
@@ -781,36 +780,8 @@ function AskDialog({ file, onCancel, onSubmit }: { file: FileInfo; onCancel: () 
   );
 }
 
-// QuickLook previews a file: images render inline, small text files show their
-// contents, everything else offers a hint. Full Preview is M4.
+// QuickLook previews a file inside the Finder, through the same view Preview uses.
 function QuickLook({ file, onClose }: { file: FileInfo; onClose: () => void }) {
-  const [state, setState] = useState<{ kind: "loading" | "image" | "text" | "none"; body?: string }>({ kind: "loading" });
-
-  useEffect(() => {
-    let url = "";
-    let cancelled = false;
-    (async () => {
-      try {
-        const bytes = await readAll(file.path);
-        if (cancelled) return;
-        if (isImage(file)) {
-          url = URL.createObjectURL(new Blob([bytes as BlobPart]));
-          setState({ kind: "image", body: url });
-        } else if (!looksBinary(bytes)) {
-          setState({ kind: "text", body: decodeText(bytes) });
-        } else {
-          setState({ kind: "none" });
-        }
-      } catch {
-        if (!cancelled) setState({ kind: "none" });
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [file]);
-
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
@@ -829,10 +800,7 @@ function QuickLook({ file, onClose }: { file: FileInfo; onClose: () => void }) {
           </button>
         </header>
         <div className="quicklook__body">
-          {state.kind === "loading" && <div className="finder__empty">Loading…</div>}
-          {state.kind === "image" && <img className="quicklook__image" src={state.body} alt={file.name} />}
-          {state.kind === "text" && <pre className="quicklook__text">{state.body}</pre>}
-          {state.kind === "none" && <div className="finder__empty">No preview available.</div>}
+          <PreviewBody path={file.path} compact />
         </div>
       </div>
     </div>
