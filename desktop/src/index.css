@@ -835,6 +835,45 @@ button {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
 
+/* ---------------------------------------------------------------- confirm */
+.confirm__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+}
+.confirm {
+  width: min(86%, 340px);
+  padding: 16px 18px 14px;
+  background: var(--window-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+.confirm__title {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+.confirm__message {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.confirm__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.confirm__danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* ---------------------------------------------------------------- textedit */
 .textedit {
   display: flex;

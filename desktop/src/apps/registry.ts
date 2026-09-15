@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit";
+export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash";
 
 export interface AppDef {
   id: AppId;
@@ -66,6 +66,16 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "📝",
     size: { w: 680, h: 520 },
     Component: lazy(() => import("./textedit/TextEdit")),
+  },
+  // The Trash sits at the Dock's end, as on macOS.
+  trash: {
+    id: "trash",
+    name: "Trash",
+    icon: "🗑️",
+    size: { w: 640, h: 420 },
+    singleton: true,
+    inDock: true,
+    Component: lazy(() => import("./trash/Trash")),
   },
 };
 

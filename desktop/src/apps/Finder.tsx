@@ -12,6 +12,7 @@ import { watchFolder } from "../api/watch";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
+import { Confirm } from "../ui/Confirm";
 import { VirtualList } from "../ui/VirtualList";
 import {
   PLACES,
@@ -42,11 +43,12 @@ interface Menu {
   item?: TrashItem;
 }
 
-export default function Finder() {
+// trashOnly shows just the Trash, for the Trash app.
+export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   // The folder and view are kept with the window, so a reload reopens them.
   const [savedDir, saveDir] = useWinState("dir", "~");
   const [savedView, saveView] = useWinState("view", "list");
-  const [dir, setDir] = useState<string>(savedDir);
+  const [dir, setDir] = useState<string>(trashOnly ? TRASH : savedDir);
   const [entries, setEntries] = useState<FileInfo[]>([]);
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,12 +60,15 @@ export default function Finder() {
   const [ask, setAsk] = useState<FileInfo | null>(null);
   const [busy, setBusy] = useState("");
   const [dropping, setDropping] = useState(false);
+  const [emptying, setEmptying] = useState(false);
   const upload = useRef<HTMLInputElement>(null);
   const revealRef = useRef<string>(""); // a path Spotlight asked us to select once loaded
 
-  const [history, setHistory] = useState<string[]>([savedDir]);
+  const [history, setHistory] = useState<string[]>([dir]);
   const [at, setAt] = useState(0);
-  useEffect(() => saveDir(dir), [dir, saveDir]);
+  useEffect(() => {
+    if (!trashOnly) saveDir(dir);
+  }, [dir, saveDir, trashOnly]);
   useEffect(() => saveView(view), [view, saveView]);
 
   // Only the latest listing of the current folder may show: moving on before a
@@ -131,6 +136,13 @@ export default function Finder() {
   }, [dir, load, show]);
   const reload = useCallback(() => void load(dir), [dir, load]);
 
+  // The Trash is not watched, so it is listed again whenever its window comes
+  // to the front: files moved there from a Finder show up.
+  const focused = useWinFocused();
+  useEffect(() => {
+    if (focused && dir === TRASH) reload();
+  }, [focused, dir, reload]);
+
   const go = useCallback(
     (loc: string) => {
       setHistory((h) => [...h.slice(0, at + 1), loc]);
@@ -173,7 +185,6 @@ export default function Finder() {
 
   // Space toggles Quick Look on the selected file while this window has the
   // focus, as on macOS. Typing in a field, and ⌥Space for Spotlight, pass through.
-  const focused = useWinFocused();
   useEffect(() => {
     if (!focused) return;
     const onKey = (e: KeyboardEvent) => {
@@ -218,7 +229,7 @@ export default function Finder() {
   const doDelete = (e: FileInfo) => run(`Moving ${e.name} to Trash…`, () => files.delete({ path: e.path }));
   const doRestore = (it: TrashItem) => run("Restoring…", () => trash.restore({ id: it.id }));
   const doEmpty = () => {
-    if (!window.confirm("Empty the Trash? This permanently deletes its contents.")) return;
+    setEmptying(false);
     void run("Emptying Trash…", () => trash.empty({}));
   };
   const doMove = (srcPath: string, destDir: string) => {
@@ -293,33 +304,37 @@ export default function Finder() {
         }
       }}
     >
-      <nav className="finder__sidebar">
-        <div className="finder__group">Places</div>
-        {PLACES.map((p) => (
-          <button
-            key={p.id}
-            className={`finder__place${p.id === activePlace?.id ? " finder__place--on" : ""}`}
-            onClick={() => go(p.path)}
-          >
-            <span className="finder__place-icon">{p.icon}</span>
-            {p.name}
-          </button>
-        ))}
-      </nav>
+      {!trashOnly && (
+        <nav className="finder__sidebar">
+          <div className="finder__group">Places</div>
+          {PLACES.map((p) => (
+            <button
+              key={p.id}
+              className={`finder__place${p.id === activePlace?.id ? " finder__place--on" : ""}`}
+              onClick={() => go(p.path)}
+            >
+              <span className="finder__place-icon">{p.icon}</span>
+              {p.name}
+            </button>
+          ))}
+        </nav>
+      )}
 
       <div className="finder__main">
         <div className="finder__toolbar">
-          <div className="finder__nav">
-            <button className="finder__btn" title="Back" disabled={at === 0} onClick={back}>
-              ‹
-            </button>
-            <button className="finder__btn" title="Forward" disabled={at >= history.length - 1} onClick={forward}>
-              ›
-            </button>
-            <button className="finder__btn" title="Up" disabled={inTrash || !up} onClick={() => up && go(up)}>
-              ↑
-            </button>
-          </div>
+          {!trashOnly && (
+            <div className="finder__nav">
+              <button className="finder__btn" title="Back" disabled={at === 0} onClick={back}>
+                ‹
+              </button>
+              <button className="finder__btn" title="Forward" disabled={at >= history.length - 1} onClick={forward}>
+                ›
+              </button>
+              <button className="finder__btn" title="Up" disabled={inTrash || !up} onClick={() => up && go(up)}>
+                ↑
+              </button>
+            </div>
+          )}
           <div className="finder__crumbs">
             {inTrash ? (
               <span className="finder__crumb finder__crumb--on">🗑️ Trash</span>
@@ -338,7 +353,7 @@ export default function Finder() {
             )}
           </div>
           {inTrash ? (
-            <button className="finder__btn" title="Empty the Trash" disabled={trashItems.length === 0} onClick={doEmpty}>
+            <button className="finder__btn" title="Empty the Trash" disabled={trashItems.length === 0} onClick={() => setEmptying(true)}>
               Empty
             </button>
           ) : (
@@ -346,29 +361,31 @@ export default function Finder() {
               ⬆ Upload
             </button>
           )}
-          <div className="finder__views">
-            <button
-              className={`finder__btn${view === "list" ? " finder__btn--on" : ""}`}
-              title="List view"
-              onClick={() => setView("list")}
-            >
-              ☰
-            </button>
-            <button
-              className={`finder__btn${view === "icon" ? " finder__btn--on" : ""}`}
-              title="Icon view"
-              onClick={() => setView("icon")}
-            >
-              ▦
-            </button>
-            <button
-              className={`finder__btn${view === "column" ? " finder__btn--on" : ""}`}
-              title="Column view"
-              onClick={() => setView("column")}
-            >
-              ▥
-            </button>
-          </div>
+          {!inTrash && (
+            <div className="finder__views">
+              <button
+                className={`finder__btn${view === "list" ? " finder__btn--on" : ""}`}
+                title="List view"
+                onClick={() => setView("list")}
+              >
+                ☰
+              </button>
+              <button
+                className={`finder__btn${view === "icon" ? " finder__btn--on" : ""}`}
+                title="Icon view"
+                onClick={() => setView("icon")}
+              >
+                ▦
+              </button>
+              <button
+                className={`finder__btn${view === "column" ? " finder__btn--on" : ""}`}
+                title="Column view"
+                onClick={() => setView("column")}
+              >
+                ▥
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="finder__body">
@@ -461,6 +478,16 @@ export default function Finder() {
         </ContextMenu>
       )}
 
+      {emptying && (
+        <Confirm
+          title="Empty the Trash?"
+          message={`This permanently deletes the ${trashItems.length} item${trashItems.length === 1 ? "" : "s"} in the Trash. It can't be undone.`}
+          confirmLabel="Empty Trash"
+          danger
+          onConfirm={doEmpty}
+          onCancel={() => setEmptying(false)}
+        />
+      )}
       {ask && <AskDialog file={ask} onCancel={() => setAsk(null)} onSubmit={doAsk} />}
       {quick && <QuickLook file={quick} onClose={() => setQuick(null)} />}
     </div>
