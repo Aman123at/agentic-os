@@ -141,10 +141,17 @@ func WriteRequest(w io.Writer, ops Ops, op string, args any) error {
 // the body of the worker process (`aosd __files`).
 func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	var req request
-	if err := json.NewDecoder(in).Decode(&req); err != nil {
+	dec := json.NewDecoder(in)
+	if err := dec.Decode(&req); err != nil {
 		return err
 	}
 	enc := json.NewEncoder(out)
+	switch req.Op {
+	case OpReadStream:
+		return serveReadStream(req, enc, out)
+	case OpWriteStream:
+		return serveWriteStream(req, enc, io.MultiReader(dec.Buffered(), in))
+	}
 	progress := func(n, total int64) { _ = enc.Encode(response{Progress: &[2]int64{n, total}}) }
 	result, err := dispatch(ctx, req.Ops, req.Op, req.Args, progress)
 	resp := response{Done: true}
@@ -289,6 +296,8 @@ func errorKind(err error) string {
 		return "not_exist"
 	case errors.Is(err, fs.ErrPermission), errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
 		return "permission"
+	case errors.Is(err, ErrNotFile):
+		return "not_file"
 	}
 	return ""
 }
@@ -303,6 +312,8 @@ func kindError(kind, msg string) error {
 		base = fs.ErrNotExist
 	case "permission":
 		base = fs.ErrPermission
+	case "not_file":
+		base = ErrNotFile
 	default:
 		return errors.New(msg)
 	}

@@ -103,6 +103,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSoftwareServiceHandler(softwareService{s}, opts...))
 	mux.Handle(aosv1connect.NewSupervisorServiceHandler(supervisorService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
+	mux.HandleFunc("GET /files/raw", s.rawFile)
+	mux.HandleFunc("POST /upload", s.upload)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
 	page := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("Agentic OS is running in cli Mode: docker compose exec aos aos\n"))

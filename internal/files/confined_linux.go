@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -39,11 +40,12 @@ func (c Confined) Run(ctx context.Context, op string, args, result any, progress
 	if err != nil {
 		return err
 	}
-	return runWorker(ctx, cmd, c.Ops, op, args, result, progress)
+	return runOp(ctx, cmd, c.Ops, op, args, result, progress)
 }
 
 // AsUser runs each operation in a worker process as the aos user, unconfined:
-// the user's own file operations from the Desktop and the CLI.
+// the user's own file operations from the Desktop and the CLI. It also streams
+// file bytes for the Desktop's downloads, media and uploads (Streamer).
 type AsUser struct {
 	Ops      Ops
 	UID, GID uint32
@@ -51,20 +53,52 @@ type AsUser struct {
 	Env      []string
 }
 
-// Run implements Runner.
-func (u AsUser) Run(ctx context.Context, op string, args, result any, progress func(n, total int64)) error {
+func (u AsUser) command() *exec.Cmd {
 	cmd := exec.Command(u.Exe, WorkerArg)
 	cmd.Env = u.Env
 	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: u.UID, Gid: u.GID, Groups: []uint32{}}}
-	return runWorker(ctx, cmd, u.Ops, op, args, result, progress)
+	return cmd
 }
 
-func runWorker(ctx context.Context, cmd *exec.Cmd, ops Ops, op string, args, result any, progress func(n, total int64)) error {
+// Run implements Runner.
+func (u AsUser) Run(ctx context.Context, op string, args, result any, progress func(n, total int64)) error {
+	return runOp(ctx, u.command(), u.Ops, op, args, result, progress)
+}
+
+// ReadStream implements Streamer.
+func (u AsUser) ReadStream(ctx context.Context, a StreamArgs, header func(StreamHeader) error, w io.Writer) error {
+	in, err := StreamRequest(u.Ops, OpReadStream, a, nil)
+	if err != nil {
+		return err
+	}
+	return runWorker(ctx, u.command(), in, func(out io.Reader) error { return ReadStreamResponse(out, header, w) })
+}
+
+// WriteStream implements Streamer.
+func (u AsUser) WriteStream(ctx context.Context, a WriteStreamArgs, r io.Reader) (int64, error) {
+	in, err := StreamRequest(u.Ops, OpWriteStream, a, r)
+	if err != nil {
+		return 0, err
+	}
+	var n int64
+	err = runWorker(ctx, u.command(), in, func(out io.Reader) error { return ReadResponse(out, &n, nil) })
+	return n, err
+}
+
+// runOp runs one JSON operation in a worker.
+func runOp(ctx context.Context, cmd *exec.Cmd, ops Ops, op string, args, result any, progress func(n, total int64)) error {
 	var req bytes.Buffer
 	if err := WriteRequest(&req, ops, op, args); err != nil {
 		return err
 	}
-	cmd.Stdin = &req
+	return runWorker(ctx, cmd, &req, func(out io.Reader) error { return ReadResponse(out, result, progress) })
+}
+
+// runWorker runs a worker process: stdin is what it reads, and read consumes
+// its output. When read stops early (a Desktop that went away mid-download),
+// the worker is killed rather than left blocked writing to a full pipe.
+func runWorker(ctx context.Context, cmd *exec.Cmd, stdin io.Reader, read func(io.Reader) error) error {
+	cmd.Stdin = stdin
 	cmd.Dir = "/"
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -77,7 +111,10 @@ func runWorker(ctx context.Context, cmd *exec.Cmd, ops Ops, op string, args, res
 	}
 	stopKill := context.AfterFunc(ctx, func() { _ = cmd.Process.Kill() })
 	defer stopKill()
-	readErr := ReadResponse(stdout, result, progress)
+	readErr := read(stdout)
+	if readErr != nil {
+		_ = cmd.Process.Kill()
+	}
 	waitErr := cmd.Wait()
 	if ctx.Err() != nil {
 		return ctx.Err()

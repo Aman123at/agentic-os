@@ -91,6 +91,36 @@ func TestAOneTimeCodeBecomesAStrictHttpOnlySessionCookie(t *testing.T) {
 	}
 }
 
+func TestOnlyTheDesktopsOwnPageReadsFilesWithoutAnOrigin(t *testing.T) {
+	auth, _ := newAuth(t)
+	h := auth.TCP(whoami)
+	code, _ := auth.NewLoginCode()
+	cookie, err := auth.Exchange(code)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		method, path, site string
+		want               int
+	}{
+		"the Desktop's own <video>":  {"GET", "/files/raw?path=~/a.mp4", "same-origin", http.StatusOK},
+		"a page on a forwarded port": {"GET", "/files/raw?path=~/a.mp4", "same-site", http.StatusForbidden},
+		"another site":               {"GET", "/files/raw?path=~/a.mp4", "cross-site", http.StatusForbidden},
+		"a typed-in address":         {"GET", "/files/raw?path=~/a.mp4", "none", http.StatusForbidden},
+		"no Sec-Fetch-Site":          {"GET", "/files/raw?path=~/a.mp4", "", http.StatusForbidden},
+		"an upload":                  {"POST", "/upload?path=~/a.txt", "same-origin", http.StatusForbidden},
+		"an RPC":                     {"POST", "/aos.v1.TaskService/ListTasks", "same-origin", http.StatusForbidden},
+	} {
+		header := map[string]string{"Cookie": cookie.String()}
+		if tc.site != "" {
+			header["Sec-Fetch-Site"] = tc.site
+		}
+		if rec := do(t, h, tc.method, tc.path, header); rec.Code != tc.want {
+			t.Errorf("%s without an Origin: %d, want %d", name, rec.Code, tc.want)
+		}
+	}
+}
+
 func TestHostAndOriginChecks(t *testing.T) {
 	auth, _ := newAuth(t)
 	code, _ := auth.NewLoginCode()

@@ -158,7 +158,7 @@ func (a *Auth) TCP(next http.Handler) http.Handler {
 			return
 		}
 		if c, err := r.Cookie(SessionCookie); err == nil && a.validSession(c.Value) {
-			if origin == "" {
+			if origin == "" && !mediaLoad(r) {
 				http.Error(w, "missing Origin", http.StatusForbidden)
 				return
 			}
@@ -167,6 +167,16 @@ func (a *Auth) TCP(next http.Handler) http.Handler {
 		}
 		http.Error(w, "sign in with the link from `aos desktop-url`", http.StatusUnauthorized)
 	})
+}
+
+// mediaLoad reports the one request the Desktop's cookie may make without an
+// Origin: an <img>, <video>, fetch or download reading /files/raw, for which
+// browsers send none. Sec-Fetch-Site must then say the Desktop's own page made
+// it. A page on a forwarded port (<port>.localhost) is the same site as the
+// Desktop, so SameSite alone would let it in, but never the same origin.
+func mediaLoad(r *http.Request) bool {
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/files/raw" &&
+		r.Header.Get("Sec-Fetch-Site") == "same-origin"
 }
 
 func (a *Auth) validToken(s string) bool {

@@ -423,6 +423,7 @@ Shell analysis is only an early warning so the Agent can ask first. Landlock is 
 
 - **Token:** generated on first start. `docker compose up` logs and `aos desktop-url` print `http://localhost:7700/#code=<one-time>`. The Desktop exchanges the code for an HttpOnly, SameSite=Strict cookie.
 - **Request checks:** every request's `Host` must be `localhost`, `127.0.0.1` or `<port>.localhost`, which defeats DNS rebinding. `Origin` must match on RPC and WebSocket upgrades. No CORS.
+- **Media loads:** `<img>`, `<video>` and downloads send no `Origin`, so the Desktop's cookie may `GET /files/raw` without one only when `Sec-Fetch-Site: same-origin`. A page on a forwarded port is the same *site* as the Desktop, so SameSite alone would let it in, but it is never the same *origin*.
 - **Path-forwarded Services** (`/port/<n>/`) are served with `Content-Security-Policy: sandbox …` without `allow-same-origin`. They get an opaque origin and cannot use the Desktop's cookie.
 
 ### 7.7 API key
@@ -624,8 +625,8 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 
 **Plain HTTP routes:**
 - `GET /` serves the Desktop.
-- `POST /upload` accepts multipart uploads (browsers can't stream uploads over Connect).
-- `GET /files/raw?path=` serves file downloads and media streaming, with Range support.
+- `POST /upload?path=[&overwrite=1]` streams one file: the request body, with its `Content-Length`, becomes the file, written as `aos` through a temporary file, so a failed or cut-short upload leaves nothing (browsers can't stream uploads over Connect).
+- `GET /files/raw?path=[&download=1]` streams a file read as `aos`, with single-range `Range` support. Images, audio, video, PDF and plain text open in place; everything else, HTML and SVG included, downloads; every response carries `Content-Security-Policy: sandbox` and `nosniff`.
 - `GET /ws/session/<id>` is the Session WebSocket.
 - `/port/<n>/…` and `<n>.localhost` handle forwarding.
 
