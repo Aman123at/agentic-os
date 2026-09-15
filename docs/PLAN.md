@@ -658,7 +658,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | Terminal keystroke echo | < 30 ms p95 | Input-to-render timing in the e2e perf test |
 | Tool dispatch overhead | < 10 ms p95 | Go benchmark: policy + sandbox + framing around `true` |
 | First visible Agent step | < 1 s after submit | Time to first `TextDelta` or `TaskStep` (real-model live suite) |
-| `aosd` idle memory | < 50 MB RSS | `aos doctor` + CI assertion |
+| `aosd` idle memory | < 50 MB RSS | `aos doctor` + CI assertion: the `playwright` stage reads aosd's RSS after 10 s idle, once after startup and again after the whole Desktop suite |
 | Image size | Unpacked: `cli` < 520 MB · `ui` < 540 MB. Compressed: < 180 MB | CI assertion on `du -sx /` in the image and `docker image inspect` |
 | Desktop initial bundle | < 150 KB gzipped | Vite build size check |
 

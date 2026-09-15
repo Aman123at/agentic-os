@@ -67,6 +67,31 @@ export function sh(c: Compose, user: string, script: string): string {
   return exec(c, user, "bash", "-c", script);
 }
 
+// PLAN.md §16 targets the suite checks besides its performance specs: `docker
+// compose up` (image built) to the Desktop's first paint, and aosd's memory
+// once idle for IDLE_MS.
+export const COMPOSE_UP_TARGET_MS = 5_000;
+export const IDLE_RSS_TARGET_MB = 50;
+export const IDLE_MS = 10_000;
+
+// aosdRssMB reads aosd's resident memory. aosd is the oldest process of that
+// name: Compose's init is PID 1, and aosd's helpers start after it.
+export function aosdRssMB(c: Compose): number {
+  const out = sh(c, "root", "grep VmRSS /proc/$(pgrep -o -x aosd)/status");
+  const m = out.match(/VmRSS:\s+(\d+)\s+kB/);
+  if (!m) throw new Error(`no VmRSS for aosd in: ${out}`);
+  return Number(m[1]) / 1024;
+}
+
+// checkIdleMemory fails when aosd's memory is over the §16 target.
+export function checkIdleMemory(c: Compose, when: string): void {
+  const mb = aosdRssMB(c);
+  console.log(`[pw] §16 aosd idle memory ${when}: ${mb.toFixed(1)} MB RSS (target < ${IDLE_RSS_TARGET_MB} MB)`);
+  if (mb >= IDLE_RSS_TARGET_MB) {
+    throw new Error(`aosd uses ${mb.toFixed(1)} MB when idle ${when}; the target is under ${IDLE_RSS_TARGET_MB} MB (PLAN.md §16)`);
+  }
+}
+
 // mintCode asks the Machine for a fresh one-time sign-in code (`aos desktop-url`
 // prints a URL with #code=…). Each code works once.
 export function mintCode(c: Compose): string {

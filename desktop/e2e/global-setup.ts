@@ -10,9 +10,12 @@ import { chromium, type FullConfig } from "@playwright/test";
 
 import {
   BASE_URL,
+  COMPOSE_UP_TARGET_MS,
+  IDLE_MS,
   PORT,
   REPO_ROOT,
   STATE_FILE,
+  checkIdleMemory,
   docker,
   ensureArtifacts,
   mintCode,
@@ -71,36 +74,65 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   };
   saveCompose(compose);
 
-  console.log("[pw] building and starting the ui Machine (fake provider)…");
-  docker(compose, ["up", "--build", "-d"]);
+  // Build first, so the §16 timer below covers `docker compose up` alone, and
+  // start from nothing, as a new user does (a Machine a failed run left behind
+  // would make the start look instant).
+  console.log("[pw] building the ui Machine (fake provider)…");
+  docker(compose, ["build"]);
+  docker(compose, ["down", "-v", "--remove-orphans"]);
 
-  // Wait until aosd answers.
-  const deadline = Date.now() + 90_000;
-  for (;;) {
-    try {
-      docker(compose, ["exec", "-T", "aos", "aos", "tasks"]);
-      break;
-    } catch {
-      if (Date.now() > deadline) {
-        const logs = tail(docker(compose, ["logs", "--tail", "40", "aos"]));
-        throw new Error(`aosd did not come up in time:\n${logs}`);
-      }
-      await sleep(1000);
-    }
-  }
-  console.log("[pw] aosd is up; signing in…");
-
+  // PLAN.md §16: `docker compose up` to usable is under 5 s, measured from the
+  // command to aosd answering and on to the Desktop's first paint. The browser
+  // is started before the clock, as a user's already is.
   const browser = await chromium.launch();
+  let paintMs: number;
   try {
+    const start = Date.now();
+    docker(compose, ["up", "-d"]);
+    await waitForAosd(compose, start + 90_000);
+    const apiMs = Date.now() - start;
     const context = await browser.newContext({ baseURL: BASE_URL });
     const page = await context.newPage();
     await signIn(page, mintCode(compose));
+    paintMs = Date.now() - start;
+    console.log(
+      `[pw] §16 compose up: aosd answers in ${seconds(apiMs)}, the Desktop paints in ${seconds(paintMs)} (target < ${seconds(COMPOSE_UP_TARGET_MS)})`,
+    );
     await context.storageState({ path: STATE_FILE });
     await context.close();
   } finally {
     await browser.close();
   }
   console.log("[pw] signed in; session saved.");
+  if (paintMs >= COMPOSE_UP_TARGET_MS) {
+    throw new Error(
+      `docker compose up took ${seconds(paintMs)} to the Desktop's first paint; the target is under ${seconds(COMPOSE_UP_TARGET_MS)} (PLAN.md §16)`,
+    );
+  }
+
+  // §16: aosd's idle memory, checked again after the suite (global-teardown.ts).
+  await sleep(IDLE_MS);
+  checkIdleMemory(compose, "after startup");
+}
+
+// waitForAosd polls aosd's health check on the Host port until it answers.
+async function waitForAosd(c: Compose, deadline: number): Promise<void> {
+  for (;;) {
+    try {
+      if ((await fetch(`${BASE_URL}/healthz`)).ok) return;
+    } catch {
+      // not listening yet
+    }
+    if (Date.now() > deadline) {
+      const logs = tail(docker(c, ["logs", "--tail", "40", "aos"]));
+      throw new Error(`aosd did not come up in time:\n${logs}`);
+    }
+    await sleep(50);
+  }
+}
+
+function seconds(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
 }
 
 function tail(s: string): string {
