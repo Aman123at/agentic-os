@@ -15,9 +15,11 @@ export interface VirtualListProps<T> {
   header?: ReactNode;
   // Returns one keyed row; spread `style` onto it, since it places the row.
   renderRow: (item: T, style: CSSProperties, index: number) => ReactNode;
+  // Called when scrolling nears the end, so a paged list can fetch the next page.
+  onEndReached?: () => void;
 }
 
-export function VirtualList<T>({ items, rowHeight, className, header, renderRow }: VirtualListProps<T>) {
+export function VirtualList<T>({ items, rowHeight, className, header, renderRow, onEndReached }: VirtualListProps<T>) {
   const box = useRef<HTMLDivElement>(null);
   const [first, setFirst] = useState(0);
   const [height, setHeight] = useState(300);
@@ -39,7 +41,11 @@ export function VirtualList<T>({ items, rowHeight, className, header, renderRow 
     <div
       className={className}
       ref={box}
-      onScroll={(e) => setFirst(Math.max(0, Math.floor(e.currentTarget.scrollTop / rowHeight) - OVERSCAN))}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        setFirst(Math.max(0, Math.floor(el.scrollTop / rowHeight) - OVERSCAN));
+        if (onEndReached && el.scrollTop + el.clientHeight >= el.scrollHeight - OVERSCAN * rowHeight) onEndReached();
+      }}
     >
       {header}
       <div style={{ height: items.length * rowHeight, position: "relative" }}>

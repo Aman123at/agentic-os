@@ -1,7 +1,9 @@
 // Approval pop-up (PLAN.md §7, §18, M3.4): a Task that deletes a Protected Path
 // raises an Approval; the modal shows the 🔒 path with only Deny / Allow once
-// (Protected Paths are never grantable). Allowing lets the Task finish. Driven by
-// the fake provider (approval.json), so no model spend.
+// (Protected Paths are never grantable). Allowing lets the Task finish. The
+// Agent app answers its own Task's Approvals inline (agent.spec.ts), so this
+// closes it to see the pop-up. Driven by the fake provider (approval.json), so no
+// model spend.
 import { expect, loadCompose, sh, startTask, test } from "./harness";
 
 const KEY = "/home/aos/.ssh/id_ed25519";
@@ -22,6 +24,7 @@ test("a Protected-Path delete raises an Approval that gates the Task", async ({ 
 
   await page.goto("/");
   await startTask(page, "e2e-approval: delete my SSH key");
+  await page.locator('.window[aria-label="Agent"]').getByTitle("Close").click();
 
   const dialog = page.getByRole("dialog", { name: "Approval needed" });
   await expect(dialog).toBeVisible();
@@ -37,5 +40,5 @@ test("a Protected-Path delete raises an Approval that gates the Task", async ({ 
   await expect(dialog).toBeHidden();
 
   // With the delete allowed, the Task runs to completion.
-  await expect(page.locator(".tasks__state")).toHaveText("Done");
+  await expect.poll(() => sh(c, "aos", `test -e ${KEY} && echo there || echo gone`).trim()).toBe("gone");
 });

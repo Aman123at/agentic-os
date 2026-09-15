@@ -1,6 +1,6 @@
 // Reload restores the window layout (PLAN.md §18, M3.1). Each tab keeps its own
 // layout, so a reload brings back that tab's windows rather than another tab's,
-// and each window's content comes back with it: the Task the Agent Task window
+// and each window's content comes back with it: the Task the Agent app
 // showed and the folder Finder was in. A new tab starts from the layout saved on
 // aosd (debounced SaveDesktopState).
 import type { Page } from "@playwright/test";

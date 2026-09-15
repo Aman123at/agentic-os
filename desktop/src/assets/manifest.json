@@ -9,7 +9,7 @@
   "icons": {
     "finder": "finder.svg",
     "terminal": "terminal.svg",
-    "tasks": "agent.svg",
+    "agent": "agent.svg",
     "about": "about.svg"
   }
 }

@@ -39,6 +39,7 @@ interface Persisted {
   theme: ThemePref;
   windows: Array<Pick<Win, "id" | "appId" | "title" | "rect" | "minimized" | "maximized" | "state">>;
   focused: string;
+  // Layouts saved before M4.2 kept the open Task here, for the old Tasks window.
   openTask?: string;
 }
 
@@ -53,8 +54,9 @@ interface DesktopState {
   notifications: Notification[];
   topZ: number;
 
-  // The Agent surface (PLAN.md §4.3, M3.4): live Tasks, pending Approvals and
-  // the step feed of the one Task currently open in the Tasks app.
+  // The Agent surface (PLAN.md §4.3): live Tasks, pending Approvals and the
+  // step feed of the one Task the Agent app shows. Which Task that is lives in
+  // the Agent window's own state; openTask follows it.
   tasks: Record<string, Task>;
   approvals: Record<string, Approval>; // pending only
   openTask: string;
@@ -77,8 +79,13 @@ interface DesktopState {
   setWinState: (id: string, patch: Record<string, string>) => void;
 
   createTask: (prompt: string) => Promise<void>;
+  /** Opens the Agent app at a Task. */
   openTaskView: (id: string) => void;
+  /** Makes a Task the one whose step feed is live; the Agent app calls it. */
+  selectTask: (id: string) => void;
   loadTask: (id: string) => Promise<void>;
+  /** Loads more of the Task history than boot does, for the Agent app's list. */
+  loadTasks: (limit: number) => Promise<void>;
   decideApproval: (id: string, decision: ApprovalDecision) => Promise<void>;
   answerQuestion: (id: string, text: string) => Promise<void>;
   sendFollowUp: (id: string, text: string) => Promise<void>;
@@ -246,10 +253,25 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   },
 
   openTaskView: (id) => {
-    set({ openTask: id, steps: [], notifCenter: false, spotlight: false });
-    get().openApp("tasks");
-    void get().loadTask(id);
-    save(get); // the open Task comes back with the layout
+    set({ notifCenter: false, spotlight: false });
+    get().openApp("agent");
+    const win = get().windows.find((w) => w.appId === "agent");
+    // Saved with the window, so the Task comes back with the layout.
+    if (win) get().setWinState(win.id, { view: "tasks", task: id });
+    get().selectTask(id);
+  },
+
+  selectTask: (id) => {
+    if (get().openTask === id) return;
+    set({ openTask: id, steps: [] });
+    if (id) void get().loadTask(id);
+  },
+
+  loadTasks: async (limit) => {
+    const resp = await taskApi.listTasks({ limit }).catch(() => null);
+    if (!resp) return;
+    // Events may have brought newer copies of some Tasks meanwhile; keep those.
+    set((s) => ({ tasks: { ...Object.fromEntries(resp.tasks.map((t) => [t.id, t])), ...s.tasks } }));
   },
 
   loadTask: async (id) => {
@@ -388,7 +410,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
         }
         break;
       }
-      // The step feed is kept only for the Task open in the Tasks app.
+      // The step feed is kept only for the Task the Agent app shows.
       // TaskStepChanged replaces a step wholesale; TextDelta appends streamed
       // text to it — so the two never double-count.
       case "taskStep": {
@@ -488,7 +510,6 @@ function flushSave(get: () => DesktopState) {
   const state: Persisted = {
     theme: s.theme,
     focused: s.focused,
-    openTask: s.openTask,
     windows: s.windows.map(({ id, appId, title, rect, minimized, maximized, state }) => ({ id, appId, title, rect, minimized, maximized, state })),
   };
   const json = JSON.stringify(state);
@@ -526,11 +547,19 @@ function restore(json: string, set: SetState) {
   // Re-key the windows so restored ids never collide with freshly opened ones.
   let focused = "";
   const windows: Win[] = (saved.windows ?? [])
+    .map((w) => upgradeWindow(w, saved.openTask ?? ""))
     .filter((w) => APPS[w.appId])
     .map((w, i) => {
       const id = `win-${nextId++}`;
       if (w.id === saved.focused) focused = id;
       return { ...w, id, z: i + 1, restore: undefined };
     });
-  set({ theme: saved.theme ?? "auto", windows, focused, topZ: windows.length + 1, openTask: saved.openTask ?? "" });
+  set({ theme: saved.theme ?? "auto", windows, focused, topZ: windows.length + 1 });
+}
+
+// upgradeWindow turns the M3 Tasks window of an older saved layout into the
+// Agent app, keeping the Task it showed.
+function upgradeWindow(w: Persisted["windows"][number], openTask: string): Persisted["windows"][number] {
+  if ((w.appId as string) !== "tasks") return w;
+  return { ...w, appId: "agent", title: APPS.agent.name, state: { view: "tasks", task: openTask } };
 }

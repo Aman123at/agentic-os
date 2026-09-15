@@ -1,6 +1,8 @@
-// Small formatters for the Agent Task surface (PLAN.md §4.3, M3.4): Task state
-// labels, token/cost lines and per-step presentation. Kept apart from the
-// component so the Tasks chunk stays readable.
+// Small formatters for the Agent app (PLAN.md §4.3): Task state labels and
+// filters, token/cost lines, times and per-step presentation. Kept apart from
+// the components so they stay readable.
+import { timestampDate, type Timestamp } from "@bufbuild/protobuf/wkt";
+
 import type { Task, TaskStep, Usage } from "../../gen/aos/v1/types_pb";
 import { StepKind, TaskState, ToolCallStatus } from "../../gen/aos/v1/types_pb";
 
@@ -32,6 +34,50 @@ export function isLive(state: TaskState): boolean {
 
 export function isFinished(state: TaskState): boolean {
   return state === TaskState.SUCCEEDED || state === TaskState.FAILED || state === TaskState.CANCELLED;
+}
+
+// The Task list's state filter.
+export const TASK_FILTERS = [
+  { id: "all", name: "All Tasks" },
+  { id: "active", name: "Active" },
+  { id: "waiting", name: "Waiting for you" },
+  { id: "finished", name: "Finished" },
+  { id: "interrupted", name: "Interrupted" },
+] as const;
+
+export function matchesFilter(state: TaskState, filter: string): boolean {
+  switch (filter) {
+    case "active":
+      return state === TaskState.QUEUED || state === TaskState.RUNNING;
+    case "waiting":
+      return state === TaskState.AWAITING_USER;
+    case "finished":
+      return isFinished(state);
+    case "interrupted":
+      return state === TaskState.INTERRUPTED;
+    default:
+      return true;
+  }
+}
+
+// shortCost is a Task's estimated spend alone, for tight rows.
+export function shortCost(usage?: Usage): string {
+  if (!usage || (!usage.inputTokens && !usage.outputTokens)) return "";
+  return usage.costKnown ? `$${usage.costUsd.toFixed(4)}` : "cost unknown";
+}
+
+// when is a time of day for today, and a date otherwise.
+export function when(ts?: Timestamp, seconds = false): string {
+  if (!ts) return "";
+  const d = timestampDate(ts);
+  if (d.toDateString() === new Date().toDateString()) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: seconds ? "2-digit" : undefined });
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
+export function millis(ts?: Timestamp): number {
+  return ts ? timestampDate(ts).getTime() : 0;
 }
 
 // costLine renders tokens and estimated spend (PLAN.md §8.4). cost_known is

@@ -11,8 +11,8 @@ import { useDesktop } from "../store";
 
 // The folders Spotlight searches (shallow): the sidebar Places except Trash.
 const ROOTS = PLACES.filter((p) => p.path !== "");
-// Apps offered by name; the Tasks surface is reached by starting a Task, not listed.
-const APP_LIST = Object.values(APPS).filter((a) => a.id !== "tasks");
+// Apps offered by name.
+const APP_LIST = Object.values(APPS);
 
 type Result =
   | { kind: "app"; app: AppDef }

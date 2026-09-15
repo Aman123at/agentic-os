@@ -150,7 +150,7 @@ flowchart LR
 |---|---|
 | Finder | Sidebar (Home, Shared, Downloads, Trash); icon, list and column views; drag and drop; upload/download to the Host; Quick Look via Preview; 🔒 Protect; right-click "Ask Agent…" |
 | Terminal | Tabs of User Sessions; "Watch" opens an Agent's Session |
-| Agent | Task list, live step feed, chat and Follow-ups, Approvals, cancel, Resume, tokens and cost, Audit Log browser |
+| Agent | Task list, live step feed, chat and Follow-ups, Approvals, cancel, Resume, tokens and cost, Audit Log browser, usage and Cost Limits. While it has the focus on a Task, that Task's Approvals are answered inline instead of in the pop-up (M4) |
 | TextEdit | CodeMirror 6 editor with syntax highlighting |
 | Preview | Images, PDF, audio, video |
 | Activity Monitor | Processes, CPU, memory, disk, network; running Agents; Services and their ports |

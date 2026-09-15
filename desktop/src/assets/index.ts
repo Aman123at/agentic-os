@@ -21,6 +21,6 @@ export const wallpapers: Record<"light" | "dark", string> = {
 export const appArt: Partial<Record<AppId, string>> = {
   finder: finderIcon,
   terminal: terminalIcon,
-  tasks: agentIcon,
+  agent: agentIcon,
   about: aboutIcon,
 };
