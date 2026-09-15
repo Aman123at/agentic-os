@@ -135,3 +135,24 @@ test("Finder protects a file with 🔒 and asks the Agent about it", async ({ pa
 
   exec(c, "aos", "rm", "-f", `/home/aos/${name}`);
 });
+
+test("Finder windows in two tabs leave connections for the rest of the Desktop", async ({ page, context }) => {
+  // Browsers allow six HTTP/1.1 connections to aosd across tabs. Each tab's
+  // event stream holds one; watched folders must not take the rest.
+  const openFinders = async (p: Page) => {
+    await p.goto("/");
+    for (const place of ["Home", "Downloads", "Shared"]) {
+      await openApp(p, "Finder");
+      await p.locator('.window[aria-label="Finder"]').last().locator(".finder__sidebar").getByText(place).click();
+    }
+  };
+  await openFinders(page);
+  const other = await context.newPage();
+  await openFinders(other);
+
+  await page.reload({ timeout: 10_000 });
+  await expect(page.locator(".menubar")).toBeVisible();
+  await openApp(page, "Finder");
+  await expect(page.locator('.window[aria-label="Finder"]').last().locator(".finder__row").first()).toBeVisible({ timeout: 10_000 });
+  await other.close();
+});
