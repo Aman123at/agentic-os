@@ -14,6 +14,9 @@ export default function Window({ win }: { win: Win }) {
   const { focusWindow, setRect, closeWindow, minimize, toggleMaximize } = useDesktop();
   const focused = useDesktop((s) => s.focused === win.id);
   const app = APPS[win.appId];
+  // A document window is titled with its file's name, which Save As can change.
+  const path = win.state?.path;
+  const title = path ? path.slice(path.lastIndexOf("/") + 1) : win.title;
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ px: number; py: number; dx: number; dy: number } | null>(null);
   const resize = useRef<{ px: number; py: number; w: number; h: number } | null>(null);
@@ -96,7 +99,7 @@ export default function Window({ win }: { win: Win }) {
       className={`window${focused ? " window--focused" : ""}`}
       style={{ left: win.rect.x, top: win.rect.y, width: win.rect.w, height: win.rect.h, zIndex: win.z, display: win.minimized ? "none" : undefined }}
       onPointerDown={() => focusWindow(win.id)}
-      aria-label={win.title}
+      aria-label={title}
     >
       <header
         className="window__bar"
@@ -110,7 +113,7 @@ export default function Window({ win }: { win: Win }) {
           <button className="traffic__btn traffic__min" title="Minimize" onClick={() => minimize(win.id)} />
           <button className="traffic__btn traffic__zoom" title="Zoom" onClick={() => toggleMaximize(win.id)} />
         </div>
-        <span className="window__title">{win.title}</span>
+        <span className="window__title">{title}</span>
       </header>
       <div className="window__body">
         <WinContext.Provider value={win.id}>

@@ -3,11 +3,13 @@
 // reload reopens it.
 import { useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
+import { fileKind } from "../filetypes";
 import { downloadToHost } from "../finder/fs";
 import PreviewBody from "./PreviewBody";
 
 export default function Preview() {
   const [path] = useWinState("path", "");
+  const openApp = useDesktop((s) => s.openApp);
   const revealInFinder = useDesktop((s) => s.revealInFinder);
 
   if (!path) {
@@ -25,6 +27,11 @@ export default function Preview() {
         <span className="preview__path" title={path}>
           {path}
         </span>
+        {fileKind(name) === "text" && (
+          <button className="finder__btn" onClick={() => openApp("textedit", path)}>
+            Open in TextEdit
+          </button>
+        )}
         <button className="finder__btn" title="Show in Finder" onClick={() => revealInFinder(dir, path)}>
           Show in Finder
         </button>

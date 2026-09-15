@@ -9,7 +9,17 @@ const proxy = { target, changeOrigin: false, ws: true };
 
 export default defineConfig({
   plugins: [react()],
-  build: { target: "es2022", chunkSizeWarningLimit: 200 },
+  build: {
+    target: "es2022",
+    chunkSizeWarningLimit: 200,
+    rollupOptions: {
+      output: {
+        // TextEdit's language packs are each an `index.js`; name their chunks
+        // after the package, so the ui stage's size report can tell them apart.
+        chunkFileNames: (chunk) => `assets/${chunk.facadeModuleId?.match(/@codemirror\/(lang-[\w-]+)\//)?.[1] ?? "[name]"}-[hash].js`,
+      },
+    },
+  },
   server: {
     proxy: {
       "/aos.v1.": proxy,

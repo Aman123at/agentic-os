@@ -2,7 +2,7 @@
 // the shell stays small and an app's code is fetched only when it first opens.
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "preview";
+export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit";
 
 export interface AppDef {
   id: AppId;
@@ -57,6 +57,15 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "🖼️",
     size: { w: 720, h: 540 },
     Component: lazy(() => import("./preview/Preview")),
+  },
+  // TextEdit edits one text file per window; opened with no file, it is a new
+  // document.
+  textedit: {
+    id: "textedit",
+    name: "TextEdit",
+    icon: "📝",
+    size: { w: 680, h: 520 },
+    Component: lazy(() => import("./textedit/TextEdit")),
   },
 };
 

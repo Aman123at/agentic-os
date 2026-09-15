@@ -1,7 +1,8 @@
 // Which Desktop app opens a file (PLAN.md §4.3): Preview shows images, PDFs,
-// audio, video and text; anything else (an archive, a program) is shown
-// selected in the Finder. Decided by the name alone, so the store can route a
-// file without reading it.
+// audio and video; TextEdit edits text; anything else (an archive, a program)
+// is shown selected in the Finder. Decided by the name alone, so the store can
+// route a file without reading it; TextEdit refuses one that turns out to be
+// binary.
 
 export type FileKind = "image" | "pdf" | "video" | "audio" | "text" | "other";
 
@@ -28,6 +29,8 @@ export function fileKind(name: string): FileKind {
   return KINDS[extOf(name)] ?? "text";
 }
 
-export function appForFile(name: string): "preview" | null {
-  return fileKind(name) === "other" ? null : "preview";
+export function appForFile(name: string): "preview" | "textedit" | null {
+  const kind = fileKind(name);
+  if (kind === "text") return "textedit";
+  return kind === "other" ? null : "preview";
 }

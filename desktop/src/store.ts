@@ -212,6 +212,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   },
 
   closeWindow: (id) => {
+    const win = get().windows.find((w) => w.id === id);
+    if (win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
     set((s) => ({ windows: s.windows.filter((w) => w.id !== id) }));
     save(get);
   },

@@ -835,6 +835,62 @@ button {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.25);
 }
 
+/* ---------------------------------------------------------------- textedit */
+.textedit {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.textedit__bar,
+.textedit__saveas,
+.textedit__conflict {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.textedit__path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+.textedit__edited {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+}
+.textedit__saveas label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.textedit__input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--window-bg);
+  color: var(--text);
+}
+.textedit__conflict {
+  background: rgba(255, 170, 0, 0.14);
+  font-size: 12px;
+}
+.textedit__conflict span {
+  flex: 1;
+}
+.textedit__editor {
+  flex: 1;
+  min-height: 0;
+}
+
 /* ---------------------------------------------------------------- finder: menu, ask, drop */
 .finder__columns {
   display: flex;
