@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/llm"
 	"github.com/amantiwari/agentic-os/internal/llm/fake"
 	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/tool"
 )
@@ -186,6 +188,47 @@ func TestToolCallsRunAndTheirResultsGoBackToTheModel(t *testing.T) {
 		if !strings.Contains(out, "notes.txt") {
 			t.Errorf("tool output %q does not mention notes.txt", out)
 		}
+	}
+}
+
+func TestATaskTakesTheSettingsInForceWhenItIsCreated(t *testing.T) {
+	h := newHarness(t, policy.ConfirmRisky)
+	var mu sync.Mutex
+	cur := settings.Values{Model: "gpt-a", Autonomy: policy.ConfirmAll, MaxTasks: 2, MaxRetries: 3}
+	cfg := h.cfg
+	cfg.Settings = func() settings.Values {
+		mu.Lock()
+		defer mu.Unlock()
+		return cur
+	}
+	m, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(m.Close)
+	ctx := context.Background()
+
+	first, err := m.Create(ctx, "first", aosv1.Autonomy_AUTONOMY_UNSPECIFIED, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Model != "gpt-a" || first.Autonomy != aosv1.Autonomy_AUTONOMY_CONFIRM_ALL {
+		t.Errorf("first Task: model %q autonomy %v, want gpt-a confirm-all", first.Model, first.Autonomy)
+	}
+
+	mu.Lock()
+	cur.Model, cur.Autonomy = "gpt-b", policy.Auto
+	mu.Unlock()
+	second, err := m.Create(ctx, "second", aosv1.Autonomy_AUTONOMY_UNSPECIFIED, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Model != "gpt-b" || second.Autonomy != aosv1.Autonomy_AUTONOMY_AUTO {
+		t.Errorf("a Task created after the change: model %q autonomy %v, want gpt-b auto", second.Model, second.Autonomy)
+	}
+	again, _, _, err := m.Get(ctx, first.Id)
+	if err != nil || again.Model != "gpt-a" || again.Autonomy != aosv1.Autonomy_AUTONOMY_CONFIRM_ALL {
+		t.Errorf("the first Task changed with the settings: %+v, %v", again, err)
 	}
 }
 

@@ -496,6 +496,39 @@ service SettingsService {
   // server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
   rpc GetDesktopState(GetDesktopStateRequest) returns (GetDesktopStateResponse);
   rpc SaveDesktopState(SaveDesktopStateRequest) returns (SaveDesktopStateResponse);
+
+  // The settings that can change while AOS runs (PLAN.md §6.4), each with
+  // where its value comes from.
+  rpc Get(GetSettingsRequest) returns (GetSettingsResponse);
+  // Saves one setting. An empty value removes the saved one, so the
+  // environment's value, or the default, applies again.
+  rpc Update(UpdateSettingRequest) returns (UpdateSettingResponse);
+}
+
+message Setting {
+  // model | reasoning_effort | autonomy | max_tasks | max_retries |
+  // task_cost_limit_usd | daily_cost_limit_usd | trash_retention_days | trash_max_gb
+  string key = 1;
+  string value = 2;
+  // default | env | settings (saved from System Settings)
+  string source = 3;
+  // The environment variable that also sets it, such as AOS_MAX_TASKS.
+  string env = 4;
+  // The value without the one saved in System Settings.
+  string fallback = 5;
+}
+
+message GetSettingsRequest {}
+message GetSettingsResponse {
+  repeated Setting settings = 1;
+}
+
+message UpdateSettingRequest {
+  string key = 1;
+  string value = 2;
+}
+message UpdateSettingResponse {
+  Setting setting = 1;
 }
 
 message ListMemoryRequest {}

@@ -20,6 +20,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/files"
 	"github.com/amantiwari/agentic-os/internal/profile"
 	"github.com/amantiwari/agentic-os/internal/service"
+	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/task"
 )
@@ -61,6 +62,8 @@ type Server struct {
 	Sessions  Sessions
 	Memories  *profile.Memories
 	Desktop   *desktop.State
+	// Settings are the settings that can change while aosd runs.
+	Settings *settings.Store
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -569,6 +572,40 @@ func (st settingsService) SaveDesktopState(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewResponse(&aosv1.SaveDesktopStateResponse{}), nil
+}
+
+func setting(s settings.Setting) *aosv1.Setting {
+	return &aosv1.Setting{Key: s.Key, Value: s.Value, Source: string(s.Source), Env: s.Env, Fallback: s.Fallback}
+}
+
+func (st settingsService) Get(context.Context, *connect.Request[aosv1.GetSettingsRequest]) (*connect.Response[aosv1.GetSettingsResponse], error) {
+	if st.s.Settings == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("settings are not available"))
+	}
+	resp := &aosv1.GetSettingsResponse{}
+	for _, s := range st.s.Settings.List() {
+		resp.Settings = append(resp.Settings, setting(s))
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// Update saves one setting. Every change, refused ones too, goes to the Audit
+// Log; Agents never get here (the socket refuses them, PLAN.md §7.5).
+func (st settingsService) Update(ctx context.Context, req *connect.Request[aosv1.UpdateSettingRequest]) (*connect.Response[aosv1.UpdateSettingResponse], error) {
+	if st.s.Settings == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("settings are not available"))
+	}
+	s, err := st.s.Settings.Set(ctx, req.Msg.Key, req.Msg.Value)
+	result := s.Value
+	if err != nil {
+		result = err.Error()
+	}
+	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: "settings_update", Arguments: `{"key":` + quote(req.Msg.Key) + `,"value":` + quote(req.Msg.Value) + `}`,
+		Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&aosv1.UpdateSettingResponse{Setting: setting(s)}), nil
 }
 
 func (st settingsService) audit(ctx context.Context, tool, id, result string) {

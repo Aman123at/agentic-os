@@ -42,6 +42,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/sandbox"
 	"github.com/amantiwari/agentic-os/internal/service"
 	"github.com/amantiwari/agentic-os/internal/session"
+	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/software"
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/task"
@@ -91,6 +92,7 @@ type Daemon struct {
 	osName   string
 	software *software.Manager
 	services *service.Supervisor
+	settings *settings.Store
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -115,8 +117,16 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if err != nil {
 		return err
 	}
-	if (cfg.TaskCostLimit > 0 || cfg.DailyCostLimit > 0) && !d.pricesKnown(model) {
-		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, model)
+	// Settings saved in System Settings win over the environment (PLAN.md §6.4).
+	d.settings, err = settings.Open(ctx, d.db, settings.Values{Model: model, ReasoningEffort: cfg.ReasoningEffort,
+		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, TaskCostLimit: cfg.TaskCostLimit,
+		DailyCostLimit: cfg.DailyCostLimit, TrashRetentionDays: int(cfg.TrashRetention / (24 * time.Hour)),
+		TrashMaxGB: int(cfg.TrashMaxBytes >> 30)}, cfg.Set)
+	if err != nil {
+		return fmt.Errorf("loading the settings: %w", err)
+	}
+	if v := d.settings.Values(); (v.TaskCostLimit > 0 || v.DailyCostLimit > 0) && !d.pricesKnown(v.Model) {
+		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, v.Model)
 	}
 	d.osName = osRelease()
 	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
@@ -136,12 +146,13 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
 		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.layout.Home,
 		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit, Context: d.agentContext,
-		NewEnv: d.newEnv, Protection: d.protection,
+		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values,
 	})
 	if err != nil {
 		return err
 	}
 	defer d.tasks.Close()
+	d.settings.OnChange(func(settings.Values) { d.tasks.SettingsChanged() })
 	defer d.services.Close()
 
 	userOps := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
@@ -150,7 +161,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Desktop: &desktop.State{DB: d.db}, Info: func() *aosv1.InfoResponse { return d.info(model) }, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Info: d.info, Assets: assets,
 	}
 	handler := srv.Handler()
 
@@ -530,7 +541,8 @@ func (d *Daemon) refused(r *http.Request, pid int, reason string) {
 		Decision: "deny", DecidedBy: "policy", Result: fmt.Sprintf("refused pid %d: %s", pid, reason), Actor: "unix-socket"})
 }
 
-func (d *Daemon) info(model string) *aosv1.InfoResponse {
+func (d *Daemon) info() *aosv1.InfoResponse {
+	v := d.settings.Values()
 	key := "missing"
 	if fi, err := os.Stat(SecretKey); err == nil {
 		key = "empty"
@@ -540,11 +552,11 @@ func (d *Daemon) info(model string) *aosv1.InfoResponse {
 	} else if readKey() != "" {
 		key = "present"
 	}
-	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[d.cfg.Autonomy]
+	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[v.Autonomy]
 	today, _ := d.usage.Today(context.Background())
-	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: model, Autonomy: autonomy,
-		MaxTasks: int32(d.cfg.MaxTasks), MaxRetries: int32(d.cfg.MaxRetries), Today: today, PricesKnown: d.pricesKnown(model), Replay: d.software.ReplayStatus(),
-		TaskCostLimitUsd: d.cfg.TaskCostLimit, DailyCostLimitUsd: d.cfg.DailyCostLimit}
+	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: v.Model, Autonomy: autonomy,
+		MaxTasks: int32(v.MaxTasks), MaxRetries: int32(v.MaxRetries), Today: today, PricesKnown: d.pricesKnown(v.Model), Replay: d.software.ReplayStatus(),
+		TaskCostLimitUsd: v.TaskCostLimit, DailyCostLimitUsd: v.DailyCostLimit}
 }
 
 // pricesKnown reports whether prices.yaml prices model.
@@ -559,7 +571,9 @@ func (d *Daemon) expireTrash(ctx context.Context, runner files.Runner) {
 	defer tick.Stop()
 	for {
 		var n int
-		if err := runner.Run(ctx, files.OpExpireTrash, files.ExpireArgs{Retention: d.cfg.TrashRetention, MaxBytes: d.cfg.TrashMaxBytes}, &n, nil); err == nil && n > 0 {
+		v := d.settings.Values() // retention and the size cap can change in System Settings
+		args := files.ExpireArgs{Retention: time.Duration(v.TrashRetentionDays) * 24 * time.Hour, MaxBytes: int64(v.TrashMaxGB) << 30}
+		if err := runner.Run(ctx, files.OpExpireTrash, args, &n, nil); err == nil && n > 0 {
 			log.Printf("Trash: removed %d expired item(s)", n)
 		}
 		select {

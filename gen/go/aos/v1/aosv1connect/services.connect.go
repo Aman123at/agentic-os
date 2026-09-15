@@ -171,6 +171,10 @@ const (
 	// SettingsServiceSaveDesktopStateProcedure is the fully-qualified name of the SettingsService's
 	// SaveDesktopState RPC.
 	SettingsServiceSaveDesktopStateProcedure = "/aos.v1.SettingsService/SaveDesktopState"
+	// SettingsServiceGetProcedure is the fully-qualified name of the SettingsService's Get RPC.
+	SettingsServiceGetProcedure = "/aos.v1.SettingsService/Get"
+	// SettingsServiceUpdateProcedure is the fully-qualified name of the SettingsService's Update RPC.
+	SettingsServiceUpdateProcedure = "/aos.v1.SettingsService/Update"
 	// SystemServiceInfoProcedure is the fully-qualified name of the SystemService's Info RPC.
 	SystemServiceInfoProcedure = "/aos.v1.SystemService/Info"
 	// SystemServiceAuditProcedure is the fully-qualified name of the SystemService's Audit RPC.
@@ -1649,6 +1653,12 @@ type SettingsServiceClient interface {
 	// server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
 	GetDesktopState(context.Context, *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error)
 	SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error)
+	// The settings that can change while AOS runs (PLAN.md §6.4), each with
+	// where its value comes from.
+	Get(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
+	// Saves one setting. An empty value removes the saved one, so the
+	// environment's value, or the default, applies again.
+	Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
 }
 
 // NewSettingsServiceClient constructs a client for the aos.v1.SettingsService service. By default,
@@ -1698,6 +1708,18 @@ func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(settingsServiceMethods.ByName("SaveDesktopState")),
 			connect.WithClientOptions(opts...),
 		),
+		get: connect.NewClient[v1.GetSettingsRequest, v1.GetSettingsResponse](
+			httpClient,
+			baseURL+SettingsServiceGetProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("Get")),
+			connect.WithClientOptions(opts...),
+		),
+		update: connect.NewClient[v1.UpdateSettingRequest, v1.UpdateSettingResponse](
+			httpClient,
+			baseURL+SettingsServiceUpdateProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("Update")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1709,6 +1731,8 @@ type settingsServiceClient struct {
 	forgetMemory     *connect.Client[v1.ForgetMemoryRequest, v1.ForgetMemoryResponse]
 	getDesktopState  *connect.Client[v1.GetDesktopStateRequest, v1.GetDesktopStateResponse]
 	saveDesktopState *connect.Client[v1.SaveDesktopStateRequest, v1.SaveDesktopStateResponse]
+	get              *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
+	update           *connect.Client[v1.UpdateSettingRequest, v1.UpdateSettingResponse]
 }
 
 // ListMemory calls aos.v1.SettingsService.ListMemory.
@@ -1741,6 +1765,16 @@ func (c *settingsServiceClient) SaveDesktopState(ctx context.Context, req *conne
 	return c.saveDesktopState.CallUnary(ctx, req)
 }
 
+// Get calls aos.v1.SettingsService.Get.
+func (c *settingsServiceClient) Get(ctx context.Context, req *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error) {
+	return c.get.CallUnary(ctx, req)
+}
+
+// Update calls aos.v1.SettingsService.Update.
+func (c *settingsServiceClient) Update(ctx context.Context, req *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error) {
+	return c.update.CallUnary(ctx, req)
+}
+
 // SettingsServiceHandler is an implementation of the aos.v1.SettingsService service.
 type SettingsServiceHandler interface {
 	// Accepted Memory and the Agents' proposals.
@@ -1755,6 +1789,12 @@ type SettingsServiceHandler interface {
 	// server stores it as an opaque JSON blob the client owns (PLAN.md §4.3).
 	GetDesktopState(context.Context, *connect.Request[v1.GetDesktopStateRequest]) (*connect.Response[v1.GetDesktopStateResponse], error)
 	SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error)
+	// The settings that can change while AOS runs (PLAN.md §6.4), each with
+	// where its value comes from.
+	Get(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error)
+	// Saves one setting. An empty value removes the saved one, so the
+	// environment's value, or the default, applies again.
+	Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
 }
 
 // NewSettingsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1800,6 +1840,18 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 		connect.WithSchema(settingsServiceMethods.ByName("SaveDesktopState")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingsServiceGetHandler := connect.NewUnaryHandler(
+		SettingsServiceGetProcedure,
+		svc.Get,
+		connect.WithSchema(settingsServiceMethods.ByName("Get")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceUpdateHandler := connect.NewUnaryHandler(
+		SettingsServiceUpdateProcedure,
+		svc.Update,
+		connect.WithSchema(settingsServiceMethods.ByName("Update")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingsServiceListMemoryProcedure:
@@ -1814,6 +1866,10 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 			settingsServiceGetDesktopStateHandler.ServeHTTP(w, r)
 		case SettingsServiceSaveDesktopStateProcedure:
 			settingsServiceSaveDesktopStateHandler.ServeHTTP(w, r)
+		case SettingsServiceGetProcedure:
+			settingsServiceGetHandler.ServeHTTP(w, r)
+		case SettingsServiceUpdateProcedure:
+			settingsServiceUpdateHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1845,6 +1901,14 @@ func (UnimplementedSettingsServiceHandler) GetDesktopState(context.Context, *con
 
 func (UnimplementedSettingsServiceHandler) SaveDesktopState(context.Context, *connect.Request[v1.SaveDesktopStateRequest]) (*connect.Response[v1.SaveDesktopStateResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.SaveDesktopState is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) Get(context.Context, *connect.Request[v1.GetSettingsRequest]) (*connect.Response[v1.GetSettingsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.Get is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.Update is not implemented"))
 }
 
 // SystemServiceClient is a client for the aos.v1.SystemService service.

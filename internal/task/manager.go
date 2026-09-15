@@ -22,6 +22,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/llm"
 	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/amantiwari/agentic-os/internal/settings"
 	"github.com/amantiwari/agentic-os/internal/store"
 	"github.com/amantiwari/agentic-os/internal/tool"
 	"github.com/amantiwari/agentic-os/internal/usage"
@@ -51,6 +52,11 @@ type Config struct {
 	Context func(ctx context.Context) string
 	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
 	TaskCostLimit, DailyCostLimit float64
+	// Settings returns the settings in force (PLAN.md §6.4); nil uses the fields
+	// above. A Task takes its model and Autonomy when it is created, and its
+	// reasoning effort and retries when it starts running, so a change never
+	// alters a running Task; max Tasks and the Cost Limits apply at once.
+	Settings func() settings.Values
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
 	NewEnv func(env *tool.Env) (release func(), err error)
 	// Protection returns the current Protected Paths for a Task.
@@ -112,6 +118,19 @@ func New(cfg Config) (*Manager, error) {
 	return m, nil
 }
 
+// settings returns the settings in force.
+func (m *Manager) settings() settings.Values {
+	if m.cfg.Settings != nil {
+		return m.cfg.Settings()
+	}
+	c := m.cfg
+	return settings.Values{Model: c.Model, ReasoningEffort: c.ReasoningEffort, Autonomy: c.Autonomy, MaxTasks: c.MaxTasks,
+		MaxRetries: c.MaxRetries, TaskCostLimit: c.TaskCostLimit, DailyCostLimit: c.DailyCostLimit}
+}
+
+// SettingsChanged starts queued Tasks that a raised max Tasks now allows.
+func (m *Manager) SettingsChanged() { m.schedule() }
+
 // recover handles Tasks left by a previous aosd: work cut short becomes
 // Interrupted, and queued Tasks wait for a slot again.
 func (m *Manager) recover() error {
@@ -159,12 +178,13 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 	if prompt == "" {
 		return nil, errors.New("the Task is empty")
 	}
+	s := m.settings()
 	if autonomy == aosv1.Autonomy_AUTONOMY_UNSPECIFIED {
-		autonomy = toProto(m.cfg.Autonomy)
+		autonomy = toProto(s.Autonomy)
 	}
 	at := timestamppb.New(now(m.cfg))
 	t := &aosv1.Task{Id: newID("t_"), Title: title(prompt), Prompt: prompt, State: aosv1.TaskState_TASK_STATE_QUEUED,
-		Autonomy: autonomy, Interactive: interactive, Model: m.cfg.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at}
+		Autonomy: autonomy, Interactive: interactive, Model: s.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at}
 	step := &aosv1.TaskStep{Id: newID("s_"), TaskId: t.Id, Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: prompt, CreatedAt: at}
 	start := []llm.Item{llm.UserMessage(prompt)}
 	if c := m.context(ctx); c != "" {
@@ -351,9 +371,10 @@ func (m *Manager) List(ctx context.Context, limit int) ([]*aosv1.Task, error) {
 
 // schedule starts queued Tasks while slots are free.
 func (m *Manager) schedule() {
+	maxTasks := m.settings().MaxTasks
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for len(m.queue) > 0 && len(m.running) < m.cfg.MaxTasks && m.ctx.Err() == nil {
+	for len(m.queue) > 0 && len(m.running) < maxTasks && m.ctx.Err() == nil {
 		id := m.queue[0]
 		m.queue = m.queue[1:]
 		r := &run{m: m, id: id}
@@ -382,8 +403,11 @@ type run struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	mu        sync.Mutex
-	task      *aosv1.Task
+	mu   sync.Mutex
+	task *aosv1.Task
+	// model is the Task's model for this run: what the Agent asks for, and
+	// what its usage is priced at.
+	model     string
 	env       *tool.Env
 	grants    []policy.Grant
 	cancelled bool
@@ -420,7 +444,12 @@ func (r *run) execute() {
 		return
 	}
 	transcript := buildTranscript(stored)
-	ac := agent.Config{Provider: cfg.Provider, Tools: cfg.Tools, Model: cfg.Model, ReasoningEffort: cfg.ReasoningEffort, Instructions: cfg.Instructions, MaxRetries: cfg.MaxRetries}
+	s := r.m.settings()
+	r.model = t.Model
+	if r.model == "" {
+		r.model = s.Model
+	}
+	ac := agent.Config{Provider: cfg.Provider, Tools: cfg.Tools, Model: r.model, ReasoningEffort: s.ReasoningEffort, Instructions: cfg.Instructions, MaxRetries: s.MaxRetries}
 	final, err := agent.Run(r.ctx, ac, r, transcript)
 	r.mu.Lock()
 	cancelled := r.cancelled
@@ -542,7 +571,7 @@ func (r *run) TextDelta(stepID, delta string) {
 // Responded adds a response's usage and estimated cost to the Task and to
 // today's totals, and shows it live.
 func (r *run) Responded(ctx context.Context, resp llm.Response) error {
-	cost, known, err := r.m.cfg.Usage.Record(ctx, r.m.cfg.Model, resp.Usage)
+	cost, known, err := r.m.cfg.Usage.Record(ctx, r.model, resp.Usage)
 	if err != nil {
 		return err
 	}
@@ -570,8 +599,8 @@ func (r *run) Responded(ctx context.Context, resp llm.Response) error {
 // Budget implements agent.Host: before each model request, a reached Cost
 // Limit pauses the Task until the user lets it continue (PLAN.md §8.4).
 func (r *run) Budget(ctx context.Context) error {
-	cfg := r.m.cfg
-	if limit := cfg.TaskCostLimit; limit > 0 {
+	cfg, s := r.m.cfg, r.m.settings()
+	if limit := s.TaskCostLimit; limit > 0 {
 		r.mu.Lock()
 		cost := r.task.GetUsage().GetCostUsd()
 		if r.costPause == 0 {
@@ -580,7 +609,7 @@ func (r *run) Budget(ctx context.Context) error {
 		next := r.costPause
 		r.mu.Unlock()
 		if cost >= next {
-			why := fmt.Sprintf("This Task's estimated cost reached $%.2f (AOS_TASK_COST_LIMIT_USD=%.2f).", cost, limit)
+			why := fmt.Sprintf("This Task's estimated cost reached $%.2f, its Cost Limit ($%.2f).", cost, limit)
 			if err := r.pauseForCost(ctx, why, fmt.Sprintf("Reply to continue until it reaches $%.2f, or cancel the Task.", cost+limit)); err != nil {
 				return err
 			}
@@ -589,7 +618,7 @@ func (r *run) Budget(ctx context.Context) error {
 			r.mu.Unlock()
 		}
 	}
-	if limit := cfg.DailyCostLimit; limit > 0 {
+	if limit := s.DailyCostLimit; limit > 0 {
 		day := now(cfg).Format("2006-01-02")
 		r.mu.Lock()
 		acked := r.dailyAck == day
@@ -602,7 +631,7 @@ func (r *run) Budget(ctx context.Context) error {
 			return err
 		}
 		if today.CostUsd >= limit {
-			why := fmt.Sprintf("Today's estimated model spend reached $%.2f, the daily Cost Limit (AOS_DAILY_COST_LIMIT_USD=%.2f).", today.CostUsd, limit)
+			why := fmt.Sprintf("Today's estimated model spend reached $%.2f, the daily Cost Limit ($%.2f).", today.CostUsd, limit)
 			if err := r.pauseForCost(ctx, why, "Reply to let this Task continue today, or cancel it."); err != nil {
 				return err
 			}

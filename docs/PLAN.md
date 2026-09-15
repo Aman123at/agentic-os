@@ -619,7 +619,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
 | `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
-| `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `Get`, `Update`, `SetApiKey`, `GetDesktopState`, `SaveDesktopState` (M3–M4) |
+| `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `GetDesktopState`, `SaveDesktopState` (M3); `Get`, `Update` (M4: the settings that can change while AOS runs, §6.4, each with where its value comes from), `SetApiKey` (M4) |
 | `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes`, `Audit` |
 
 **Plain HTTP routes:**

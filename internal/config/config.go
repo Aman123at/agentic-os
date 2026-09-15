@@ -30,13 +30,18 @@ type Config struct {
 	TaskCostLimit, DailyCostLimit float64
 	// FakeModel is a folder of cassettes that replaces OpenAI (tests only).
 	FakeModel string
+	// Set names the variables the environment set, so a setting can say whether
+	// its value came from there or is the built-in default.
+	Set map[string]bool
 }
 
 // FromEnv reads the configuration; getenv is os.Getenv in production.
 func FromEnv(getenv func(string) string) (Config, error) {
 	var errs []string
+	set := map[string]bool{}
 	str := func(name, def string) string {
 		if v := strings.TrimSpace(getenv(name)); v != "" {
+			set[name] = true
 			return v
 		}
 		return def
@@ -82,6 +87,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		TrashRetention:  time.Duration(num("AOS_TRASH_RETENTION_DAYS", 30)) * 24 * time.Hour,
 		TrashMaxBytes:   int64(num("AOS_TRASH_MAX_GB", 5)) << 30,
 		FakeModel:       str("AOS_FAKE_MODEL", ""),
+		Set:             set,
 	}
 	c.Mode = str("AOS_MODE", c.ImageMode)
 	if c.Mode != "cli" && c.Mode != "ui" {
