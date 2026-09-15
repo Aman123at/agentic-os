@@ -23,11 +23,20 @@ func testKeys(t *testing.T, secret *string) keyStore {
 		t.Fatal(err)
 	}
 	if secret != nil {
-		if err := os.WriteFile(k.secret, []byte(*secret+"\n"), 0o400); err != nil {
+		// World-readable, as Compose delivers it.
+		if err := os.WriteFile(k.secret, []byte(*secret+"\n"), 0o444); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return k
+}
+
+// secretIsRootOnly fails unless copy made the Compose secret unreadable to others.
+func secretIsRootOnly(t *testing.T, k keyStore) {
+	t.Helper()
+	if fi, err := os.Stat(k.secret); err != nil || fi.Mode().Perm() != 0o400 {
+		t.Errorf("the Compose secret's mode is %v (%v), want 0400", fi.Mode().Perm(), err)
+	}
 }
 
 func TestTheComposeSecretIsCopiedToARootOnlyFile(t *testing.T) {
@@ -42,6 +51,7 @@ func TestTheComposeSecretIsCopiedToARootOnlyFile(t *testing.T) {
 	if fi, err := os.Stat(k.file); err != nil || fi.Mode().Perm() != 0o400 {
 		t.Errorf("key file mode: %v %v, want 0400", fi.Mode().Perm(), err)
 	}
+	secretIsRootOnly(t, k)
 	if state, source, hint := k.status(); state != "present" || source != "env" || hint != "sk-…1234" {
 		t.Errorf("status %s %s %s", state, source, hint)
 	}
@@ -62,6 +72,7 @@ func TestAKeySavedFromSettingsWinsAcrossRestartsUntilCleared(t *testing.T) {
 	if got := k.read(); got != settingsKey {
 		t.Fatalf("after a restart the key is %q, want the one saved from Settings", got)
 	}
+	secretIsRootOnly(t, k) // locked even when the Settings key wins
 	if _, source, _ := k.status(); source != "settings" {
 		t.Errorf("source %q, want settings", source)
 	}

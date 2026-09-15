@@ -427,7 +427,7 @@ Shell analysis is only an early warning so the Agent can ask first. Landlock is 
 
 ### 7.7 API key
 
-- **Delivery:** a Compose secret sourced from the Host's `OPENAI_API_KEY`, copied at startup into `/var/lib/aos/keys/openai` (root, mode 0400).
+- **Delivery:** a Compose secret sourced from the Host's `OPENAI_API_KEY`, copied at startup into `/var/lib/aos/keys/openai` (root, mode 0400). Compose delivers the secret world-readable (0444, M0 finding 0.4), so at every start `aosd` also makes it root-only: Landlock keeps Agents out, but not the user's own file operations or Terminal, which run as `aos` too.
 - **Where it's used:** only `aosd`'s `llm` package reads it. The UI shows `sk-…abcd`.
 - **Replacing it:** possible from System Settings. A key saved there is written to the same root-only file and wins over the Compose secret, across restarts, until you choose the key from `.env` again. Only a hint (`sk-…abcd`) ever leaves `aosd`; the Audit Log records each change with that hint.
 

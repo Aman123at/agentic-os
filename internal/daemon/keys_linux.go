@@ -28,21 +28,30 @@ func (k keyStore) fromSettings() bool {
 
 // copy puts the Compose secret in place, unless a key saved from System
 // Settings is there. An empty or missing secret leaves the file as it is.
+//
+// Either way it first makes the secret file root-only. Compose delivers it
+// world-readable (0444, M0 finding 0.4), and Landlock keeps only Agents out:
+// the user's own file operations and Terminal run as aos too, and the key must
+// never reach them, only its hint (PLAN.md §7.7).
 func (k keyStore) copy() error {
+	lockErr := os.Chmod(k.secret, 0o400)
+	if errors.Is(lockErr, fs.ErrNotExist) {
+		lockErr = nil
+	}
 	if k.fromSettings() {
-		return nil
+		return lockErr
 	}
 	key, err := os.ReadFile(k.secret)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil
+		return lockErr
 	}
 	if err != nil {
-		return err
+		return errors.Join(lockErr, err)
 	}
 	if s := strings.TrimSpace(string(key)); s != "" {
-		return writeKey(k.file, s)
+		err = writeKey(k.file, s)
 	}
-	return nil
+	return errors.Join(lockErr, err)
 }
 
 // read returns the key in use, or "".
