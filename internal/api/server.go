@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -75,6 +76,8 @@ type Server struct {
 	Settings *settings.Store
 	// APIKey replaces the OpenAI API key.
 	APIKey APIKey
+	// WatchInterval is how often FileService.Watch lists a folder again; 0 means 2 s.
+	WatchInterval time.Duration
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor

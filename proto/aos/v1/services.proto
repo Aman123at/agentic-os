@@ -212,6 +212,18 @@ service FileService {
   rpc Protect(ProtectRequest) returns (ProtectResponse);
   rpc Unprotect(UnprotectRequest) returns (UnprotectResponse);
   rpc ListProtected(ListProtectedRequest) returns (ListProtectedResponse);
+  // Sends a folder's listing, then again each time it changes, while the
+  // client stays (PLAN.md §15: polled every 2 s, which sees changes on every
+  // Host, a Windows Shared Folder included).
+  rpc Watch(WatchRequest) returns (stream WatchResponse);
+}
+
+message WatchRequest {
+  string path = 1;
+}
+message WatchResponse {
+  // The whole listing, as List returns it.
+  repeated FileInfo entries = 1;
 }
 
 message FileInfo {

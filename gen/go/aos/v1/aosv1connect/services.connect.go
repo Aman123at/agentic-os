@@ -105,6 +105,8 @@ const (
 	// FileServiceListProtectedProcedure is the fully-qualified name of the FileService's ListProtected
 	// RPC.
 	FileServiceListProtectedProcedure = "/aos.v1.FileService/ListProtected"
+	// FileServiceWatchProcedure is the fully-qualified name of the FileService's Watch RPC.
+	FileServiceWatchProcedure = "/aos.v1.FileService/Watch"
 	// TrashServiceListTrashProcedure is the fully-qualified name of the TrashService's ListTrash RPC.
 	TrashServiceListTrashProcedure = "/aos.v1.TrashService/ListTrash"
 	// TrashServiceRestoreProcedure is the fully-qualified name of the TrashService's Restore RPC.
@@ -720,6 +722,10 @@ type FileServiceClient interface {
 	Protect(context.Context, *connect.Request[v1.ProtectRequest]) (*connect.Response[v1.ProtectResponse], error)
 	Unprotect(context.Context, *connect.Request[v1.UnprotectRequest]) (*connect.Response[v1.UnprotectResponse], error)
 	ListProtected(context.Context, *connect.Request[v1.ListProtectedRequest]) (*connect.Response[v1.ListProtectedResponse], error)
+	// Sends a folder's listing, then again each time it changes, while the
+	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
+	// Host, a Windows Shared Folder included).
+	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error)
 }
 
 // NewFileServiceClient constructs a client for the aos.v1.FileService service. By default, it uses
@@ -793,6 +799,12 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(fileServiceMethods.ByName("ListProtected")),
 			connect.WithClientOptions(opts...),
 		),
+		watch: connect.NewClient[v1.WatchRequest, v1.WatchResponse](
+			httpClient,
+			baseURL+FileServiceWatchProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("Watch")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -808,6 +820,7 @@ type fileServiceClient struct {
 	protect       *connect.Client[v1.ProtectRequest, v1.ProtectResponse]
 	unprotect     *connect.Client[v1.UnprotectRequest, v1.UnprotectResponse]
 	listProtected *connect.Client[v1.ListProtectedRequest, v1.ListProtectedResponse]
+	watch         *connect.Client[v1.WatchRequest, v1.WatchResponse]
 }
 
 // List calls aos.v1.FileService.List.
@@ -860,6 +873,11 @@ func (c *fileServiceClient) ListProtected(ctx context.Context, req *connect.Requ
 	return c.listProtected.CallUnary(ctx, req)
 }
 
+// Watch calls aos.v1.FileService.Watch.
+func (c *fileServiceClient) Watch(ctx context.Context, req *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error) {
+	return c.watch.CallServerStream(ctx, req)
+}
+
 // FileServiceHandler is an implementation of the aos.v1.FileService service.
 type FileServiceHandler interface {
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
@@ -873,6 +891,10 @@ type FileServiceHandler interface {
 	Protect(context.Context, *connect.Request[v1.ProtectRequest]) (*connect.Response[v1.ProtectResponse], error)
 	Unprotect(context.Context, *connect.Request[v1.UnprotectRequest]) (*connect.Response[v1.UnprotectResponse], error)
 	ListProtected(context.Context, *connect.Request[v1.ListProtectedRequest]) (*connect.Response[v1.ListProtectedResponse], error)
+	// Sends a folder's listing, then again each time it changes, while the
+	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
+	// Host, a Windows Shared Folder included).
+	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error
 }
 
 // NewFileServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -942,6 +964,12 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(fileServiceMethods.ByName("ListProtected")),
 		connect.WithHandlerOptions(opts...),
 	)
+	fileServiceWatchHandler := connect.NewServerStreamHandler(
+		FileServiceWatchProcedure,
+		svc.Watch,
+		connect.WithSchema(fileServiceMethods.ByName("Watch")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.FileService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FileServiceListProcedure:
@@ -964,6 +992,8 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 			fileServiceUnprotectHandler.ServeHTTP(w, r)
 		case FileServiceListProtectedProcedure:
 			fileServiceListProtectedHandler.ServeHTTP(w, r)
+		case FileServiceWatchProcedure:
+			fileServiceWatchHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1011,6 +1041,10 @@ func (UnimplementedFileServiceHandler) Unprotect(context.Context, *connect.Reque
 
 func (UnimplementedFileServiceHandler) ListProtected(context.Context, *connect.Request[v1.ListProtectedRequest]) (*connect.Response[v1.ListProtectedResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.ListProtected is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.Watch is not implemented"))
 }
 
 // TrashServiceClient is a client for the aos.v1.TrashService service.

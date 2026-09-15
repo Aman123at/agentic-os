@@ -614,8 +614,8 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `AuthService` | `ExchangeLoginCode` |
 | `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
-| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `AwaitingUser`, `FileChanged`, `DownloadProgress`, `MetricsSample`, `ServiceChanged`, `ReplayProgress`, `Notification` |
-| `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect` |
+| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification`. Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
+| `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
@@ -644,7 +644,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | Runtime | Docker Desktop (Apple Silicon, Intel) | Docker Desktop, WSL2 backend | Docker Engine; Podman/rootless: best effort |
 | Landlock | ✅ confirmed (linuxkit kernel) | ✅ in WSL2 kernel config | Depends on distro and kernel; fallback per ADR-0004 |
 | Shared Folder ownership | Automatic | Automatic | `AOS_UID`/`AOS_GID` applied at startup (re-owns home only when changed) |
-| Shared Folder live updates | fsnotify + 2 s polling | 2 s polling (Windows changes aren't reliably seen) | fsnotify + 2 s polling |
+| Shared Folder live updates | 2 s polling (`FileService.Watch`) | 2 s polling (Windows changes aren't reliably seen by file notifications) | 2 s polling |
 | Service subdomains | Chrome, Safari ✅ (M0); Edge, Firefox expected | ✅ | ✅ |
 | Reserved shortcuts | ⌘Space, ⌘Tab, ⌘W, ⌘Q | Alt+Space, Alt+Tab, Alt+F4, Win, Ctrl+W | Super, Alt+Tab, Ctrl+W |
 | Start command | `docker compose up --build` (zsh/bash) | same (PowerShell/cmd) | same |
