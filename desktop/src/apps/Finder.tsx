@@ -9,7 +9,7 @@ import { ConnectError, Code } from "@connectrpc/connect";
 
 import { files, tasks, trash } from "../api/client";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
-import { useWinState } from "../shell/win";
+import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import {
   PLACES,
@@ -127,6 +127,28 @@ export default function Finder() {
   // Folders are entered by their logical path (so a Home-rooted walk stays
   // "~/…" rather than flipping to an absolute path); files open Quick Look.
   const open = useCallback((e: FileInfo) => (e.dir ? go(join(dir, e.name)) : setQuick(e)), [go, dir]);
+
+  // Space toggles Quick Look on the selected file while this window has the
+  // focus, as on macOS. Typing in a field, and ⌥Space for Spotlight, pass through.
+  const focused = useWinFocused();
+  useEffect(() => {
+    if (!focused) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== " " || e.altKey || e.ctrlKey || e.metaKey || e.repeat) return;
+      if ((e.target as HTMLElement | null)?.closest("input, textarea, select, [contenteditable]")) return;
+      if (quick) {
+        e.preventDefault();
+        setQuick(null);
+        return;
+      }
+      const file = entries.find((f) => f.path === selected);
+      if (!file || file.dir || ask) return;
+      e.preventDefault();
+      setQuick(file);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focused, quick, entries, selected, ask]);
 
   // run wraps a mutation: it reports failures in the status bar and reloads.
   const run = useCallback(
