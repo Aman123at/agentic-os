@@ -503,6 +503,26 @@ service SettingsService {
   // Saves one setting. An empty value removes the saved one, so the
   // environment's value, or the default, applies again.
   rpc Update(UpdateSettingRequest) returns (UpdateSettingResponse);
+
+  // Replaces the OpenAI API key (PLAN.md §7.7). It wins over the key from
+  // .env, across restarts, until ClearApiKey. Only a hint (sk-…abcd) of any
+  // key ever leaves aosd.
+  rpc SetApiKey(SetApiKeyRequest) returns (SetApiKeyResponse);
+  // Goes back to the key from .env.
+  rpc ClearApiKey(ClearApiKeyRequest) returns (ClearApiKeyResponse);
+}
+
+message SetApiKeyRequest {
+  string key = 1;
+}
+message SetApiKeyResponse {
+  string hint = 1;
+}
+
+message ClearApiKeyRequest {}
+message ClearApiKeyResponse {
+  // The hint of the key now in use, or "" when .env has none.
+  string hint = 1;
 }
 
 message Setting {
@@ -592,6 +612,10 @@ message InfoResponse {
   // Whether prices.yaml has prices for the configured model.
   bool prices_known = 12;
   int32 max_retries = 13;
+  // The key as System Settings shows it, such as sk-…abcd; "" without a key.
+  string api_key_hint = 14;
+  // settings | env: where the key in use came from.
+  string api_key_source = 15;
 }
 
 message AuditRequest {

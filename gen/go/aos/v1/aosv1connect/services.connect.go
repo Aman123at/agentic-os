@@ -175,6 +175,12 @@ const (
 	SettingsServiceGetProcedure = "/aos.v1.SettingsService/Get"
 	// SettingsServiceUpdateProcedure is the fully-qualified name of the SettingsService's Update RPC.
 	SettingsServiceUpdateProcedure = "/aos.v1.SettingsService/Update"
+	// SettingsServiceSetApiKeyProcedure is the fully-qualified name of the SettingsService's SetApiKey
+	// RPC.
+	SettingsServiceSetApiKeyProcedure = "/aos.v1.SettingsService/SetApiKey"
+	// SettingsServiceClearApiKeyProcedure is the fully-qualified name of the SettingsService's
+	// ClearApiKey RPC.
+	SettingsServiceClearApiKeyProcedure = "/aos.v1.SettingsService/ClearApiKey"
 	// SystemServiceInfoProcedure is the fully-qualified name of the SystemService's Info RPC.
 	SystemServiceInfoProcedure = "/aos.v1.SystemService/Info"
 	// SystemServiceAuditProcedure is the fully-qualified name of the SystemService's Audit RPC.
@@ -1659,6 +1665,12 @@ type SettingsServiceClient interface {
 	// Saves one setting. An empty value removes the saved one, so the
 	// environment's value, or the default, applies again.
 	Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
+	// Replaces the OpenAI API key (PLAN.md §7.7). It wins over the key from
+	// .env, across restarts, until ClearApiKey. Only a hint (sk-…abcd) of any
+	// key ever leaves aosd.
+	SetApiKey(context.Context, *connect.Request[v1.SetApiKeyRequest]) (*connect.Response[v1.SetApiKeyResponse], error)
+	// Goes back to the key from .env.
+	ClearApiKey(context.Context, *connect.Request[v1.ClearApiKeyRequest]) (*connect.Response[v1.ClearApiKeyResponse], error)
 }
 
 // NewSettingsServiceClient constructs a client for the aos.v1.SettingsService service. By default,
@@ -1720,6 +1732,18 @@ func NewSettingsServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(settingsServiceMethods.ByName("Update")),
 			connect.WithClientOptions(opts...),
 		),
+		setApiKey: connect.NewClient[v1.SetApiKeyRequest, v1.SetApiKeyResponse](
+			httpClient,
+			baseURL+SettingsServiceSetApiKeyProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("SetApiKey")),
+			connect.WithClientOptions(opts...),
+		),
+		clearApiKey: connect.NewClient[v1.ClearApiKeyRequest, v1.ClearApiKeyResponse](
+			httpClient,
+			baseURL+SettingsServiceClearApiKeyProcedure,
+			connect.WithSchema(settingsServiceMethods.ByName("ClearApiKey")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -1733,6 +1757,8 @@ type settingsServiceClient struct {
 	saveDesktopState *connect.Client[v1.SaveDesktopStateRequest, v1.SaveDesktopStateResponse]
 	get              *connect.Client[v1.GetSettingsRequest, v1.GetSettingsResponse]
 	update           *connect.Client[v1.UpdateSettingRequest, v1.UpdateSettingResponse]
+	setApiKey        *connect.Client[v1.SetApiKeyRequest, v1.SetApiKeyResponse]
+	clearApiKey      *connect.Client[v1.ClearApiKeyRequest, v1.ClearApiKeyResponse]
 }
 
 // ListMemory calls aos.v1.SettingsService.ListMemory.
@@ -1775,6 +1801,16 @@ func (c *settingsServiceClient) Update(ctx context.Context, req *connect.Request
 	return c.update.CallUnary(ctx, req)
 }
 
+// SetApiKey calls aos.v1.SettingsService.SetApiKey.
+func (c *settingsServiceClient) SetApiKey(ctx context.Context, req *connect.Request[v1.SetApiKeyRequest]) (*connect.Response[v1.SetApiKeyResponse], error) {
+	return c.setApiKey.CallUnary(ctx, req)
+}
+
+// ClearApiKey calls aos.v1.SettingsService.ClearApiKey.
+func (c *settingsServiceClient) ClearApiKey(ctx context.Context, req *connect.Request[v1.ClearApiKeyRequest]) (*connect.Response[v1.ClearApiKeyResponse], error) {
+	return c.clearApiKey.CallUnary(ctx, req)
+}
+
 // SettingsServiceHandler is an implementation of the aos.v1.SettingsService service.
 type SettingsServiceHandler interface {
 	// Accepted Memory and the Agents' proposals.
@@ -1795,6 +1831,12 @@ type SettingsServiceHandler interface {
 	// Saves one setting. An empty value removes the saved one, so the
 	// environment's value, or the default, applies again.
 	Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error)
+	// Replaces the OpenAI API key (PLAN.md §7.7). It wins over the key from
+	// .env, across restarts, until ClearApiKey. Only a hint (sk-…abcd) of any
+	// key ever leaves aosd.
+	SetApiKey(context.Context, *connect.Request[v1.SetApiKeyRequest]) (*connect.Response[v1.SetApiKeyResponse], error)
+	// Goes back to the key from .env.
+	ClearApiKey(context.Context, *connect.Request[v1.ClearApiKeyRequest]) (*connect.Response[v1.ClearApiKeyResponse], error)
 }
 
 // NewSettingsServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -1852,6 +1894,18 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 		connect.WithSchema(settingsServiceMethods.ByName("Update")),
 		connect.WithHandlerOptions(opts...),
 	)
+	settingsServiceSetApiKeyHandler := connect.NewUnaryHandler(
+		SettingsServiceSetApiKeyProcedure,
+		svc.SetApiKey,
+		connect.WithSchema(settingsServiceMethods.ByName("SetApiKey")),
+		connect.WithHandlerOptions(opts...),
+	)
+	settingsServiceClearApiKeyHandler := connect.NewUnaryHandler(
+		SettingsServiceClearApiKeyProcedure,
+		svc.ClearApiKey,
+		connect.WithSchema(settingsServiceMethods.ByName("ClearApiKey")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SettingsService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SettingsServiceListMemoryProcedure:
@@ -1870,6 +1924,10 @@ func NewSettingsServiceHandler(svc SettingsServiceHandler, opts ...connect.Handl
 			settingsServiceGetHandler.ServeHTTP(w, r)
 		case SettingsServiceUpdateProcedure:
 			settingsServiceUpdateHandler.ServeHTTP(w, r)
+		case SettingsServiceSetApiKeyProcedure:
+			settingsServiceSetApiKeyHandler.ServeHTTP(w, r)
+		case SettingsServiceClearApiKeyProcedure:
+			settingsServiceClearApiKeyHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1909,6 +1967,14 @@ func (UnimplementedSettingsServiceHandler) Get(context.Context, *connect.Request
 
 func (UnimplementedSettingsServiceHandler) Update(context.Context, *connect.Request[v1.UpdateSettingRequest]) (*connect.Response[v1.UpdateSettingResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.Update is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) SetApiKey(context.Context, *connect.Request[v1.SetApiKeyRequest]) (*connect.Response[v1.SetApiKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.SetApiKey is not implemented"))
+}
+
+func (UnimplementedSettingsServiceHandler) ClearApiKey(context.Context, *connect.Request[v1.ClearApiKeyRequest]) (*connect.Response[v1.ClearApiKeyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SettingsService.ClearApiKey is not implemented"))
 }
 
 // SystemServiceClient is a client for the aos.v1.SystemService service.

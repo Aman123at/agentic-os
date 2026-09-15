@@ -161,7 +161,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Info: d.info, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Info: d.info, Assets: assets,
 	}
 	handler := srv.Handler()
 
@@ -243,7 +243,7 @@ func (d *Daemon) init() error {
 			_ = os.RemoveAll(filepath.Join(SessionsDir, e.Name()))
 		}
 	}
-	if err := copyKey(); err != nil {
+	if err := keys.copy(); err != nil {
 		log.Printf("API key: %v", err)
 	}
 	token, err := accessToken(d.cfg.AccessToken)
@@ -267,34 +267,6 @@ func (d *Daemon) init() error {
 	d.outputs = &tool.Outputs{Dir: outputsDir}
 	d.locks = &locks{db: d.db, home: d.layout.Home}
 	return d.locks.load()
-}
-
-// copyKey copies the Compose secret to a root-only file (PLAN.md §7.7).
-func copyKey() error {
-	key, err := os.ReadFile(SecretKey)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	key = []byte(strings.TrimSpace(string(key)))
-	if len(key) == 0 {
-		return nil
-	}
-	tmp := keyFile + ".tmp"
-	if err := os.WriteFile(tmp, key, 0o400); err != nil {
-		return err
-	}
-	return os.Rename(tmp, keyFile)
-}
-
-func readKey() string {
-	b, err := os.ReadFile(keyFile)
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
 }
 
 // accessToken returns AOS_ACCESS_TOKEN, or the stored token, generating it on first start.
@@ -322,7 +294,7 @@ func (d *Daemon) provider() (llm.Provider, string, error) {
 		log.Printf("replaying recorded model conversations from %s instead of calling OpenAI", d.cfg.FakeModel)
 		return &fake.Library{Dir: d.cfg.FakeModel}, model, nil
 	}
-	return &openai.Provider{Key: readKey, BaseURL: d.cfg.BaseURL, MaxRetries: d.cfg.MaxRetries}, model, nil
+	return &openai.Provider{Key: keys.read, BaseURL: d.cfg.BaseURL, MaxRetries: d.cfg.MaxRetries}, model, nil
 }
 
 // agentPolicy is the sandbox policy for Agents: the layout, other Sessions'
@@ -543,18 +515,10 @@ func (d *Daemon) refused(r *http.Request, pid int, reason string) {
 
 func (d *Daemon) info() *aosv1.InfoResponse {
 	v := d.settings.Values()
-	key := "missing"
-	if fi, err := os.Stat(SecretKey); err == nil {
-		key = "empty"
-		if fi.Size() > 0 || readKey() != "" {
-			key = "present"
-		}
-	} else if readKey() != "" {
-		key = "present"
-	}
+	key, keySource, hint := keys.status()
 	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[v.Autonomy]
 	today, _ := d.usage.Today(context.Background())
-	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, Model: v.Model, Autonomy: autonomy,
+	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, ApiKeyHint: hint, ApiKeySource: keySource, Model: v.Model, Autonomy: autonomy,
 		MaxTasks: int32(v.MaxTasks), MaxRetries: int32(v.MaxRetries), Today: today, PricesKnown: d.pricesKnown(v.Model), Replay: d.software.ReplayStatus(),
 		TaskCostLimitUsd: v.TaskCostLimit, DailyCostLimitUsd: v.DailyCostLimit}
 }

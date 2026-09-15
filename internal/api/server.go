@@ -49,6 +49,15 @@ type Sessions interface {
 	Attach(id string) (Terminal, error)
 }
 
+// APIKey replaces the OpenAI API key (PLAN.md §7.7). Only hints (sk-…abcd)
+// come back; the key itself never leaves the implementation.
+type APIKey interface {
+	// Set saves a key from System Settings and returns its hint.
+	Set(key string) (hint string, err error)
+	// Clear goes back to the key from .env and returns its hint, or "".
+	Clear() (hint string, err error)
+}
+
 // Server implements the API services.
 type Server struct {
 	Auth      *Auth
@@ -64,6 +73,8 @@ type Server struct {
 	Desktop   *desktop.State
 	// Settings are the settings that can change while aosd runs.
 	Settings *settings.Store
+	// APIKey replaces the OpenAI API key.
+	APIKey APIKey
 	// Software and Supervisor serve the Install Ledger and the Services.
 	Software   *software.Manager
 	Supervisor *service.Supervisor
@@ -606,6 +617,41 @@ func (st settingsService) Update(ctx context.Context, req *connect.Request[aosv1
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewResponse(&aosv1.UpdateSettingResponse{Setting: setting(s)}), nil
+}
+
+// SetApiKey replaces the API key. The Audit Log records the change with the
+// new key's hint, or why it was refused, and never the key.
+func (st settingsService) SetApiKey(ctx context.Context, req *connect.Request[aosv1.SetApiKeyRequest]) (*connect.Response[aosv1.SetApiKeyResponse], error) {
+	if st.s.APIKey == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("the API key cannot be changed here"))
+	}
+	hint, err := st.s.APIKey.Set(req.Msg.Key)
+	st.keyAudit(ctx, "set_api_key", hint, err)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&aosv1.SetApiKeyResponse{Hint: hint}), nil
+}
+
+// ClearApiKey goes back to the key from .env.
+func (st settingsService) ClearApiKey(ctx context.Context, _ *connect.Request[aosv1.ClearApiKeyRequest]) (*connect.Response[aosv1.ClearApiKeyResponse], error) {
+	if st.s.APIKey == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("the API key cannot be changed here"))
+	}
+	hint, err := st.s.APIKey.Clear()
+	st.keyAudit(ctx, "clear_api_key", hint, err)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ClearApiKeyResponse{Hint: hint}), nil
+}
+
+func (st settingsService) keyAudit(ctx context.Context, tool, hint string, err error) {
+	result := hint
+	if err != nil {
+		result = err.Error()
+	}
+	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: tool, Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 }
 
 func (st settingsService) audit(ctx context.Context, tool, id, result string) {

@@ -35,7 +35,7 @@ func doctorCmd() *cobra.Command {
 				fmt.Fprintf(w, "Mode:      %s (image built for %s)\n", i.Mode, envOr("AOS_IMAGE_MODE", "unknown"))
 				fmt.Fprintf(w, "Model:     %s\n", i.Model)
 				fmt.Fprintf(w, "Autonomy:  %s, up to %d Tasks at once\n", autonomyName(i.Autonomy), i.MaxTasks)
-				fmt.Fprintf(w, "API key:   %s\n", map[string]string{"present": "present", "empty": "empty (OPENAI_API_KEY is empty on the Host)", "missing": "not provided"}[i.ApiKey])
+				fmt.Fprintf(w, "API key:   %s\n", keyText(i))
 				fmt.Fprintf(w, "Retries:   %d (AOS_MAX_RETRIES)\n", i.MaxRetries)
 				if t := i.Today; t != nil {
 					fmt.Fprintf(w, "Today:     %d input tokens (%d cached), %d output tokens, %s\n", t.InputTokens, t.CachedInputTokens, t.OutputTokens, costText(t))
@@ -91,6 +91,21 @@ func replayText(r *aosv1.ReplayStatus) string {
 		return r.Message
 	}
 	return strings.ReplaceAll(r.Message, "\n", "\n           ")
+}
+
+// keyText describes the API key: its hint and where it came from, never the key.
+func keyText(i *aosv1.InfoResponse) string {
+	switch i.ApiKey {
+	case "present":
+		from := "from .env"
+		if i.ApiKeySource == "settings" {
+			from = "set in System Settings"
+		}
+		return fmt.Sprintf("%s, %s", i.ApiKeyHint, from)
+	case "empty":
+		return "empty (OPENAI_API_KEY is empty on the Host)"
+	}
+	return "not provided"
 }
 
 func autonomyName(a aosv1.Autonomy) string {
