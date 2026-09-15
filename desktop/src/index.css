@@ -7,6 +7,7 @@
   --text: #1c1c1e;
   --muted: #6b6b70;
   --error: #c0392b;
+  --danger: #d93025;
   --panel: rgba(246, 246, 248, 0.72);
   --panel-strong: rgba(252, 252, 253, 0.9);
   --border: rgba(0, 0, 0, 0.12);
@@ -25,6 +26,7 @@
   --text: #f5f5f7;
   --muted: #9a9aa0;
   --error: #ff6b5e;
+  --danger: #ff5f57;
   --panel: rgba(38, 38, 42, 0.72);
   --panel-strong: rgba(30, 30, 34, 0.92);
   --border: rgba(255, 255, 255, 0.14);
@@ -40,6 +42,7 @@
   --text: #1c1c1e;
   --muted: #6b6b70;
   --error: #c0392b;
+  --danger: #d93025;
   --panel: rgba(246, 246, 248, 0.72);
   --panel-strong: rgba(252, 252, 253, 0.9);
   --border: rgba(0, 0, 0, 0.12);
