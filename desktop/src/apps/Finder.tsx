@@ -9,6 +9,7 @@ import { ConnectError, Code } from "@connectrpc/connect";
 
 import { files, tasks, trash } from "../api/client";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
+import { useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import {
   PLACES,
@@ -40,12 +41,15 @@ interface Menu {
 }
 
 export default function Finder() {
-  const [dir, setDir] = useState<string>("~");
+  // The folder and view are kept with the window, so a reload reopens them.
+  const [savedDir, saveDir] = useWinState("dir", "~");
+  const [savedView, saveView] = useWinState("view", "list");
+  const [dir, setDir] = useState<string>(savedDir);
   const [entries, setEntries] = useState<FileInfo[]>([]);
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [view, setView] = useState<View>("list");
+  const [view, setView] = useState<View>(savedView === "icon" ? "icon" : "list");
   const [selected, setSelected] = useState<string>("");
   const [quick, setQuick] = useState<FileInfo | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -55,8 +59,10 @@ export default function Finder() {
   const upload = useRef<HTMLInputElement>(null);
   const revealRef = useRef<string>(""); // a path Spotlight asked us to select once loaded
 
-  const [history, setHistory] = useState<string[]>(["~"]);
+  const [history, setHistory] = useState<string[]>([savedDir]);
   const [at, setAt] = useState(0);
+  useEffect(() => saveDir(dir), [dir, saveDir]);
+  useEffect(() => saveView(view), [view, saveView]);
 
   const load = useCallback(async (loc: string) => {
     setLoading(true);

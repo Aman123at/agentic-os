@@ -139,7 +139,7 @@ flowchart LR
 
 - **Menu bar:** AOS menu, menus of the active app, Agent status icon with a badge for pending Approvals, Control Center (theme, Stop all Agents), clock.
 - **Dock:** magnification, running indicators, Downloads stack, Trash.
-- **Window manager:** traffic-light buttons, focus and stacking order, minimise and zoom animations, layout saved on the server.
+- **Window manager:** traffic-light buttons, focus and stacking order, minimise and zoom animations, layout kept per tab and saved on the server.
 - **Spotlight:** find apps and files, or start a Task.
 - **Notification Center:** Approvals and finished Tasks.
 - **Theme and wallpaper:** light and dark themes, wallpaper.
@@ -192,7 +192,7 @@ flowchart LR
 - All shortcuts can be remapped in System Settings.
 - "Immersive mode" uses Fullscreen plus the Keyboard Lock API where supported (Chromium) to capture more of the reserved shortcuts.
 
-**Sync:** all state comes from the server, so several browser tabs stay consistent. Window layout is saved on the server (debounced) and restored on reload.
+**Sync:** all state comes from the server, so several browser tabs stay consistent. The window layout, with each window's own state (the open Task, Finder's folder and view), is kept per tab, so a reload restores that tab's windows, and is saved on the server (debounced) to seed new tabs.
 
 ## 5. Repository layout
 

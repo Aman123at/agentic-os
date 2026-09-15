@@ -1,7 +1,8 @@
 // The Desktop's client state (PLAN.md §4.3): the boot phase, the live connection
 // to aosd's event stream, the theme, and the window manager. Server-derived
-// state arrives over the event stream, so several tabs converge; the window
-// layout is saved on the server (debounced) and restored on reload.
+// state arrives over the event stream, so several tabs converge. The window
+// layout is kept per tab (sessionStorage, so a reload restores this tab's own
+// windows) and saved on the server (debounced) to seed new tabs.
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
@@ -31,12 +32,14 @@ export interface Win {
   minimized: boolean;
   maximized: boolean;
   restore?: Rect; // the rect to return to when un-maximizing
+  state?: Record<string, string>; // the app's own state, kept with the window (e.g. Finder's folder)
 }
 
 interface Persisted {
   theme: ThemePref;
-  windows: Array<Pick<Win, "id" | "appId" | "title" | "rect" | "minimized" | "maximized">>;
+  windows: Array<Pick<Win, "id" | "appId" | "title" | "rect" | "minimized" | "maximized" | "state">>;
   focused: string;
+  openTask?: string;
 }
 
 interface DesktopState {
@@ -71,6 +74,7 @@ interface DesktopState {
   setRect: (id: string, rect: Rect) => void;
   minimize: (id: string) => void;
   toggleMaximize: (id: string) => void;
+  setWinState: (id: string, patch: Record<string, string>) => void;
 
   createTask: (prompt: string) => Promise<void>;
   openTaskView: (id: string) => void;
@@ -121,8 +125,13 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     try {
       await signIn();
       const info = await system.info({});
-      const saved = await settings.getDesktopState({}).catch(() => ({ state: "" }));
-      restore(saved.state, set);
+      // A reload restores this tab's own layout; a new tab starts from the one
+      // last saved on the server.
+      let layout = readLocal();
+      if (!layout) layout = (await settings.getDesktopState({}).catch(() => ({ state: "" }))).state;
+      restore(layout, set);
+      if (layout) writeLocal(layout);
+      window.addEventListener("pagehide", () => flushSave(get));
       // Seed the Agent surface: Tasks already running and Approvals already
       // waiting when the Desktop loads (a later tab, or a reload).
       const [taskList, pending] = await Promise.all([
@@ -211,6 +220,13 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     save(get);
   },
 
+  setWinState: (id, patch) => {
+    const win = get().windows.find((w) => w.id === id);
+    if (!win || Object.entries(patch).every(([k, v]) => win.state?.[k] === v)) return;
+    set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, state: { ...w.state, ...patch } } : w)) }));
+    save(get);
+  },
+
   // ------------------------------------------------------------- Agent surface
 
   createTask: async (prompt) => {
@@ -229,6 +245,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     set({ openTask: id, steps: [], notifCenter: false, spotlight: false });
     get().openApp("tasks");
     void get().loadTask(id);
+    save(get); // the open Task comes back with the layout
   },
 
   loadTask: async (id) => {
@@ -391,20 +408,50 @@ function appendDelta(steps: TaskStep[], stepId: string, delta: string): TaskStep
 
 type SetState = (partial: Partial<DesktopState> | ((s: DesktopState) => Partial<DesktopState>)) => void;
 
+const LAYOUT_KEY = "aos.layout";
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
-// save writes the layout to the server, debounced so a drag does not spam it.
+// save writes the layout, debounced so a drag does not spam it.
 function save(get: () => DesktopState) {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const s = get();
-    const state: Persisted = {
-      theme: s.theme,
-      focused: s.focused,
-      windows: s.windows.map(({ id, appId, title, rect, minimized, maximized }) => ({ id, appId, title, rect, minimized, maximized })),
-    };
-    void settings.saveDesktopState({ state: JSON.stringify(state) }).catch(() => {});
-  }, 400);
+  saveTimer = setTimeout(() => flushSave(get), 400);
+}
+
+// flushSave writes a pending layout now: to this tab (so its reload restores it)
+// and to the server (so a new tab starts from it). It also runs on pagehide, so
+// a reload straight after a change keeps the change.
+function flushSave(get: () => DesktopState) {
+  if (saveTimer === undefined) return;
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  const s = get();
+  const state: Persisted = {
+    theme: s.theme,
+    focused: s.focused,
+    openTask: s.openTask,
+    windows: s.windows.map(({ id, appId, title, rect, minimized, maximized, state }) => ({ id, appId, title, rect, minimized, maximized, state })),
+  };
+  const json = JSON.stringify(state);
+  writeLocal(json);
+  void settings.saveDesktopState({ state: json }).catch(() => {});
+}
+
+// This tab's own copy of the layout. Storage can be unavailable (a private
+// window, blocked site data); the server copy still restores then.
+function readLocal(): string {
+  try {
+    return sessionStorage.getItem(LAYOUT_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeLocal(json: string) {
+  try {
+    sessionStorage.setItem(LAYOUT_KEY, json);
+  } catch {
+    // Nothing to do: the server copy is the fallback.
+  }
 }
 
 function restore(json: string, set: SetState) {
@@ -425,5 +472,5 @@ function restore(json: string, set: SetState) {
       if (w.id === saved.focused) focused = id;
       return { ...w, id, z: i + 1, restore: undefined };
     });
-  set({ theme: saved.theme ?? "auto", windows, focused, topZ: windows.length + 1 });
+  set({ theme: saved.theme ?? "auto", windows, focused, topZ: windows.length + 1, openTask: saved.openTask ?? "" });
 }

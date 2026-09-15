@@ -2,6 +2,7 @@ import { Suspense, useEffect, useRef, type PointerEvent as ReactPointerEvent } f
 
 import { APPS } from "../apps/registry";
 import { useDesktop, type Win } from "../store";
+import { WinContext } from "./win";
 
 const MIN_W = 240;
 const MIN_H = 160;
@@ -112,9 +113,11 @@ export default function Window({ win }: { win: Win }) {
         <span className="window__title">{win.title}</span>
       </header>
       <div className="window__body">
-        <Suspense fallback={<div className="placeholder">Loading…</div>}>
-          <app.Component />
-        </Suspense>
+        <WinContext.Provider value={win.id}>
+          <Suspense fallback={<div className="placeholder">Loading…</div>}>
+            <app.Component />
+          </Suspense>
+        </WinContext.Provider>
       </div>
       {!win.maximized && (
         <div
