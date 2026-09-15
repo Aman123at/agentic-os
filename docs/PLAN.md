@@ -148,15 +148,16 @@ flowchart LR
 
 | App | v1 capabilities |
 |---|---|
-| Finder | Sidebar (Home, Shared, Downloads, Trash); icon, list and column views; drag and drop; upload/download to the Host; Quick Look via Preview; 🔒 Protect; right-click "Ask Agent…" |
+| Finder | Sidebar (Home, Shared, Downloads, Trash); icon, list and column views; the open folder refreshes live; drag and drop; upload/download to the Host; Quick Look via Preview; 🔒 Protect; right-click "Ask Agent…". Double-clicking a file opens it in Preview or TextEdit by its type, and shows other files (archives, programs) selected (M4) |
 | Terminal | Tabs of User Sessions; "Watch" opens an Agent's Session |
 | Agent | Task list, live step feed, chat and Follow-ups, Approvals, cancel, Resume, tokens and cost, Audit Log browser, usage and Cost Limits. While it has the focus on a Task, that Task's Approvals are answered inline instead of in the pop-up (M4) |
-| TextEdit | CodeMirror 6 editor with syntax highlighting |
-| Preview | Images, PDF, audio, video |
+| TextEdit | CodeMirror 6 editor with syntax highlighting; one file per window, up to 1 MiB; asks before saving over a file that changed on disk since it was opened (M4) |
+| Preview | Images, PDF, audio, video; one file per window (M4) |
 | Activity Monitor | Processes, CPU, memory, disk, network; running Agents; Services and their ports |
 | Software | Install Ledger, Checkpoints, Restore, Replay progress |
 | System Settings | API key (masked), model, Autonomy, Protected Paths, Memory, keyboard shortcuts, appearance, Mode and Landlock status |
 | Trash | Browse, restore, empty |
+| Downloads stack | A Dock stack of the newest files in `~/Downloads`, with downloads in progress (M4) |
 
 **Rules for smoothness** (enforced by review and by the performance tests in §17)
 
@@ -615,7 +616,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
 | `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
-| `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes) |
+| `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
