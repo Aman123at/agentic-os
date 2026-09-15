@@ -65,16 +65,26 @@ export default function Finder() {
   useEffect(() => saveDir(dir), [dir, saveDir]);
   useEffect(() => saveView(view), [view, saveView]);
 
+  // Only the latest load may show its result: moving on before a listing
+  // arrives (a reveal into a Finder that is still loading ~) must not let the
+  // older, slower listing land last.
+  const loadSeq = useRef(0);
   const load = useCallback(async (loc: string) => {
+    const seq = ++loadSeq.current;
+    const current = () => seq === loadSeq.current;
     setLoading(true);
     setError("");
     setSelected("");
     try {
       if (loc === TRASH) {
-        setTrashItems((await trash.listTrash({})).items);
+        const items = (await trash.listTrash({})).items;
+        if (!current()) return;
+        setTrashItems(items);
         setEntries([]);
       } else {
-        setEntries((await files.list({ path: loc })).entries);
+        const listed = (await files.list({ path: loc })).entries;
+        if (!current()) return;
+        setEntries(listed);
         setTrashItems([]);
         if (revealRef.current) {
           setSelected(revealRef.current);
@@ -82,11 +92,12 @@ export default function Finder() {
         }
       }
     } catch (err) {
+      if (!current()) return;
       setError(ConnectError.from(err).message);
       setEntries([]);
       setTrashItems([]);
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
     }
   }, []);
 
