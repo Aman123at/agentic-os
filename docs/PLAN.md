@@ -766,7 +766,7 @@ codegen, `ui`/`playwright` CI stages).
 - Two browser tabs stay in sync.
 - Reload restores the window layout.
 
-### M4 — Desktop apps
+### M4 — Desktop apps — review written 2026-09-16, see [m4-review.md](m4-review.md); awaiting sign-off
 
 - Agent app (live feed, Follow-ups, Audit Log, usage).
 - TextEdit, Preview, Activity Monitor (with Services and ports), Software (Ledger, Checkpoints, Replay progress), System Settings (all settings from §6.4 that are safe to change at runtime, Protected Paths, Memory, API key, shortcuts), Trash, Downloads stack.
