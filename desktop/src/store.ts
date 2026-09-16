@@ -10,18 +10,23 @@ import { create } from "zustand";
 import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
 import { NotificationSchema } from "./gen/aos/v1/services_pb";
 import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
-import { ApprovalDecision, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
-import { approvals as approvalApi, auth, settings, system, tasks as taskApi } from "./api/client";
+import { ApprovalDecision, Autonomy, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
+import { approvals as approvalApi, auth, settings, system, tasks as taskApi, trash as trashApi } from "./api/client";
+import { friendlyError } from "./api/error";
 import { subscribe, type ConnState } from "./api/events";
 import { appForFile } from "./apps/filetypes";
-import { APPS, type AppId } from "./apps/registry";
+import { APPS, preloadApps, type AppId } from "./apps/registry";
 import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
+import { type WallpaperDesignId } from "./shell/wallpaper";
 import { applyGlass, applyTheme, type ThemePref } from "./theme";
 
 export type Phase = "loading" | "needs-signin" | "ready" | "error";
 
-// The Desktop wallpaper: the drawn Aurora art, or none (the plain gradient base).
-export type WallpaperPref = "aurora" | "none";
+// The Desktop wallpaper: the drawn Aurora art, none (the plain gradient base),
+// or one of the generated designs tuned by a hue and a saturation. The string
+// literals are kept so every already-saved layout loads untouched.
+export type GeneratedWallpaper = { design: WallpaperDesignId; hue: number; sat: number };
+export type WallpaperPref = "aurora" | "none" | GeneratedWallpaper;
 
 export interface Rect {
   x: number;
@@ -72,6 +77,10 @@ interface DesktopState {
   focused: string;
   notifications: Notification[];
   topZ: number;
+  // How many items are in the Trash, so the Dock's tile can show a full bin
+  // (PLAN.md M4.8 item 8.19). Counted at boot and after every change the
+  // Desktop makes; the Trash has no event of its own.
+  trashCount: number;
 
   // The Agent surface (PLAN.md §4.3): live Tasks, pending Approvals and the
   // step feed of the one Task the Agent app shows. Which Task that is lives in
@@ -120,8 +129,14 @@ interface DesktopState {
   minimize: (id: string) => void;
   toggleMaximize: (id: string) => void;
   setWinState: (id: string, patch: Record<string, string>) => void;
+  /** Sets the Trash count from a listing the caller already has. */
+  setTrashCount: (n: number) => void;
+  /** Counts the Trash again, after a change to it. */
+  refreshTrashCount: () => Promise<void>;
 
-  createTask: (prompt: string) => Promise<void>;
+  createTask: (prompt: string, autonomy?: Autonomy) => Promise<void>;
+  /** Removes a finished Task and everything under it; the Audit Log keeps its record. */
+  deleteTask: (id: string) => Promise<void>;
   /** Opens the Agent app at a Task. */
   openTaskView: (id: string) => void;
   /** Makes a Task the one whose step feed is live; the Agent app calls it. */
@@ -152,6 +167,13 @@ let nextId = 1;
 let localNoteId = 1;
 const desktopSize = () => ({ w: window.innerWidth, h: window.innerHeight });
 
+// topmost is the window the user would call "the front one": the highest z among
+// those actually on screen. Closing or minimizing the front window hands focus
+// to it (PLAN.md M4.8 item 8.8).
+function topmost(windows: Win[]): Win | undefined {
+  return windows.filter((w) => !w.minimized).reduce<Win | undefined>((best, w) => (!best || w.z > best.z ? w : best), undefined);
+}
+
 // signIn exchanges a one-time code from the URL hash (#code=…) for the session
 // cookie, then removes it from the address bar (PLAN.md §7.6).
 async function signIn(): Promise<void> {
@@ -172,6 +194,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   shortcuts: defaultShortcuts(),
   windows: [],
   focused: "",
+  trashCount: 0,
   notifications: [],
   topZ: 1,
   tasks: {},
@@ -210,12 +233,14 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       });
       set({ phase: "ready", info, replay: info.replay });
       startStream(set);
+      preloadApps();
+      void get().refreshTrashCount();
     } catch (err) {
       if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
         set({ phase: "needs-signin" });
         return;
       }
-      set({ phase: "error", error: ConnectError.from(err).message });
+      set({ phase: "error", error: friendlyError(err) });
     }
   },
 
@@ -250,15 +275,22 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   openApp: (appId, doc) => {
     const app = APPS[appId];
     if (!app) return;
-    // Singleton apps focus their existing window instead of opening another,
-    // and so does a document that is already open.
-    if (app.singleton || doc) {
-      const open = get().windows.find((w) => w.appId === appId && (!doc || w.state?.path === doc));
-      if (open) {
-        get().focusWindow(open.id);
-        set((s) => ({ windows: s.windows.map((w) => (w.id === open.id ? { ...w, minimized: false } : w)) }));
-        return;
-      }
+    // Singleton apps focus their existing window instead of opening another, and
+    // so does a document that is already open.
+    const mine = get().windows.filter((w) => w.appId === appId && (!doc || w.state?.path === doc));
+    const open = mine.at(-1);
+    if (open && (app.singleton || doc)) {
+      get().focusWindow(open.id);
+      return;
+    }
+    // The Dock brings this app's windows back before it makes new ones, so a
+    // minimized window is never stranded (there is no Mission Control here).
+    const hidden = mine.filter((w) => w.minimized);
+    if (hidden.length > 0) {
+      const ids = new Set(hidden.map((w) => w.id));
+      set((s) => ({ windows: s.windows.map((w) => (ids.has(w.id) ? { ...w, minimized: false } : w)) }));
+      get().focusWindow(hidden[hidden.length - 1].id);
+      return;
     }
     const { w: dw, h: dh } = desktopSize();
     const n = get().windows.length;
@@ -287,16 +319,33 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   closeWindow: (id) => {
     const win = get().windows.find((w) => w.id === id);
     if (win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
-    set((s) => ({ windows: s.windows.filter((w) => w.id !== id) }));
+    set((s) => {
+      const rest = s.windows.filter((w) => w.id !== id);
+      return { windows: rest, focused: s.focused === id ? (topmost(rest)?.id ?? "") : s.focused };
+    });
     save(get);
   },
 
   focusWindow: (id) => {
     set((s) => {
-      if (s.focused === id && s.windows.at(-1)?.id === id) return s;
+      const win = s.windows.find((w) => w.id === id);
+      if (!win) return s;
+      if (s.focused === id && !win.minimized && s.windows.at(-1)?.id === id) return s;
       const z = s.topZ + 1;
-      return { windows: s.windows.map((w) => (w.id === id ? { ...w, z } : w)), focused: id, topZ: z };
+      // Focusing a minimized window restores it: that is what the Dock and ⌥`
+      // do to bring one back.
+      return { windows: s.windows.map((w) => (w.id === id ? { ...w, z, minimized: false } : w)), focused: id, topZ: z };
     });
+    save(get);
+  },
+
+  setTrashCount: (n) => {
+    if (get().trashCount !== n) set({ trashCount: n });
+  },
+
+  refreshTrashCount: async () => {
+    const items = await trashApi.listTrash({}).catch(() => null);
+    if (items) get().setTrashCount(items.items.length);
   },
 
   setRect: (id, rect) => {
@@ -305,7 +354,15 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   },
 
   minimize: (id) => {
-    set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, minimized: !w.minimized } : w)) }));
+    set((s) => {
+      const windows = s.windows.map((w) => (w.id === id ? { ...w, minimized: !w.minimized } : w));
+      const hidden = windows.find((w) => w.id === id)?.minimized;
+      // Minimizing the front window hands focus to whatever is now in front, so
+      // the menu bar never falls back to "Agentic OS" with a window on screen
+      // (PLAN.md M4.8 item 8.8).
+      if (!hidden || s.focused !== id) return { windows };
+      return { windows, focused: topmost(windows)?.id ?? "" };
+    });
     save(get);
   },
 
@@ -330,16 +387,30 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
   // ------------------------------------------------------------- Agent surface
 
-  createTask: async (prompt) => {
+  createTask: async (prompt, autonomy) => {
     const text = prompt.trim();
     if (!text) return;
     // interactive: someone (this Desktop) is here to answer Approvals and
-    // questions, so the Agent may ask rather than deny (PLAN.md §7).
-    const resp = await taskApi.createTask({ prompt: text, interactive: true });
+    // questions, so the Agent may ask rather than deny (PLAN.md §7). autonomy
+    // is left Unspecified when the caller gives none, so the configured
+    // Autonomy applies, exactly as `aos run` without --autonomy.
+    const resp = await taskApi.createTask({ prompt: text, interactive: true, autonomy: autonomy ?? Autonomy.UNSPECIFIED });
     const task = resp.task;
     if (!task) return;
     set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }));
     get().openTaskView(task.id);
+  },
+
+  deleteTask: async (id) => {
+    await taskApi.deleteTask({ id });
+    // Drop it here at once; the TaskChanged{removed} event confirms in every
+    // tab. Also clear the open Task if it was the one removed.
+    set((s) => {
+      if (!s.tasks[id]) return s.openTask === id ? { openTask: "", steps: [] } : {};
+      const tasks = { ...s.tasks };
+      delete tasks[id];
+      return s.openTask === id ? { tasks, openTask: "", steps: [] } : { tasks };
+    });
   },
 
   openTaskView: (id) => {
@@ -421,7 +492,10 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     await taskApi.stopAll({});
   },
 
-  toggleSpotlight: (open) => set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false })),
+  toggleSpotlight: (open) => {
+    if (open !== false) void APPS.agent.preload().catch(() => {});
+    set((s) => ({ spotlight: open ?? !s.spotlight, notifCenter: false }));
+  },
   toggleNotifCenter: (open) => set((s) => ({ notifCenter: open ?? !s.notifCenter, spotlight: false })),
   dismissNotification: (id) => {
     // Client-only notifications live only in this tab, so drop them here.
@@ -462,6 +536,12 @@ function startStream(set: SetState) {
     // An Agent's open_in_desktop shows a folder in the Finder, and opens a file
     // in the app for its type.
     for (const e of batch) {
+      // Another tab changed the Machine's preferences.
+      if (e.kind?.case === "desktopState") {
+        const { state, origin } = e.kind.value;
+        if (origin !== TAB_ID) adoptPreferences(state, useDesktop.getState(), set);
+        continue;
+      }
       if (e.kind?.case !== "openInDesktop") continue;
       const { path, dir } = e.kind.value;
       if (dir) useDesktop.getState().revealInFinder(path, "");
@@ -491,6 +571,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let downloads = s.downloads;
   let replay = s.replay;
   let serviceEpoch = s.serviceEpoch;
+  let openTask = s.openTask;
   const dropDownloads = (keep: (d: DownloadProgress, stepId: string) => boolean) => {
     const next = Object.fromEntries(Object.entries(downloads).filter(([id, d]) => keep(d, id)));
     if (Object.keys(next).length !== Object.keys(downloads).length) downloads = next;
@@ -507,6 +588,20 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       }
       case "taskChanged": {
         const t = k.value.task;
+        // A deleted Task leaves every tab: drop it and end its downloads. The
+        // event carries only the id.
+        if (k.value.removed) {
+          if (t && tasks[t.id]) {
+            tasks = { ...tasks };
+            delete tasks[t.id];
+          }
+          if (t && openTask === t.id) {
+            openTask = "";
+            steps = [];
+          }
+          if (t) dropDownloads((d) => d.taskId !== t.id);
+          break;
+        }
         if (t) tasks = { ...tasks, [t.id]: t };
         // A Task that stops ends its downloads, whatever their last progress said.
         if (t && t.state !== TaskState.RUNNING) dropDownloads((d) => d.taskId !== t.id);
@@ -562,6 +657,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
   if (downloads !== s.downloads) out.downloads = downloads;
+  if (openTask !== s.openTask) out.openTask = openTask;
   if (replay !== s.replay) out.replay = replay;
   if (serviceEpoch !== s.serviceEpoch) out.serviceEpoch = serviceEpoch;
   return out;
@@ -626,6 +722,10 @@ type SetState = (partial: Partial<DesktopState> | ((s: DesktopState) => Partial<
 const LAYOUT_KEY = "aos.layout";
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+// This tab's id. It rides along with every save so the DesktopStateChanged event
+// it causes can be told apart from another tab's (PLAN.md §4.3).
+const TAB_ID = Math.random().toString(36).slice(2);
+
 // save writes the layout, debounced so a drag does not spam it.
 function save(get: () => DesktopState) {
   clearTimeout(saveTimer);
@@ -650,7 +750,41 @@ function flushSave(get: () => DesktopState) {
   };
   const json = JSON.stringify(state);
   writeLocal(json);
-  void settings.saveDesktopState({ state: json }).catch(() => {});
+  void settings.saveDesktopState({ state: json, origin: TAB_ID }).catch(() => {});
+}
+
+// adoptPreferences applies what another tab just saved. The preferences are the
+// Machine's, so every tab follows them; the window layout is the tab's own
+// (PLAN.md §4.3), so the windows in the event are ignored and this tab's local
+// copy is rewritten with its own.
+function adoptPreferences(json: string, s: DesktopState, set: SetState): void {
+  let saved: Persisted;
+  try {
+    saved = JSON.parse(json) as Persisted;
+  } catch {
+    return;
+  }
+  const theme = saved.theme ?? "auto";
+  const wallpaper = saved.wallpaper ?? "aurora";
+  const glass = saved.glass ?? false;
+  const shortcuts = { ...defaultShortcuts(), ...saved.shortcuts };
+  const same =
+    theme === s.theme &&
+    // The wallpaper can be an object now, so two structurally-equal values are
+    // never ===; compare by value, as with shortcuts. Without this every
+    // DesktopStateChanged from another tab needlessly re-sets state.
+    JSON.stringify(wallpaper) === JSON.stringify(s.wallpaper) &&
+    glass === s.glass &&
+    JSON.stringify(shortcuts) === JSON.stringify(s.shortcuts);
+  if (same) return;
+  applyTheme(theme);
+  applyGlass(glass);
+  set({ theme, wallpaper, glass, shortcuts });
+  // Keep this tab's own copy current without telling the server again, which
+  // would bounce the event back and forth between the tabs.
+  writeLocal(
+    JSON.stringify({ theme, wallpaper, glass, shortcuts, focused: s.focused, windows: s.windows.map(({ id, appId, title, rect, minimized, maximized, state }) => ({ id, appId, title, rect, minimized, maximized, state })) } satisfies Persisted),
+  );
 }
 
 // This tab's own copy of the layout. Storage can be unavailable (a private

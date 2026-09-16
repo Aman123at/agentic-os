@@ -39,6 +39,10 @@ service TaskService {
   rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
   rpc ResumeTask(ResumeTaskRequest) returns (ResumeTaskResponse);
   rpc StopAll(StopAllRequest) returns (StopAllResponse);
+  // Removes a Task and its steps, Approvals and grants. Refused while the Task
+  // is queued, running or waiting: cancel it first. The Audit Log keeps its
+  // record (it is append-only).
+  rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
 }
 
 message CreateTaskRequest {
@@ -101,6 +105,11 @@ message StopAllResponse {
   int32 cancelled = 1;
 }
 
+message DeleteTaskRequest {
+  string id = 1;
+}
+message DeleteTaskResponse {}
+
 // ---------------------------------------------------------------- Approvals
 
 service ApprovalService {
@@ -151,7 +160,17 @@ message Event {
     ServiceChanged service_changed = 8;
     ReplayProgress replay_progress = 9;
     OpenInDesktop open_in_desktop = 10;
+    DesktopStateChanged desktop_state = 11;
   }
+}
+
+// A tab saved the Desktop's state. Other tabs adopt the preferences in it
+// (theme, wallpaper, Liquid Glass, shortcuts); the window layout stays per tab
+// (PLAN.md §4.3). `origin` is the id of the tab that saved, so it can ignore
+// its own event.
+message DesktopStateChanged {
+  string state = 1;
+  string origin = 2;
 }
 
 // An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool).
@@ -172,6 +191,9 @@ message ReplayProgress {
 
 message TaskChanged {
   Task task = 1;
+  // Set when the Task was deleted, so every tab drops it (mirrors
+  // ServiceChanged.removed).
+  bool removed = 2;
 }
 
 message TaskStepChanged {
@@ -253,6 +275,11 @@ message FileInfo {
   uint32 mode = 7;
   google.protobuf.Timestamp modified_at = 8;
   bool protected = 9;
+  // Why the entry is protected, for Finder's lock badge and its menu:
+  // "user" (locked with 🔒, so it can be unlocked), "default" (a built-in
+  // Protected Path), "inherited" (inside one of those), or "" when it is not
+  // protected at all.
+  string protect_source = 10;
 }
 
 message ListRequest {
@@ -612,6 +639,9 @@ message GetDesktopStateResponse {
 
 message SaveDesktopStateRequest {
   string state = 1;
+  // The saving tab's own id, echoed back in the DesktopStateChanged event so
+  // that tab can ignore it.
+  string origin = 2;
 }
 message SaveDesktopStateResponse {}
 

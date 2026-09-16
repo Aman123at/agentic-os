@@ -3,10 +3,10 @@
 // so thousands of rows scroll like a few. Confined processes (Agent Sessions,
 // their commands and the file workers) are marked, and rows an Agent started are
 // tagged with their Task. Sorted by CPU, with a name filter.
-import { ConnectError } from "@connectrpc/connect";
 import { useMemo, useState } from "react";
 
 import { system } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { ProcessInfo } from "../../gen/aos/v1/services_pb";
 import { useDesktop } from "../../store";
 import { VirtualList } from "../../ui/VirtualList";
@@ -29,7 +29,7 @@ export default function Processes() {
       setError("");
       setProcs(resp.processes);
     } catch (err) {
-      if (!signal.aborted) setError(ConnectError.from(err).message);
+      if (!signal.aborted) setError(friendlyError(err));
     }
   }, POLL_MS);
 

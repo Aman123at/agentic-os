@@ -1,8 +1,11 @@
 // The Appearance pane (PLAN.md §4.3, M4.5): the theme, the wallpaper and Liquid
 // Glass (M4.6). All are saved in the Desktop state, so a new tab starts from
 // them. Glass is off by default; the frame watchdog can turn it back off.
+import { useState } from "react";
+
 import { useDesktop } from "../../store";
-import type { WallpaperPref } from "../../store";
+import WallpaperPicker from "../../shell/WallpaperPicker";
+import { WALLPAPER_DESIGNS } from "../../shell/wallpaper";
 import type { ThemePref } from "../../theme";
 
 const THEMES: { value: ThemePref; name: string; hint: string }[] = [
@@ -11,18 +14,19 @@ const THEMES: { value: ThemePref; name: string; hint: string }[] = [
   { value: "dark", name: "Dark", hint: "" },
 ];
 
-const WALLPAPERS: { value: WallpaperPref; name: string; hint: string }[] = [
-  { value: "aurora", name: "Aurora", hint: "The drawn gradient" },
-  { value: "none", name: "None", hint: "A plain background" },
-];
+function wallpaperName(w: ReturnType<typeof useDesktop.getState>["wallpaper"]): string {
+  if (w === "aurora") return "Aurora";
+  if (w === "none") return "None";
+  return WALLPAPER_DESIGNS.find((d) => d.id === w.design)?.name ?? "Custom";
+}
 
 export default function AppearancePane() {
   const theme = useDesktop((s) => s.theme);
   const setTheme = useDesktop((s) => s.setTheme);
   const wallpaper = useDesktop((s) => s.wallpaper);
-  const setWallpaper = useDesktop((s) => s.setWallpaper);
   const glass = useDesktop((s) => s.glass);
   const setGlass = useDesktop((s) => s.setGlass);
+  const [picking, setPicking] = useState(false);
 
   return (
     <div className="set__pane">
@@ -49,20 +53,17 @@ export default function AppearancePane() {
 
       <section className="set__group">
         <h3 className="set__grouphead">Wallpaper</h3>
-        <div className="appr__choices" role="radiogroup" aria-label="Wallpaper">
-          {WALLPAPERS.map((w) => (
-            <button
-              key={w.value}
-              className={`appr__choice${wallpaper === w.value ? " appr__choice--on" : ""}`}
-              role="radio"
-              aria-checked={wallpaper === w.value}
-              onClick={() => setWallpaper(w.value)}
-            >
-              <span className={`appr__wall appr__wall--${w.value}`} aria-hidden="true" />
-              <span className="appr__cname">{w.name}</span>
-              {w.hint && <span className="appr__chint">{w.hint}</span>}
+        <div className="set__row">
+          <div className="set__label">
+            <span className="set__name">Wallpaper</span>
+            <span className="set__hint">Aurora, a plain background, or a generated design tuned by hue and saturation.</span>
+          </div>
+          <div className="set__control">
+            <span className="set__value">{wallpaperName(wallpaper)}</span>
+            <button className="finder__btn" onClick={() => setPicking(true)}>
+              Choose…
             </button>
-          ))}
+          </div>
         </div>
       </section>
 
@@ -86,6 +87,7 @@ export default function AppearancePane() {
           </div>
         </div>
       </section>
+      {picking && <WallpaperPicker onClose={() => setPicking(false)} />}
     </div>
   );
 }

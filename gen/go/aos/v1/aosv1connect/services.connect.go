@@ -77,6 +77,8 @@ const (
 	TaskServiceResumeTaskProcedure = "/aos.v1.TaskService/ResumeTask"
 	// TaskServiceStopAllProcedure is the fully-qualified name of the TaskService's StopAll RPC.
 	TaskServiceStopAllProcedure = "/aos.v1.TaskService/StopAll"
+	// TaskServiceDeleteTaskProcedure is the fully-qualified name of the TaskService's DeleteTask RPC.
+	TaskServiceDeleteTaskProcedure = "/aos.v1.TaskService/DeleteTask"
 	// ApprovalServiceListPendingProcedure is the fully-qualified name of the ApprovalService's
 	// ListPending RPC.
 	ApprovalServiceListPendingProcedure = "/aos.v1.ApprovalService/ListPending"
@@ -312,6 +314,10 @@ type TaskServiceClient interface {
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ResumeTask(context.Context, *connect.Request[v1.ResumeTaskRequest]) (*connect.Response[v1.ResumeTaskResponse], error)
 	StopAll(context.Context, *connect.Request[v1.StopAllRequest]) (*connect.Response[v1.StopAllResponse], error)
+	// Removes a Task and its steps, Approvals and grants. Refused while the Task
+	// is queued, running or waiting: cancel it first. The Audit Log keeps its
+	// record (it is append-only).
+	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
 }
 
 // NewTaskServiceClient constructs a client for the aos.v1.TaskService service. By default, it uses
@@ -373,6 +379,12 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("StopAll")),
 			connect.WithClientOptions(opts...),
 		),
+		deleteTask: connect.NewClient[v1.DeleteTaskRequest, v1.DeleteTaskResponse](
+			httpClient,
+			baseURL+TaskServiceDeleteTaskProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -386,6 +398,7 @@ type taskServiceClient struct {
 	cancelTask     *connect.Client[v1.CancelTaskRequest, v1.CancelTaskResponse]
 	resumeTask     *connect.Client[v1.ResumeTaskRequest, v1.ResumeTaskResponse]
 	stopAll        *connect.Client[v1.StopAllRequest, v1.StopAllResponse]
+	deleteTask     *connect.Client[v1.DeleteTaskRequest, v1.DeleteTaskResponse]
 }
 
 // CreateTask calls aos.v1.TaskService.CreateTask.
@@ -428,6 +441,11 @@ func (c *taskServiceClient) StopAll(ctx context.Context, req *connect.Request[v1
 	return c.stopAll.CallUnary(ctx, req)
 }
 
+// DeleteTask calls aos.v1.TaskService.DeleteTask.
+func (c *taskServiceClient) DeleteTask(ctx context.Context, req *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error) {
+	return c.deleteTask.CallUnary(ctx, req)
+}
+
 // TaskServiceHandler is an implementation of the aos.v1.TaskService service.
 type TaskServiceHandler interface {
 	CreateTask(context.Context, *connect.Request[v1.CreateTaskRequest]) (*connect.Response[v1.CreateTaskResponse], error)
@@ -439,6 +457,10 @@ type TaskServiceHandler interface {
 	CancelTask(context.Context, *connect.Request[v1.CancelTaskRequest]) (*connect.Response[v1.CancelTaskResponse], error)
 	ResumeTask(context.Context, *connect.Request[v1.ResumeTaskRequest]) (*connect.Response[v1.ResumeTaskResponse], error)
 	StopAll(context.Context, *connect.Request[v1.StopAllRequest]) (*connect.Response[v1.StopAllResponse], error)
+	// Removes a Task and its steps, Approvals and grants. Refused while the Task
+	// is queued, running or waiting: cancel it first. The Audit Log keeps its
+	// record (it is append-only).
+	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
 }
 
 // NewTaskServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -496,6 +518,12 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("StopAll")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceDeleteTaskHandler := connect.NewUnaryHandler(
+		TaskServiceDeleteTaskProcedure,
+		svc.DeleteTask,
+		connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.TaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskServiceCreateTaskProcedure:
@@ -514,6 +542,8 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceResumeTaskHandler.ServeHTTP(w, r)
 		case TaskServiceStopAllProcedure:
 			taskServiceStopAllHandler.ServeHTTP(w, r)
+		case TaskServiceDeleteTaskProcedure:
+			taskServiceDeleteTaskHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -553,6 +583,10 @@ func (UnimplementedTaskServiceHandler) ResumeTask(context.Context, *connect.Requ
 
 func (UnimplementedTaskServiceHandler) StopAll(context.Context, *connect.Request[v1.StopAllRequest]) (*connect.Response[v1.StopAllResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.StopAll is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.DeleteTask is not implemented"))
 }
 
 // ApprovalServiceClient is a client for the aos.v1.ApprovalService service.

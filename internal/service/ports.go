@@ -22,6 +22,20 @@ type Listener struct {
 	Service string
 }
 
+// Internal reports whether this is plumbing rather than something the user
+// opened: a loopback socket of aosd's own, or one of the container runtime's
+// (Docker's embedded DNS resolver listens on 127.0.0.11 from outside the
+// Machine's pid namespace, so it has no process to name). Listing either next to
+// a real Service's port is noise (PLAN.md M4.8 item 8.14). A Service the user
+// started on loopback has a pid of its own, so it stays listed.
+func (l Listener) Internal() bool {
+	ip := net.ParseIP(l.Address)
+	if ip == nil || !ip.IsLoopback() {
+		return false
+	}
+	return l.PID == 0 || l.PID == os.Getpid()
+}
+
 // socket is a listening socket from /proc/net/tcp or tcp6.
 type socket struct {
 	address string

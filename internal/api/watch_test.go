@@ -24,7 +24,7 @@ type noLocks struct{}
 func (noLocks) List(context.Context) ([]*aosv1.ListProtectedResponse_Entry, error) { return nil, nil }
 func (noLocks) Protect(context.Context, string) error                              { return nil }
 func (noLocks) Unprotect(context.Context, string) error                            { return nil }
-func (noLocks) IsProtected(string) bool                                            { return false }
+func (noLocks) IsProtected(string) string                                          { return "" }
 
 // bearer adds the access token to every request, as the in-container CLI does.
 type bearer struct{}

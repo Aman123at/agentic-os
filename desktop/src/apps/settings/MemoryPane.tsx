@@ -1,10 +1,10 @@
 // The Memory pane (PLAN.md §14, M4.5): what the Agent remembers across Tasks. An
 // Agent's `remember` proposes an entry; it applies only once accepted here. You
 // can also write your own, and forget any of them.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useState } from "react";
 
 import { settings } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { Memory } from "../../gen/aos/v1/types_pb";
 import { useDesktop } from "../../store";
 import { taskTitle, when } from "../agent/format";
@@ -23,7 +23,7 @@ export default function MemoryPane() {
       setMemories(resp.memories);
       setError("");
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export default function MemoryPane() {
         await fn();
         await refresh();
       } catch (err) {
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
       } finally {
         setBusy(false);
       }

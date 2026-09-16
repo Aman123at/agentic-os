@@ -2,24 +2,26 @@
 // Approvals inline, and a composer for Follow-ups and answers, plus Cancel and
 // Resume. State flows in through the store's event stream (§4.3 rule 4); this
 // component only reads a slice and renders.
-import { ConnectError } from "@connectrpc/connect";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { TaskStep } from "../../gen/aos/v1/types_pb";
 import { AwaitingKind, StepKind, TaskState } from "../../gen/aos/v1/types_pb";
 import { ApprovalCard, sortApprovals } from "../../shell/Approvals";
 import { useDesktop } from "../../store";
-import { costLine, isFinished, stateLabel, stepIcon, taskTitle, toolSummary } from "./format";
+import { Confirm } from "../../ui/Confirm";
+import { costLine, isFinished, isLive, stateLabel, stepIcon, taskTitle, toolSummary } from "./format";
+import { friendlyError } from "../../api/error";
 
 export default function TaskDetail() {
   const openTask = useDesktop((s) => s.openTask);
   const task = useDesktop((s) => (s.openTask ? s.tasks[s.openTask] : undefined));
   const steps = useDesktop((s) => s.steps);
   const allApprovals = useDesktop((s) => s.approvals);
-  const { answerQuestion, sendFollowUp, cancelTask, resumeTask } = useDesktop();
+  const { answerQuestion, sendFollowUp, cancelTask, resumeTask, deleteTask } = useDesktop();
   const [reply, setReply] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const feed = useRef<HTMLDivElement>(null);
 
   const approvals = useMemo(
@@ -62,7 +64,7 @@ export default function TaskDetail() {
     try {
       await f();
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     }
   }
 
@@ -153,11 +155,29 @@ export default function TaskDetail() {
               Resume
             </button>
           )}
+          {!isLive(task.state) && (
+            <button className="tasks__btn tasks__btn--danger" onClick={() => setConfirming(true)}>
+              Delete
+            </button>
+          )}
           <button className="tasks__btn tasks__btn--go" onClick={() => void submit()} disabled={busy || !canReply || !reply.trim()}>
             {question ? "Answer" : "Send"}
           </button>
         </div>
       </footer>
+      {confirming && (
+        <Confirm
+          title="Delete Task?"
+          message={`Delete “${taskTitle(task)}” and its steps, Approvals and grants. The Audit Log keeps its record. This cannot be undone.`}
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => {
+            setConfirming(false);
+            void act(() => deleteTask(openTask));
+          }}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }

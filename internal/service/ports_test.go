@@ -92,3 +92,24 @@ func TestAddressesDecodeFromHostByteOrder(t *testing.T) {
 		}
 	}
 }
+
+// The Machine's plumbing is not something the user can open, so it is not listed
+// next to a real Service's port (PLAN.md M4.8 item 8.14).
+func TestInternalListeners(t *testing.T) {
+	self := os.Getpid()
+	for _, tc := range []struct {
+		name string
+		l    Listener
+		want bool
+	}{
+		{"docker's resolver, no process to name", Listener{Port: 43045, Address: "127.0.0.11"}, true},
+		{"aosd talking to itself", Listener{Port: 9000, Address: "127.0.0.1", PID: self}, true},
+		{"aosd's API, reachable from the Host", Listener{Port: 7700, Address: "::", PID: self}, false},
+		{"a Service the user started on loopback", Listener{Port: 3000, Address: "127.0.0.1", PID: self + 1}, false},
+		{"a Service on every address", Listener{Port: 8080, Address: "0.0.0.0", PID: self + 1}, false},
+	} {
+		if got := tc.l.Internal(); got != tc.want {
+			t.Errorf("%s: Internal() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}

@@ -90,7 +90,9 @@ export function formatWhen(ts?: Timestamp): string {
 
 // iconFor picks an emoji for an entry from its kind and extension. The drawn SVG
 // icon set replaces these in M3.5.
-export function iconFor(e: FileInfo): string {
+// Takes only the fields the icon depends on, so the Trash can ask for the icon
+// of a file it no longer has a FileInfo for (PLAN.md M4.8 item 8.19).
+export function iconFor(e: Pick<FileInfo, "name" | "dir" | "symlink">): string {
   if (e.dir) return "📁";
   if (e.symlink) return "🔗";
   const ext = e.name.slice(e.name.lastIndexOf(".") + 1).toLowerCase();

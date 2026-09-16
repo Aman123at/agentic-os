@@ -1,10 +1,10 @@
 // The Agent app's Usage view (PLAN.md §8.4): today's model tokens and estimated
 // spend, the last 30 days as bars from SystemService.Usage, and the Cost Limits
 // in force. It reloads when a Task's usage changes while it is open.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useState } from "react";
 
 import { system } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { DailyUsage, InfoResponse } from "../../gen/aos/v1/services_pb";
 import type { Usage } from "../../gen/aos/v1/types_pb";
 import { useDesktop } from "../../store";
@@ -25,7 +25,7 @@ export default function UsageView() {
       setInfo(i);
       setError("");
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     }
   }, []);
 

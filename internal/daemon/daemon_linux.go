@@ -54,14 +54,16 @@ import (
 
 // Paths inside the Machine.
 const (
-	Port         = 7700
-	StateDir     = "/var/lib/aos"
-	RunDir       = "/run/aos"
-	SocketPath   = "/run/aos/aosd.sock"
-	SessionsDir  = "/run/aos/sessions"
-	SecretKey    = "/run/secrets/openai_api_key"
-	AgentBinDir  = "/usr/local/lib/aos/agent-bin"
-	Version      = "0.1.0-m1"
+	Port        = 7700
+	StateDir    = "/var/lib/aos"
+	RunDir      = "/run/aos"
+	SocketPath  = "/run/aos/aosd.sock"
+	SessionsDir = "/run/aos/sessions"
+	SecretKey   = "/run/secrets/openai_api_key"
+	AgentBinDir = "/usr/local/lib/aos/agent-bin"
+	// Version is what the Desktop shows in Settings ▸ Status and About This
+	// Machine. Bump it with the milestone; version_test.go keeps it honest.
+	Version      = "0.1.0-m4"
 	keyFile      = StateDir + "/keys/openai"
 	tokenFile    = StateDir + "/token"
 	outputsDir   = StateDir + "/outputs"
@@ -109,6 +111,9 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if err := d.init(); err != nil {
 		return err
 	}
+	// The CPU columns are rates, so they need a reading to measure against
+	// before the Desktop asks for the first one.
+	d.sampler.Prime()
 	defer d.db.Close()
 
 	if cfg.RequireLandlock && d.abi < 1 {
@@ -434,6 +439,9 @@ func (d *Daemon) machine() profile.Machine {
 		m.Services = append(m.Services, ps)
 	}
 	for _, l := range d.services.Listeners() {
+		if l.Internal() {
+			continue
+		}
 		m.Listeners = append(m.Listeners, profile.Listener{Port: l.Port, Process: l.Process, Service: l.Service})
 	}
 	return m

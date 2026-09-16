@@ -135,6 +135,17 @@ func Start(opts Options) (*Session, error) {
 		s.Close()
 		return nil, fmt.Errorf("session did not start: %w", err)
 	}
+	// The shell echoed that synchronising line, so a viewer attaching later would
+	// open on `__aos_c …; source …; __aos_d … $?` instead of a prompt. Drop what
+	// the start-up produced and ask readline to redraw (Ctrl-L), so the first
+	// thing anyone sees is a clean prompt.
+	s.mu.Lock()
+	s.recent = nil
+	s.mu.Unlock()
+	if _, err := s.pty.Write([]byte{0x0c}); err != nil {
+		s.Close()
+		return nil, err
+	}
 	return s, nil
 }
 

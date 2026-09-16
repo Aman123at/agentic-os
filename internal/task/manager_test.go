@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -96,6 +97,28 @@ func (h *harness) waitState(t *testing.T, id string, states ...aosv1.TaskState) 
 		}
 		if time.Now().After(deadline) {
 			t.Fatalf("task %s is %v, want one of %v (summary %q)", id, task.State, states, task.Summary)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// waitSummary waits for a Task to reach a state and for its summary to say
+// something in particular. Cancel publishes the state at once and the run
+// finishes the summary when it unwinds (PLAN.md M4.8 item 8.12), so a test that
+// wants the finished summary waits for both.
+func (h *harness) waitSummary(t *testing.T, id string, state aosv1.TaskState, contains string) *aosv1.Task {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		task, _, _, err := h.m.Get(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if task.State == state && strings.Contains(task.Summary, contains) {
+			return task
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("task %s is %v with summary %q, want %v containing %q", id, task.State, task.Summary, state, contains)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
@@ -309,6 +332,114 @@ func TestRiskyCallsWaitForApprovalAndTaskGrantsCoverTheSameFolder(t *testing.T) 
 	if len(approvals) != 2 || approvals[0].DecidedBy != "user:cli" || approvals[1].Decision != aosv1.ApprovalDecision_APPROVAL_DECISION_DENY {
 		t.Errorf("approvals %v", approvals)
 	}
+}
+
+func TestDeleteRemovesAFinishedTaskAndItsChildrenButKeepsTheAuditLog(t *testing.T) {
+	h := newHarness(t, policy.ConfirmRisky,
+		fake.Calls("", fake.Call{Name: "delete", Args: map[string]any{"path": "~/old/a.log"}}),
+		fake.Say("Cleaned up."),
+	)
+	if err := os.MkdirAll(filepath.Join(h.home, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.home, "old/a.log"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	created, _ := h.m.Create(context.Background(), "Clean up", 0, true)
+	pending := h.waitPending(t, created.Id)
+	// Allow for the Task, which records a grant as well as an approval.
+	if _, err := h.m.Decide(context.Background(), pending.Id, aosv1.ApprovalDecision_APPROVAL_DECISION_ALLOW_FOR_TASK, "user:cli"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_SUCCEEDED)
+
+	// Everything is in place before the delete.
+	for _, tbl := range []string{"task_steps", "approvals", "grants"} {
+		if n := countRows(t, h.db, tbl, created.Id); n == 0 {
+			t.Fatalf("%s: no rows for the Task before delete", tbl)
+		}
+	}
+	auditBefore := countRows(t, h.db, "audit_log", created.Id)
+	if auditBefore == 0 {
+		t.Fatal("no audit rows for the Task before delete")
+	}
+
+	sub := h.bus.Subscribe(t.Context(), "")
+	if err := h.m.Delete(context.Background(), created.Id); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	// The Task and its children are gone; the Audit Log is untouched.
+	if _, _, _, err := h.m.Get(context.Background(), created.Id); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get after delete: %v, want ErrNotFound", err)
+	}
+	for _, tbl := range []string{"task_steps", "approvals", "grants"} {
+		if n := countRows(t, h.db, tbl, created.Id); n != 0 {
+			t.Errorf("%s: %d rows left after delete", tbl, n)
+		}
+	}
+	if n := countRows(t, h.db, "audit_log", created.Id); n != auditBefore {
+		t.Errorf("audit_log has %d rows after delete, want %d unchanged", n, auditBefore)
+	}
+
+	// A TaskChanged{removed} reaches subscribers so every tab drops the Task.
+	deadline := time.After(2 * time.Second)
+	for {
+		select {
+		case e := <-sub:
+			if c := e.GetTaskChanged(); c != nil && c.Removed {
+				if c.Task.GetId() != created.Id {
+					t.Errorf("removal event for %q, want %q", c.Task.GetId(), created.Id)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("no TaskChanged{removed} event")
+		}
+	}
+}
+
+func TestDeleteRefusesWhileTheTaskIsActive(t *testing.T) {
+	h := newHarness(t, policy.ConfirmRisky,
+		fake.Calls("", fake.Call{Name: "delete", Args: map[string]any{"path": "~/old/a.log"}}),
+		fake.Say("Cleaned up."),
+	)
+	if err := os.MkdirAll(filepath.Join(h.home, "old"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.home, "old/a.log"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	created, _ := h.m.Create(context.Background(), "Clean up", 0, true)
+	pending := h.waitPending(t, created.Id)
+	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_AWAITING_USER)
+
+	// Awaiting the user, the Task is still active: deleting it is refused.
+	if err := h.m.Delete(context.Background(), created.Id); err == nil || !strings.Contains(err.Error(), "cancel it first") {
+		t.Fatalf("Delete of an awaiting Task: %v, want a refusal", err)
+	}
+	if _, _, _, err := h.m.Get(context.Background(), created.Id); err != nil {
+		t.Fatalf("the Task must survive a refused delete: %v", err)
+	}
+
+	// Once it finishes, it deletes.
+	if _, err := h.m.Decide(context.Background(), pending.Id, aosv1.ApprovalDecision_APPROVAL_DECISION_DENY, "user:cli"); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_SUCCEEDED)
+	if err := h.m.Delete(context.Background(), created.Id); err != nil {
+		t.Fatalf("Delete of a finished Task: %v", err)
+	}
+}
+
+// countRows counts a table's rows for one Task, for the delete tests.
+func countRows(t *testing.T, db *store.DB, table, taskID string) int {
+	t.Helper()
+	var n int
+	if err := db.Read().QueryRowContext(context.Background(), `SELECT COUNT(*) FROM `+table+` WHERE task_id = ?`, taskID).Scan(&n); err != nil {
+		t.Fatalf("count %s: %v", table, err)
+	}
+	return n
 }
 
 // blockingTool is a Tool whose call runs until it is cancelled.

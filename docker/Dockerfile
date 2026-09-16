@@ -30,6 +30,10 @@ COPY tools/ tools/
 # so the _linux.go code the macOS Host can't run is tested too. The run records
 # go test's exit status instead of failing, so its report comes out either way.
 FROM go-base AS go-test-run
+# The plan, for the tests that check the code still matches it (the version the
+# Machine reports). Copied only into this stage, so a doc edit never invalidates
+# a build.
+COPY docs/ docs/
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     mkdir /report; \
     CGO_ENABLED=0 go test -count=1 -json ./... >/report/test.json 2>/report/stderr.txt; \

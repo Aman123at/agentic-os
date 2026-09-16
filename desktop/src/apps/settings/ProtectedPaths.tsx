@@ -2,10 +2,10 @@
 // write. The defaults (such as ~/.ssh) are read-only here — weakening them from a
 // browser isn't worth the risk (a plan decision) — but you can lock your own
 // paths and remove those again.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useState } from "react";
 
 import { files } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { ListProtectedResponse_Entry as Entry } from "../../gen/aos/v1/services_pb";
 
 export default function ProtectedPaths() {
@@ -21,7 +21,7 @@ export default function ProtectedPaths() {
       setEntries(resp.entries);
       setError("");
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }
@@ -41,7 +41,7 @@ export default function ProtectedPaths() {
       setDraft("");
       await refresh();
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -55,7 +55,7 @@ export default function ProtectedPaths() {
         await files.unprotect({ path });
         await refresh();
       } catch (err) {
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
       } finally {
         setBusy(false);
       }

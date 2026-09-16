@@ -120,6 +120,9 @@ func (sv supervisorService) ListServices(ctx context.Context, _ *connect.Request
 	s.Scan() // ports as they are now, not as of the last 2 s scan
 	resp := &aosv1.ListServicesResponse{Services: s.List()}
 	for _, l := range s.Listeners() {
+		if l.Internal() {
+			continue
+		}
 		resp.Listeners = append(resp.Listeners, &aosv1.Listener{Port: int32(l.Port), Pid: int32(l.PID), Process: l.Process, Service: l.Service, Address: l.Address})
 	}
 	return connect.NewResponse(resp), nil

@@ -12,6 +12,9 @@
   --panel-strong: rgba(252, 252, 253, 0.9);
   --border: rgba(0, 0, 0, 0.12);
   --window-bg: #ffffff;
+  /* An opaque surface for headers that sit over scrolling content: unlike
+     --panel-strong it must never let rows show through (M4.8 item 8.15). */
+  --bg-raised: #f2f2f5;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
   --accent: #0a84ff;
   --code-keyword: #cf222e;
@@ -38,6 +41,7 @@
   --panel-strong: rgba(30, 30, 34, 0.92);
   --border: rgba(255, 255, 255, 0.14);
   --window-bg: #1e1e22;
+  --bg-raised: #2a2a2f;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
   --accent: #0a84ff;
   --code-keyword: #ff7b72;
@@ -61,6 +65,7 @@
   --panel-strong: rgba(252, 252, 253, 0.9);
   --border: rgba(0, 0, 0, 0.12);
   --window-bg: #ffffff;
+  --bg-raised: #f2f2f5;
   --shadow: 0 18px 60px rgba(0, 0, 0, 0.28);
   --code-keyword: #cf222e;
   --code-string: #0a3069;
@@ -308,15 +313,41 @@ button {
   background: var(--window-bg);
 }
 
+/* Eight resize handles, as on macOS: four edges and four corners (PLAN.md M4.8
+   item 8.10). The edges are a 6px strip, the corners a 14px square on top. */
 .window__resize {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
   touch-action: none;
 }
+.window__resize--n,
+.window__resize--s {
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+}
+.window__resize--n { top: -3px; }
+.window__resize--s { bottom: -3px; }
+.window__resize--e,
+.window__resize--w {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+}
+.window__resize--e { right: -3px; }
+.window__resize--w { left: -3px; }
+.window__resize--ne,
+.window__resize--nw,
+.window__resize--se,
+.window__resize--sw {
+  width: 14px;
+  height: 14px;
+}
+.window__resize--nw { top: -3px; left: -3px; cursor: nwse-resize; }
+.window__resize--se { bottom: -3px; right: -3px; cursor: nwse-resize; }
+.window__resize--ne { top: -3px; right: -3px; cursor: nesw-resize; }
+.window__resize--sw { bottom: -3px; left: -3px; cursor: nesw-resize; }
 
 /* ---------------------------------------------------------------- dock */
 .dock-wrap {
@@ -333,8 +364,12 @@ button {
 .dock {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
-  padding: 6px 10px;
+  /* A hovered 44px tile magnifies to PEAK 1.6× (Dock.tsx), overhanging 13.2px
+     per side; its neighbour at this 64px pitch overhangs ~3.8px, so 17.0px of
+     art sits between centres against a 20px gap — clear, with no change to
+     RADIUS/PEAK. Anyone raising PEAK must widen this gap to match. */
+  gap: 20px;
+  padding: 6px 14px;
   border-radius: 18px;
   background: var(--panel);
   backdrop-filter: blur(24px);
@@ -498,6 +533,28 @@ button.stack__item:hover {
 }
 
 /* ---------------------------------------------------------------- app content */
+/* Loading placeholders: rows in the shape of the content to come (M4.8 item 8.18). */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 12px;
+}
+.skeleton__row {
+  height: 14px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, var(--bg-raised) 0%, var(--border) 50%, var(--bg-raised) 100%);
+  background-size: 300% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from { background-position: 150% 0; }
+  to { background-position: -150% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton__row { animation: none; }
+}
+
 .placeholder {
   display: grid;
   place-content: center;
@@ -687,7 +744,7 @@ button.stack__item:hover {
   align-items: center;
   height: 24px;
   padding: 0 10px;
-  background: var(--panel-strong);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
   font-size: 11px;
@@ -1087,6 +1144,15 @@ button.stack__item:hover {
   position: relative;
   border-right: 1px solid var(--border);
 }
+/* An empty folder says so rather than showing a blank strip (M4.8 item 8.17). */
+.finder__column--empty {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
 .finder__colrow {
   display: flex;
   align-items: center;
@@ -1138,7 +1204,9 @@ button.stack__item:hover {
 }
 .menu {
   position: fixed;
-  z-index: 20;
+  /* Above the Dock (.dock-wrap is 100000): the desktop's right-click menu can
+     open over it, and a menu must never sit behind the Dock. */
+  z-index: 100001;
   min-width: 168px;
   padding: 4px;
   background: var(--panel-strong);
@@ -2782,6 +2850,18 @@ button.stack__item:hover {
   --panel-strong: rgba(252, 252, 253, 0.6);
 }
 
+/* While the theme is changing, drop every backdrop filter for a frame so the
+   composited layers are rebuilt against the new palette (see theme.ts,
+   PLAN.md M4.8 item 8.9). */
+:root[data-theming] .menubar,
+:root[data-theming] .dock,
+:root[data-theming] .window__bar,
+:root[data-theming] .spot,
+:root[data-theming] .nc {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 :root[data-glass="on"] .menubar,
 :root[data-glass="on"] .dock,
 :root[data-glass="on"] .window__bar,
@@ -2793,4 +2873,169 @@ button.stack__item:hover {
 :root[data-glass="on"] .menubar,
 :root[data-glass="on"] .dock {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* ---------------------------------------------------------------- Agent: New Task, delete, audit clear */
+/* New Task sits at the right of the Tasks toolbar; Show all is a plain text link
+   in the Audit count line. */
+.agent__new { margin-left: auto; }
+.agent__link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.agent__link:hover { text-decoration: underline; }
+/* The New Task composer reuses the Ask dialog; its Autonomy select spans it. */
+.ask__autonomy { max-width: none; width: 100%; }
+
+.set__value { color: var(--muted); font-size: 12px; }
+
+/* ---------------------------------------------------------------- generated wallpapers */
+/* Each design paints a layered gradient from the hue and saturation the picker
+   sets (--wall-hue / --wall-sat, see shell/wallpaper.ts). The lightness tiers
+   are set once per theme, so every design darkens together under a dark theme,
+   matching how the Aurora art cross-fades. */
+.wp-gen {
+  --l-hi: 86%;
+  --l-mid: 68%;
+  --l-lo: 52%;
+  --l-bg: 92%;
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+:root[data-theme="dark"] .wp-gen,
+:root:not([data-theme="light"]) .wp-gen {
+  --l-hi: 42%;
+  --l-mid: 30%;
+  --l-lo: 20%;
+  --l-bg: 10%;
+}
+:root[data-theme="light"] .wp-gen {
+  --l-hi: 86%;
+  --l-mid: 68%;
+  --l-lo: 52%;
+  --l-bg: 92%;
+}
+
+.wp-gen[data-design="mesh"] {
+  background-image:
+    radial-gradient(at 20% 25%, hsl(var(--wall-hue) var(--wall-sat) var(--l-hi)) 0, transparent 45%),
+    radial-gradient(at 80% 20%, hsl(calc(var(--wall-hue) + 40) var(--wall-sat) var(--l-mid)) 0, transparent 45%),
+    radial-gradient(at 72% 78%, hsl(calc(var(--wall-hue) - 45) var(--wall-sat) var(--l-mid)) 0, transparent 50%),
+    radial-gradient(at 25% 82%, hsl(calc(var(--wall-hue) + 15) var(--wall-sat) var(--l-lo)) 0, transparent 50%),
+    linear-gradient(hsl(var(--wall-hue) var(--wall-sat) var(--l-bg)), hsl(var(--wall-hue) var(--wall-sat) var(--l-bg)));
+}
+.wp-gen[data-design="dunes"] {
+  background-image: linear-gradient(
+    135deg,
+    hsl(var(--wall-hue) var(--wall-sat) var(--l-hi)),
+    hsl(calc(var(--wall-hue) + 25) var(--wall-sat) var(--l-mid)) 45%,
+    hsl(calc(var(--wall-hue) - 20) var(--wall-sat) var(--l-lo))
+  );
+}
+.wp-gen[data-design="halo"] {
+  background-image:
+    radial-gradient(circle at 50% 42%, hsl(calc(var(--wall-hue) + 30) var(--wall-sat) var(--l-hi)) 0%, transparent 38%),
+    conic-gradient(
+      from 210deg at 50% 46%,
+      hsl(var(--wall-hue) var(--wall-sat) var(--l-mid)),
+      hsl(calc(var(--wall-hue) + 120) var(--wall-sat) var(--l-lo)),
+      hsl(calc(var(--wall-hue) + 240) var(--wall-sat) var(--l-mid)),
+      hsl(var(--wall-hue) var(--wall-sat) var(--l-mid))
+    );
+}
+.wp-gen[data-design="ridge"] {
+  background-image:
+    linear-gradient(hsl(var(--wall-hue) var(--wall-sat) var(--l-bg) / 0.35), hsl(var(--wall-hue) var(--wall-sat) var(--l-lo) / 0.35)),
+    repeating-linear-gradient(
+      115deg,
+      hsl(var(--wall-hue) var(--wall-sat) var(--l-mid)) 0px,
+      hsl(var(--wall-hue) var(--wall-sat) var(--l-mid)) 42px,
+      hsl(calc(var(--wall-hue) + 18) var(--wall-sat) var(--l-lo)) 42px,
+      hsl(calc(var(--wall-hue) + 18) var(--wall-sat) var(--l-lo)) 84px
+    );
+}
+.wp-gen[data-design="nebula"] {
+  background-image:
+    radial-gradient(ellipse at 30% 30%, hsl(calc(var(--wall-hue) + 20) var(--wall-sat) var(--l-mid)) 0%, transparent 55%),
+    radial-gradient(ellipse at 76% 66%, hsl(calc(var(--wall-hue) - 40) var(--wall-sat) var(--l-lo)) 0%, transparent 55%),
+    linear-gradient(160deg, hsl(var(--wall-hue) var(--wall-sat) var(--l-bg)), hsl(calc(var(--wall-hue) + 30) var(--wall-sat) var(--l-lo)));
+}
+.wp-gen[data-design="tide"] {
+  background-image:
+    linear-gradient(0deg, hsl(var(--wall-hue) var(--wall-sat) var(--l-lo)) 0%, transparent 60%),
+    linear-gradient(
+      200deg,
+      hsl(calc(var(--wall-hue) + 30) var(--wall-sat) var(--l-hi)),
+      hsl(var(--wall-hue) var(--wall-sat) var(--l-mid)) 50%,
+      hsl(calc(var(--wall-hue) - 25) var(--wall-sat) var(--l-lo))
+    );
+}
+
+/* ---------------------------------------------------------------- wallpaper picker */
+.wallpick__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 100002;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.wallpick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(92%, 520px);
+  padding: 18px;
+  background: var(--window-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+.wallpick__title { margin: 0; font-size: 15px; }
+.wallpick__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.wallpick__swatch {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.wallpick__swatch--on { border-color: var(--accent); }
+.wallpick__preview {
+  width: 100%;
+  height: 56px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+}
+.wallpick__name { font-size: 12px; text-align: center; }
+.wallpick__slider {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+}
+.wallpick__slider input[type="range"] { width: 100%; }
+.wallpick__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 2px;
 }

@@ -69,3 +69,51 @@ test("the Agent app is in the Dock and comes back on the Task it showed", async 
   await openApp(page, "Agent");
   await expect(agent(page)).toHaveCount(1);
 });
+
+test("the Agent app starts a Task from its toolbar and deletes it from the row menu", async ({ page }) => {
+  await page.goto("/");
+  await openApp(page, "Agent");
+  const win = agent(page);
+  const prompt = `e2e-ui: composer task ${Date.now()}`;
+
+  // The New Task composer starts a Task without leaving the app, the same as the
+  // CLI, and lands in its live feed.
+  await win.getByRole("button", { name: /New Task/ }).click();
+  const dialog = page.getByRole("dialog", { name: "New Task" });
+  await dialog.getByLabel("What should the Agent do?").fill(prompt);
+  await dialog.getByRole("button", { name: "Start Task" }).click();
+  await expect(win.locator(".tasks__title")).toContainText(prompt);
+  await expect(win.locator(".tasks__feed").getByText("Hello from the Agent. Nothing to do here.")).toBeVisible();
+  await expect(win.locator(".tasks__state")).toHaveText("Done");
+
+  // The row's context menu deletes it, behind a confirmation that names it.
+  const row = win.locator(".agent__row", { hasText: prompt });
+  await expect(row).toBeVisible();
+  await row.click({ button: "right" });
+  await page.getByRole("button", { name: "Delete Task…" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Delete Task?" });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole("button", { name: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+});
+
+test("the Audit Log view clears to a floor and shows everything again", async ({ page }) => {
+  await page.goto("/");
+  await startTask(page, `e2e-ui: audit clear ${Date.now()}`);
+  const win = agent(page);
+
+  // Starting a Task records at least a create_task entry, so the view has rows.
+  await win.getByRole("button", { name: "Audit Log" }).click();
+  await expect(win.locator(".audit__row").first()).toBeVisible();
+
+  // Clear hides what is in view (a floor, not a delete); Show all brings it back.
+  await win.getByRole("button", { name: "Clear" }).click();
+  const confirm = page.getByRole("alertdialog", { name: "Clear the Audit Log view?" });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole("button", { name: "Clear" }).click();
+  await expect(win.locator(".audit__row")).toHaveCount(0);
+  await expect(win.getByRole("button", { name: "Show all" })).toBeVisible();
+
+  await win.getByRole("button", { name: "Show all" }).click();
+  await expect(win.locator(".audit__row").first()).toBeVisible();
+});

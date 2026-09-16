@@ -13,6 +13,7 @@ import { basicSetup } from "codemirror";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
@@ -134,7 +135,7 @@ export default function TextEdit() {
         const lang = await languageFor(name).catch(() => null);
         if (lang && seq === loadSeq.current) v.dispatch({ effects: language.current.reconfigure(lang) });
       } catch (err) {
-        if (seq === loadSeq.current) setLoad({ kind: "refused", message: ConnectError.from(err).message });
+        if (seq === loadSeq.current) setLoad({ kind: "refused", message: friendlyError(err) });
       }
     },
     [extensions],
@@ -181,7 +182,7 @@ export default function TextEdit() {
         setEdited(!v.state.doc.eq(doc));
         if (p !== path) setPath(p);
       } catch (err) {
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
       } finally {
         setBusy(false);
       }

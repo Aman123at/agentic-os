@@ -111,6 +111,26 @@ func listTasks(ctx context.Context, db *sql.DB, where string, limit int, args ..
 	return out, rows.Err()
 }
 
+// deleteTask removes a Task and everything that hangs off it. foreign_keys is
+// ON and none of the three children cascade, so they go first, in any order,
+// then the Task. The audit_log is untouched: its task_id is a plain column with
+// no FK, and it is append-only by trigger, so the Task's record survives it.
+func deleteTask(ctx context.Context, tx *sql.Tx, id string) error {
+	for _, table := range []string{"grants", "approvals", "task_steps"} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE task_id = ?`, id); err != nil {
+			return err
+		}
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM tasks WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 const stepColumns = `id, task_id, seq, kind, text, call_id, tool, arguments_json, status, result, output_ref, items_json, created_at, started_at, finished_at`
 
 // insertStep assigns the next sequence number and stores the step with the

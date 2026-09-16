@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
@@ -34,7 +35,9 @@ type Protected interface {
 	List(ctx context.Context) ([]*aosv1.ListProtectedResponse_Entry, error)
 	Protect(ctx context.Context, path string) error
 	Unprotect(ctx context.Context, path string) error
-	IsProtected(path string) bool
+	// IsProtected says why a path is protected: "user", "default", "inherited",
+	// or "" when it is not.
+	IsProtected(path string) string
 }
 
 // Terminal is a running Session a viewer attaches to.
@@ -252,6 +255,14 @@ func (t taskService) ResumeTask(ctx context.Context, req *connect.Request[aosv1.
 	return connect.NewResponse(&aosv1.ResumeTaskResponse{Task: resumed}), nil
 }
 
+func (t taskService) DeleteTask(ctx context.Context, req *connect.Request[aosv1.DeleteTaskRequest]) (*connect.Response[aosv1.DeleteTaskResponse], error) {
+	if err := t.s.Tasks.Delete(ctx, req.Msg.Id); err != nil {
+		return nil, stateError(err)
+	}
+	_ = t.s.Audit.Record(ctx, audit.Entry{TaskID: req.Msg.Id, Tool: "delete_task", Actor: ActorFrom(ctx), Decision: "allow", DecidedBy: ActorFrom(ctx)})
+	return connect.NewResponse(&aosv1.DeleteTaskResponse{}), nil
+}
+
 func (t taskService) StopAll(ctx context.Context, _ *connect.Request[aosv1.StopAllRequest]) (*connect.Response[aosv1.StopAllResponse], error) {
 	n, err := t.s.Tasks.StopAll(ctx)
 	if err != nil {
@@ -330,8 +341,9 @@ func (f fileService) abs(p string) (string, error) {
 }
 
 func (f fileService) info(i files.Info) *aosv1.FileInfo {
+	src := f.s.Protected.IsProtected(i.Path)
 	return &aosv1.FileInfo{Path: i.Path, Name: i.Name, Dir: i.Dir, Symlink: i.Symlink, LinkTarget: i.LinkTarget, Size: i.Size,
-		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: f.s.Protected.IsProtected(i.Path)}
+		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src}
 }
 
 func (f fileService) List(ctx context.Context, req *connect.Request[aosv1.ListRequest]) (*connect.Response[aosv1.ListResponse], error) {
@@ -453,7 +465,18 @@ func (f fileService) audit(ctx context.Context, op, target string, err error) {
 	if err != nil {
 		result = err.Error()
 	}
-	_ = f.s.Audit.Record(ctx, audit.Entry{Tool: op, Arguments: `{"path":` + quote(target) + `}`, Decision: "allow", DecidedBy: ActorFrom(ctx), Result: result, Actor: ActorFrom(ctx)})
+	_ = f.s.Audit.Record(ctx, audit.Entry{Tool: op, Arguments: `{"path":` + quote(target) + `}`, Decision: decisionFor(err), DecidedBy: ActorFrom(ctx), Result: result, Actor: ActorFrom(ctx)})
+}
+
+// decisionFor is what the Audit Log's Decision column says about a call the user
+// was allowed to make. "allow" means it ran; a call that failed is recorded as
+// "error", so a reader is not told a call that did nothing was allowed
+// (PLAN.md M4.8 item 8.16). "deny" stays reserved for a policy refusal.
+func decisionFor(err error) string {
+	if err != nil {
+		return "error"
+	}
+	return "allow"
 }
 
 func quote(s string) string {
@@ -499,7 +522,11 @@ func (t trashService) ListTrash(ctx context.Context, _ *connect.Request[aosv1.Li
 func (t trashService) Restore(ctx context.Context, req *connect.Request[aosv1.RestoreRequest]) (*connect.Response[aosv1.RestoreResponse], error) {
 	var restored string
 	err := t.s.UserFiles.Run(ctx, files.OpRestore, files.RestoreArgs{ID: req.Msg.Id}, &restored, nil)
-	_ = t.s.Audit.Record(ctx, audit.Entry{Tool: "restore", Arguments: `{"id":` + quote(req.Msg.Id) + `}`, Result: restored, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+	restoreResult := restored
+	if err != nil {
+		restoreResult = err.Error()
+	}
+	_ = t.s.Audit.Record(ctx, audit.Entry{Tool: "restore", Arguments: `{"id":` + quote(req.Msg.Id) + `}`, Result: restoreResult, Decision: decisionFor(err), DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -509,7 +536,11 @@ func (t trashService) Restore(ctx context.Context, req *connect.Request[aosv1.Re
 func (t trashService) Empty(ctx context.Context, _ *connect.Request[aosv1.EmptyRequest]) (*connect.Response[aosv1.EmptyResponse], error) {
 	var n int
 	err := t.s.UserFiles.Run(ctx, files.OpEmptyTrash, struct{}{}, &n, nil)
-	_ = t.s.Audit.Record(ctx, audit.Entry{Tool: "empty_trash", Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+	emptyResult := fmt.Sprintf("%d removed", n)
+	if err != nil {
+		emptyResult = err.Error()
+	}
+	_ = t.s.Audit.Record(ctx, audit.Entry{Tool: "empty_trash", Result: emptyResult, Decision: decisionFor(err), DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -596,6 +627,11 @@ func (st settingsService) SaveDesktopState(ctx context.Context, req *connect.Req
 	if err := st.s.Desktop.Save(ctx, req.Msg.State); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
+	// Tell the other tabs: they adopt the preferences in it (theme, wallpaper,
+	// Liquid Glass, shortcuts) and keep their own window layout (PLAN.md §4.3).
+	st.s.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_DesktopState{
+		DesktopState: &aosv1.DesktopStateChanged{State: req.Msg.State, Origin: req.Msg.Origin},
+	}})
 	return connect.NewResponse(&aosv1.SaveDesktopStateResponse{}), nil
 }
 
@@ -626,7 +662,7 @@ func (st settingsService) Update(ctx context.Context, req *connect.Request[aosv1
 		result = err.Error()
 	}
 	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: "settings_update", Arguments: `{"key":` + quote(req.Msg.Key) + `,"value":` + quote(req.Msg.Value) + `}`,
-		Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+		Result: result, Decision: decisionFor(err), DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -665,7 +701,7 @@ func (st settingsService) keyAudit(ctx context.Context, tool, hint string, err e
 	if err != nil {
 		result = err.Error()
 	}
-	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: tool, Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+	_ = st.s.Audit.Record(ctx, audit.Entry{Tool: tool, Result: result, Decision: decisionFor(err), DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
 }
 
 func (st settingsService) audit(ctx context.Context, tool, id, result string) {

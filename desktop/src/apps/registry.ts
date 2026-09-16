@@ -1,5 +1,8 @@
 // The Desktop's apps. Each is a lazily loaded chunk (PLAN.md §4.3 rule 3), so
 // the shell stays small and an app's code is fetched only when it first opens.
+// Each app also exposes preload(), which fetches that chunk without opening the
+// app: the shell warms them while the Machine is idle, so the first open is not
+// a download (PLAN.md §16, the first visible Agent step).
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
 export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
@@ -12,6 +15,15 @@ export interface AppDef {
   singleton?: boolean;
   inDock?: boolean;
   Component: LazyExoticComponent<ComponentType>;
+  // Fetches the app's chunk now. Calling it twice is free: the module registry
+  // returns the same promise.
+  preload: () => Promise<unknown>;
+}
+
+// app builds the two halves of a lazily loaded app from one import factory, so
+// the chunk React suspends on and the chunk preload() fetches are the same one.
+function app(load: () => Promise<{ default: ComponentType }>) {
+  return { Component: lazy(load), preload: load as () => Promise<unknown> };
 }
 
 export const APPS: Record<AppId, AppDef> = {
@@ -21,7 +33,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "🖥️",
     size: { w: 380, h: 300 },
     singleton: true,
-    Component: lazy(() => import("./About")),
+    ...app(() => import("./About")),
   },
   finder: {
     id: "finder",
@@ -29,7 +41,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "🗂️",
     size: { w: 760, h: 480 },
     inDock: true,
-    Component: lazy(() => import("./Finder")),
+    ...app(() => import("./Finder")),
   },
   terminal: {
     id: "terminal",
@@ -37,7 +49,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "⌨️",
     size: { w: 660, h: 420 },
     inDock: true,
-    Component: lazy(() => import("./Terminal")),
+    ...app(() => import("./Terminal")),
   },
   // The Agent app: Tasks, the Audit Log and Usage. Spotlight, notifications and
   // Approvals open it at a Task, so there is only ever one.
@@ -48,7 +60,7 @@ export const APPS: Record<AppId, AppDef> = {
     size: { w: 900, h: 580 },
     singleton: true,
     inDock: true,
-    Component: lazy(() => import("./agent/Agent")),
+    ...app(() => import("./agent/Agent")),
   },
   // Preview shows one file per window; the store's openFile opens it.
   preview: {
@@ -56,7 +68,7 @@ export const APPS: Record<AppId, AppDef> = {
     name: "Preview",
     icon: "🖼️",
     size: { w: 720, h: 540 },
-    Component: lazy(() => import("./preview/Preview")),
+    ...app(() => import("./preview/Preview")),
   },
   // TextEdit edits one text file per window; opened with no file, it is a new
   // document.
@@ -65,7 +77,7 @@ export const APPS: Record<AppId, AppDef> = {
     name: "TextEdit",
     icon: "📝",
     size: { w: 680, h: 520 },
-    Component: lazy(() => import("./textedit/TextEdit")),
+    ...app(() => import("./textedit/TextEdit")),
   },
   // Activity Monitor: Processes, the CPU/Memory/Disk/Network graphs, the running
   // Agents, and Services & Ports. Opened from Spotlight; one is enough.
@@ -75,7 +87,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "📊",
     size: { w: 820, h: 560 },
     singleton: true,
-    Component: lazy(() => import("./activity/ActivityMonitor")),
+    ...app(() => import("./activity/ActivityMonitor")),
   },
   // Software: the installed Packages, the Install Ledger, Checkpoints and Replay
   // progress (PLAN.md §11). Opened from Spotlight; one is enough.
@@ -85,7 +97,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "📦",
     size: { w: 820, h: 560 },
     singleton: true,
-    Component: lazy(() => import("./software/Software")),
+    ...app(() => import("./software/Software")),
   },
   // System Settings: the Agent's model and limits, the API key, Protected Paths,
   // Memory, Trash, Keyboard, Appearance and Status (PLAN.md §4.3, M4.5). Opened
@@ -96,7 +108,7 @@ export const APPS: Record<AppId, AppDef> = {
     icon: "⚙️",
     size: { w: 820, h: 580 },
     singleton: true,
-    Component: lazy(() => import("./settings/Settings")),
+    ...app(() => import("./settings/Settings")),
   },
   // The Trash sits at the Dock's end, as on macOS.
   trash: {
@@ -106,9 +118,32 @@ export const APPS: Record<AppId, AppDef> = {
     size: { w: 640, h: 420 },
     singleton: true,
     inDock: true,
-    Component: lazy(() => import("./trash/Trash")),
+    ...app(() => import("./trash/Trash")),
   },
 };
+
+// preloadApps fetches every app's chunk while nothing else is going on, newest
+// Desktop first: the Agent app (Spotlight's "Ask the Agent" opens it and §16
+// times the first step from that submit), then the Dock, then the rest.
+export function preloadApps(): void {
+  const order: AppId[] = ["agent", "finder", "terminal", "preview", "textedit", "settings", "trash", "activity", "software", "about"];
+  let i = 0;
+  const next = () => {
+    const id = order[i++];
+    if (!id) return;
+    void APPS[id].preload().catch(() => {});
+    idle(next);
+  };
+  idle(next);
+}
+
+// idle runs f when the browser is not busy, falling back to a timeout on
+// browsers without requestIdleCallback (Safari before 17).
+function idle(f: () => void): void {
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback;
+  if (ric) ric(f, { timeout: 2000 });
+  else setTimeout(f, 200);
+}
 
 export const DOCK_APPS: AppId[] = Object.values(APPS)
   .filter((a) => a.inDock)

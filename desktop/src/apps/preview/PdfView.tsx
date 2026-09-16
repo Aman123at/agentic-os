@@ -9,14 +9,20 @@ import { useEffect, useRef, useState } from "react";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
+// Zoom steps, relative to the page scaled to fit the pane's width. FIT is the
+// step where the page is exactly that.
 const ZOOMS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+const FIT = 2;
 
 export default function PdfView({ url, compact }: { url: string; compact: boolean }) {
   const [doc, setDoc] = useState<PDFDocumentProxy>();
   const [error, setError] = useState("");
   const [page, setPage] = useState(1);
-  const [zoom, setZoom] = useState(2); // an index into ZOOMS; 100% fits the width
+  const [zoom, setZoom] = useState(FIT); // an index into ZOOMS, relative to the fit
   const [width, setWidth] = useState(0);
+  // How much the page is scaled to fit the pane, so the read-out can report the
+  // size actually drawn rather than the step (PLAN.md M4.8 item 8.20).
+  const [fit, setFit] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
 
@@ -43,9 +49,10 @@ export default function PdfView({ url, compact }: { url: string; compact: boolea
     let gone = false;
     void doc.getPage(page).then((p) => {
       if (gone || !canvas.current) return;
-      const fit = Math.max(width - 32, 100) / p.getViewport({ scale: 1 }).width;
+      const toFit = Math.max(width - 32, 100) / p.getViewport({ scale: 1 }).width;
+      setFit(toFit);
       const dpr = window.devicePixelRatio || 1;
-      const scale = fit * ZOOMS[zoom];
+      const scale = toFit * ZOOMS[zoom];
       const viewport = p.getViewport({ scale: scale * dpr });
       const c = canvas.current;
       c.width = Math.floor(viewport.width);
@@ -80,7 +87,9 @@ export default function PdfView({ url, compact }: { url: string; compact: boolea
             <button className="finder__btn" title="Zoom out" disabled={zoom === 0} onClick={() => setZoom(zoom - 1)}>
               −
             </button>
-            <span className="pdf__zoom">{Math.round(ZOOMS[zoom] * 100)}%</span>
+            <span className="pdf__zoom" title={zoom === FIT ? "The page scaled to fit the width" : undefined}>
+              {fit ? `${Math.round(fit * ZOOMS[zoom] * 100)}%` : "—"}
+            </span>
             <button className="finder__btn" title="Zoom in" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom(zoom + 1)}>
               +
             </button>

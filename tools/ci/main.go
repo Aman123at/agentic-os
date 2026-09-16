@@ -2,7 +2,8 @@
 // It works the same locally and in GitHub Actions.
 //
 // Stages: lint, unit, unit-linux, ui, image, integration, e2e, playwright. With
-// no arguments, all run in order.
+// no arguments, all run in order. `live` (the real-model suite, §16 M4.7) is
+// optional: it spends the key, so it runs only when named — `go run ./tools/ci live`.
 package main
 
 import (
@@ -31,17 +32,20 @@ const bundleBudgetKB = 150
 const desktopDir = "desktop"
 
 var stages = []struct {
-	name string
-	run  func() error
+	name     string
+	run      func() error
+	optional bool // runs only when named explicitly, never in the default sweep
 }{
-	{"lint", lint},
-	{"unit", unit},
-	{"unit-linux", unitLinux},
-	{"ui", ui},
-	{"image", image},
-	{"integration", integration},
-	{"e2e", e2e},
-	{"playwright", playwright},
+	{"lint", lint, false},
+	{"unit", unit, false},
+	{"unit-linux", unitLinux, false},
+	{"ui", ui, false},
+	{"image", image, false},
+	{"integration", integration, false},
+	{"e2e", e2e, false},
+	{"playwright", playwright, false},
+	// `live` spends the real key, so it is never part of the default sweep.
+	{"live", live, true},
 }
 
 func main() {
@@ -50,6 +54,9 @@ func main() {
 	for _, s := range stages {
 		if len(selected) > 0 && !contains(selected, s.name) {
 			continue
+		}
+		if s.optional && !contains(selected, s.name) {
+			continue // optional stages run only when named
 		}
 		start := time.Now()
 		fmt.Printf("==> %s\n", s.name)
@@ -216,6 +223,25 @@ func playwright() error {
 		return err
 	}
 	return run("npm", "--prefix", desktopDir, "run", "e2e")
+}
+
+// live runs the Desktop's real-model suite (§16, §17, M4.7): the same Machine as
+// playwright but against the provider in .env, so it spends the key. It is
+// optional — it runs only when named (`go run ./tools/ci live`), never in the
+// default sweep. The suite's global setup refuses to start without a real key,
+// runs headed for the real-GPU drag, and prints the run's spend at the end.
+func live() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "e2e-live")); os.IsNotExist(err) {
+		fmt.Println("    no live specs")
+		return nil
+	}
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "exec", "--", "playwright", "install", "chromium"); err != nil {
+		return err
+	}
+	return run("npm", "--prefix", desktopDir, "run", "e2e:live")
 }
 
 // npmInstall installs the Desktop's dependencies, skipping the reinstall when a

@@ -35,6 +35,10 @@ type Config struct {
 }
 
 // replyHint ends what a paused Task tells the user.
+// cancelled is what a Tool call shows once the Task has been cancelled: the
+// same sentence wherever the cancel lands, never a Go error.
+const cancelled = "Cancelled."
+
 const replyHint = `Reply with a hint, or "try another way", and the Agent continues; or cancel the Task.`
 
 // Host is the Task an Agent works on: it records steps and decides Approvals.
@@ -208,6 +212,9 @@ func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) 
 			p.output = fmt.Sprintf("error: there is no Tool called %q", item.Name)
 		} else if c, err := t.Prepare(ctx, env, json.RawMessage(item.Arguments)); err != nil {
 			p.output = "error: " + err.Error()
+			if ctx.Err() != nil {
+				p.output = cancelled
+			}
 		} else {
 			p.call, p.decision = c, h.Decide(c.Policy)
 			p.step.Text = c.Summary
@@ -234,7 +241,7 @@ func runCalls(ctx context.Context, cfg Config, h Host, items, extra []llm.Item) 
 		wg.Wait()
 		if err := ctx.Err(); err != nil {
 			for _, p := range calls[j:] {
-				p.finish(ctx, h, aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED, "cancelled", "")
+				p.finish(ctx, h, aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED, cancelled, "")
 			}
 			return outputsOf(calls), nil, err
 		}
@@ -323,11 +330,16 @@ func execute(ctx context.Context, h Host, p *pending) {
 		h.Progress(p.step.Id, url, path, n, total)
 	}})
 	entry.Duration, entry.Result = time.Since(start), res.Output
+	// A cancelled call reports the cancellation, not whatever the dying
+	// command happened to print — the feed used to show the Go error
+	// "error: context canceled" (PLAN.md M4.8 item 8.12).
+	if ctx.Err() != nil {
+		entry.Result = cancelled
+		p.finish(ctx, h, aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED, cancelled, "")
+		return
+	}
 	status := aosv1.ToolCallStatus_TOOL_CALL_STATUS_SUCCEEDED
-	switch {
-	case ctx.Err() != nil:
-		status = aosv1.ToolCallStatus_TOOL_CALL_STATUS_CANCELLED
-	case res.Error:
+	if res.Error {
 		status = aosv1.ToolCallStatus_TOOL_CALL_STATUS_FAILED
 	}
 	p.finish(ctx, h, status, res.Output, res.OutputRef)

@@ -2,10 +2,10 @@
 // SystemService.Metrics polled every 2 s while the tab is open, each measure a
 // sparkline over the recent samples. Network shows a rate worked out from the
 // difference between successive cumulative counters.
-import { ConnectError } from "@connectrpc/connect";
 import { useRef, useState } from "react";
 
 import { system } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { DiskUsage, MetricsResponse } from "../../gen/aos/v1/services_pb";
 import { bytes, percent, rate } from "./format";
 import { Sparkline } from "./Sparkline";
@@ -53,7 +53,7 @@ export default function Metrics() {
         tx: push(s.tx, txRate),
       }));
     } catch (err) {
-      if (!signal.aborted) setError(ConnectError.from(err).message);
+      if (!signal.aborted) setError(friendlyError(err));
     }
   }, POLL_MS);
 

@@ -2,10 +2,10 @@
 // Machine's software, /etc and Services to. You can take one, or Restore to one
 // after a confirmation; a Restore first takes a "Before Restore" Checkpoint so it
 // too can be undone, and anything that could not be restored exactly is shown.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useState } from "react";
 
 import { software } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { Checkpoint } from "../../gen/aos/v1/types_pb";
 import { useDesktop } from "../../store";
 import { Confirm } from "../../ui/Confirm";
@@ -34,7 +34,7 @@ export default function Checkpoints() {
       setError("");
       setCheckpoints([...resp.checkpoints].sort((a, b) => millis(b) - millis(a)));
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }
@@ -52,7 +52,7 @@ export default function Checkpoints() {
       setName("");
       await refresh();
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -69,7 +69,7 @@ export default function Checkpoints() {
       setResult({ name: cp.name || cp.id, notes: resp.notes, before: resp.before });
       await refresh();
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }

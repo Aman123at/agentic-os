@@ -298,20 +298,39 @@ type row struct{ tool, decision, by string }
 // wantAudit fails unless the Task's Audit Log has each row; an empty by matches any decider.
 func (m *machine) wantAudit(t *testing.T, taskID string, rows ...row) {
 	t.Helper()
-	out, code := m.aos(t, "audit", taskID)
-	if code != 0 {
-		t.Fatalf("aos audit %s: exit %d\n%s", taskID, code, out)
+	// A cancelled Task reaches its final state as soon as the user asks, while
+	// the Agent is still unwinding (PLAN.md M4.8 item 8.12), so the last rows can
+	// land a moment after `aos run` returns. Poll until they all do.
+	var out string
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		o, code := m.aos(t, "audit", taskID)
+		if code != 0 {
+			t.Fatalf("aos audit %s: exit %d\n%s", taskID, code, o)
+		}
+		out = o
+		missing := false
+		for _, r := range rows {
+			missing = missing || !auditRow(r).MatchString(out)
+		}
+		if !missing || time.Now().After(deadline) {
+			break // report what is still missing below, with the rows in hand
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 	for _, r := range rows {
-		by := `\S+`
-		if r.by != "" {
-			by = regexp.QuoteMeta(r.by)
-		}
-		re := regexp.MustCompile(`(?m)\s` + regexp.QuoteMeta(r.tool) + `\s+` + regexp.QuoteMeta(r.decision) + `\s+` + by + `(\s|$)`)
-		if !re.MatchString(out) {
+		if !auditRow(r).MatchString(out) {
 			t.Errorf("the Audit Log of %s has no %s row decided %s by %q:\n%s", taskID, r.tool, r.decision, r.by, out)
 		}
 	}
+}
+
+func auditRow(r row) *regexp.Regexp {
+	by := `\S+`
+	if r.by != "" {
+		by = regexp.QuoteMeta(r.by)
+	}
+	return regexp.MustCompile(`(?m)\s` + regexp.QuoteMeta(r.tool) + `\s+` + regexp.QuoteMeta(r.decision) + `\s+` + by + `(\s|$)`)
 }
 
 // ---------------------------------------------------------------- terminals

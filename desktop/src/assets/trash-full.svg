@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Trash (full)">
+  <defs>
+    <linearGradient id="rbgf" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#c9ced8"/>
+      <stop offset="0.5" stop-color="#f4f6fa"/>
+      <stop offset="1" stop-color="#b9bfca"/>
+    </linearGradient>
+  </defs>
+  <!-- Crumpled paper heaped above the rim: the full state (PLAN.md M4.8 item 8.19). -->
+  <path d="M40 24 L47 8 L62 13 L71 4 L80 15 L94 12 L92 26 Z" fill="#eef1f6" stroke="#b9bfca" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M34 26 L38 14 L50 19 L56 10 L60 26 Z" fill="#dfe4ec" stroke="#b9bfca" stroke-width="2" stroke-linejoin="round"/>
+  <ellipse cx="64" cy="26" rx="38" ry="9" fill="#8d95a3"/>
+  <path d="M26 28 L34 112 A8 8 0 0 0 42 120 H86 A8 8 0 0 0 94 112 L102 28 Z" fill="url(#rbgf)"/>
+  <ellipse cx="64" cy="28" rx="38" ry="8" fill="#5f6775"/>
+  <path d="M48 44 L51 108 M64 44 V108 M80 44 L77 108" stroke="#9aa2af" stroke-width="4" stroke-linecap="round"/>
+</svg>

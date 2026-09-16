@@ -18,6 +18,21 @@ var dotfiles = []string{".ssh", ".gnupg", ".config", ".bashrc", ".profile", ".ba
 // envSamples are .env-style files that hold no secrets.
 var envSamples = map[string]bool{".env.example": true, ".env.sample": true, ".env.template": true, ".env.dist": true}
 
+// DefaultPaths returns the built-in Protected Paths for a Machine whose home
+// folder is home: the system folders and the protected dotfiles (PLAN.md §7.3).
+// It is the one list every caller reads, so the Agent's policy, `aos protect`
+// and Finder's lock badge can never disagree about what is protected.
+func DefaultPaths(home string) []string {
+	out := append([]string{}, systemPaths...)
+	for _, name := range dotfiles {
+		out = append(out, filepath.Join(home, name))
+	}
+	return out
+}
+
+// Within reports whether path is dir or inside it.
+func Within(path, dir string) bool { return within(path, dir) }
+
 // Protection is the set of Protected Paths (PLAN.md §7.3).
 type Protection struct {
 	rules []string
@@ -32,10 +47,7 @@ type Protection struct {
 
 // NewProtection returns the default Protected Paths for home plus the paths the user locked.
 func NewProtection(home string, locked []string) *Protection {
-	p := &Protection{rules: append([]string{}, systemPaths...)}
-	for _, name := range dotfiles {
-		p.rules = append(p.rules, filepath.Join(home, name))
-	}
+	p := &Protection{rules: DefaultPaths(home)}
 	for _, l := range locked {
 		p.rules = append(p.rules, filepath.Clean(l))
 	}

@@ -136,3 +136,21 @@ test("a remapped shortcut fires its action", async ({ page }) => {
     await win.getByRole("button", { name: "Restore defaults" }).click();
   }
 });
+
+// Failures reach the user as sentences, not Go internals: locking a path that
+// is not there used to show "[not_found] lstat …: no such file or directory"
+// (PLAN.md M4.8 item 8.13).
+test("a failed lock explains itself in plain words", async ({ page }) => {
+  await page.goto("/");
+  await openViaSpotlight(page, "System Settings");
+  const win = settingsWin(page);
+  await win.locator(".set__navitem", { hasText: "Protected Paths" }).click();
+
+  const missing = "/home/aos/pw-not-a-real-path";
+  await win.getByLabel("Path to protect").fill(missing);
+  await win.getByRole("button", { name: "Lock path" }).click();
+
+  const error = win.getByRole("alert");
+  await expect(error).toBeVisible({ timeout: 10_000 });
+  await expect(error).toHaveText(`There is nothing at ${missing} to lock`);
+});

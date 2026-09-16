@@ -7,6 +7,7 @@ import { ConnectError } from "@connectrpc/connect";
 import { useEffect, useRef, useState } from "react";
 
 import { supervisor } from "../../api/client";
+import { friendlyError } from "../../api/error";
 
 const MAX_CHARS = 200_000;
 
@@ -34,7 +35,7 @@ export function LogPanel({ name, onClose }: { name: string; onClose: () => void 
         }
       } catch (err) {
         if (!controller.signal.aborted && ConnectError.from(err).code !== 1 /* Canceled */) {
-          setError(ConnectError.from(err).message);
+          setError(friendlyError(err));
         }
       }
     })();

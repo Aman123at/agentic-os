@@ -3,10 +3,10 @@
 // SoftwareService.ListLedger, paged as you ask for more. Each operation shows
 // the before and after state of everything it changed (a package version, an
 // /etc file, a Service).
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useState } from "react";
 
 import { software } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { LedgerOp } from "../../gen/aos/v1/types_pb";
 import { useDesktop } from "../../store";
 import { taskTitle, when } from "../agent/format";
@@ -36,7 +36,7 @@ export default function Ledger() {
       setOps((old) => (fresh ? resp.ops : [...old, ...resp.ops]));
       setEnd(resp.ops.length < PAGE);
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }

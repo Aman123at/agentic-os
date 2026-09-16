@@ -2,10 +2,10 @@
 // the Machine has, from SoftwareService.ListPackages, grouped by manager (apt,
 // pipx, npm…). Packages installed as a dependency of another are marked. A filter
 // narrows a long list.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { software } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { Package } from "../../gen/aos/v1/types_pb";
 
 export default function Packages() {
@@ -21,7 +21,7 @@ export default function Packages() {
       setError("");
       setPackages(resp.packages);
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setLoading(false);
     }

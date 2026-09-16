@@ -58,8 +58,8 @@ func TestATaskRecordsItsCheckpointAndACancelOffersTheRestore(t *testing.T) {
 	if err := h.m.Cancel(context.Background(), created.Id); err != nil {
 		t.Fatal(err)
 	}
-	task := h.waitState(t, created.Id, aosv1.TaskState_TASK_STATE_CANCELLED)
-	if task.CheckpointId != "c_1234" || !strings.Contains(task.Summary, "aos checkpoint restore c_1234") {
+	task := h.waitSummary(t, created.Id, aosv1.TaskState_TASK_STATE_CANCELLED, "aos checkpoint restore c_1234")
+	if task.CheckpointId != "c_1234" {
 		t.Errorf("task %+v", task)
 	}
 	if len(sw.installs) != 1 || sw.installs[0] != "apt:nginx" {

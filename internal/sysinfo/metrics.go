@@ -63,6 +63,15 @@ func (s *Sampler) read(rel string) string {
 	return string(b)
 }
 
+// Prime takes the first reading of both rates and throws it away, so the first
+// sample the Desktop asks for already has a previous one to measure against.
+// Without it Activity Monitor's first render shows "—" for every CPU figure
+// (PLAN.md M4.8 item 8.14).
+func (s *Sampler) Prime() {
+	s.Metrics()
+	s.Processes()
+}
+
 // Metrics samples the Machine now.
 func (s *Sampler) Metrics() *aosv1.MetricsResponse {
 	s.mu.Lock()

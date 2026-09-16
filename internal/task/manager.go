@@ -477,9 +477,20 @@ func (m *Manager) Cancel(ctx context.Context, id string) error {
 	if r, ok := m.running[id]; ok {
 		m.mu.Unlock()
 		r.mu.Lock()
+		already := r.cancelled
 		r.cancelled = true
 		r.mu.Unlock()
+		if already {
+			// It was cancelled a moment ago and is still unwinding; there is
+			// nothing left for a second cancel to stop.
+			return fmt.Errorf("task %s has already been cancelled", id)
+		}
 		r.cancel()
+		// The Agent can take seconds to unwind — a model stream to close, a
+		// command to die — and the user should not watch "Running" all that
+		// while (PLAN.md M4.8 item 8.12). Say Cancelled now; the run writes the
+		// state again when it returns, with the Restore hint if it has one.
+		r.setState(aosv1.TaskState_TASK_STATE_CANCELLED, "Cancelled by the user.")
 		return nil
 	}
 	for i, q := range m.queue {
@@ -517,6 +528,40 @@ func (m *Manager) StopAll(ctx context.Context) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// Delete removes a finished Task and everything that hangs off it. It refuses
+// while the Task is queued, running or waiting for the user, so a live Task is
+// never pulled out from under its Agent: cancel it first. The Audit Log keeps
+// its record, being append-only.
+func (m *Manager) Delete(ctx context.Context, id string) error {
+	m.mu.Lock()
+	busy := slices.Contains(m.queue, id)
+	if _, ok := m.running[id]; ok {
+		busy = true
+	}
+	if _, ok := m.asking[id]; ok {
+		busy = true
+	}
+	for _, w := range m.waiting {
+		if w.run.id == id {
+			busy = true
+			break
+		}
+	}
+	m.mu.Unlock()
+	if busy {
+		return fmt.Errorf("task %s is still active; cancel it first", id)
+	}
+	// Confirm it exists (and is not one we just missed) before the write.
+	if _, err := getTask(ctx, m.cfg.DB.Read(), id); err != nil {
+		return err
+	}
+	if err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error { return deleteTask(ctx, tx, id) }); err != nil {
+		return err
+	}
+	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TaskChanged{TaskChanged: &aosv1.TaskChanged{Task: &aosv1.Task{Id: id}, Removed: true}}})
+	return nil
 }
 
 // setState changes the Task's state; finished states record the summary.

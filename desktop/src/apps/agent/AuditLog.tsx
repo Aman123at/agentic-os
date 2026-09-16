@@ -2,13 +2,14 @@
 // decided it, newest first, from SystemService.Audit. It pages as you scroll,
 // renders only the rows in view, and filters to one Task. Picking a row shows
 // its arguments (secrets already redacted by aosd) and result.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { system } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { AuditEntry } from "../../gen/aos/v1/types_pb";
 import { useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
+import { Confirm } from "../../ui/Confirm";
 import { VirtualList } from "../../ui/VirtualList";
 import { millis, taskTitle, when } from "./format";
 
@@ -23,10 +24,16 @@ interface Page {
 
 export default function AuditLog() {
   const [taskId, setTaskId] = useWinState("auditTask", "");
+  // A view-level floor: the id of the newest entry when the user last cleared.
+  // The Audit Log is append-only (an SQL trigger forbids DELETE), so "Clear"
+  // only hides what is now in view; Show all removes the floor. Kept with the
+  // window like the Task filter.
+  const [floor, setFloor] = useWinState("auditFloor", "");
   const tasks = useDesktop((s) => s.tasks);
   const [page, setPage] = useState<Page>({ entries: [], end: false, loading: true });
   const [error, setError] = useState("");
   const [picked, setPicked] = useState<bigint | null>(null);
+  const [confirming, setConfirming] = useState(false);
   // The latest page and filter, for the scroll handler; seq drops answers to an
   // older filter.
   const current = useRef(page);
@@ -44,19 +51,24 @@ export default function AuditLog() {
       try {
         const resp = await system.audit({ taskId, limit: PAGE, beforeId });
         if (mine !== seq.current) return;
+        // Keep only entries newer than the floor. Hitting one at or below it
+        // means the visible window has no more above the floor, so this is the end.
+        const floorId = floor ? BigInt(floor) : null;
+        const kept = floorId === null ? resp.entries : resp.entries.filter((e) => e.id > floorId);
+        const reachedFloor = floorId !== null && kept.length < resp.entries.length;
         setError("");
         setPage((old) => ({
-          entries: fresh ? resp.entries : [...old.entries, ...resp.entries],
-          end: resp.entries.length < PAGE,
+          entries: fresh ? kept : [...old.entries, ...kept],
+          end: resp.entries.length < PAGE || reachedFloor,
           loading: false,
         }));
       } catch (err) {
         if (mine !== seq.current) return;
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
         setPage((old) => ({ ...old, loading: false }));
       }
     },
-    [taskId],
+    [taskId, floor],
   );
 
   useEffect(() => {
@@ -79,9 +91,22 @@ export default function AuditLog() {
             </option>
           ))}
         </select>
-        <span className="agent__count">{page.loading ? "Loading…" : `${page.entries.length}${page.end ? "" : "+"} entries`}</span>
+        <span className="agent__count">
+          {page.loading ? "Loading…" : `${page.entries.length}${page.end ? "" : "+"} entries`}
+          {floor && (
+            <>
+              {" · "}
+              <button className="agent__link" onClick={() => setFloor("")}>
+                Show all
+              </button>
+            </>
+          )}
+        </span>
         <button className="tasks__btn agent__refresh" onClick={() => void fetchPage(true)}>
           Refresh
+        </button>
+        <button className="tasks__btn tasks__btn--danger" disabled={page.entries.length === 0} onClick={() => setConfirming(true)}>
+          Clear
         </button>
       </div>
       {error && (
@@ -133,6 +158,19 @@ export default function AuditLog() {
           {entry.argumentsJson && <pre className="audit__args">{pretty(entry.argumentsJson)}</pre>}
           {entry.resultSummary && <div className="audit__result">{entry.resultSummary}</div>}
         </div>
+      )}
+      {confirming && (
+        <Confirm
+          title="Clear the Audit Log view?"
+          message="This hides the entries now in view. The Audit Log itself is append-only — nothing is deleted, and Show all brings them back."
+          confirmLabel="Clear"
+          onConfirm={() => {
+            setConfirming(false);
+            const newest = page.entries[0]?.id;
+            if (newest !== undefined) setFloor(newest.toString());
+          }}
+          onCancel={() => setConfirming(false)}
+        />
       )}
     </div>
   );

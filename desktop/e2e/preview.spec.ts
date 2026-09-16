@@ -55,3 +55,42 @@ test("Preview shows an image, pages through a PDF and plays a video through Rang
 
   exec(c, "aos", "rm", "-rf", `/home/aos/${dir}`);
 });
+
+// The zoom read-out used to print the zoom step, so a page drawn to fit the pane
+// said "100 %" whatever its real size (PLAN.md M4.8 item 8.20). It now reports
+// the size actually drawn, and the canvas agrees.
+test("the PDF zoom read-out matches the size the page is drawn at", async ({ page }) => {
+  const c = loadCompose();
+  const dir = `pw-zoom-${Date.now()}`;
+  await page.goto("/");
+  putFile(c, `~/${dir}/zoom.pdf`, pdf(["Only page"]));
+
+  await openApp(page, "Finder");
+  const finder = page.locator('.window[aria-label="Finder"]').last();
+  await finder.locator(".finder__sidebar").getByText("Home").click();
+  await finder.getByText(dir).dblclick();
+  await finder.getByText("zoom.pdf").dblclick();
+
+  const doc = page.locator('.window[aria-label="zoom.pdf"]');
+  const canvas = doc.locator("canvas");
+  await expect(canvas).toBeVisible();
+
+  const readOut = doc.locator(".pdf__zoom");
+  await expect(readOut).toHaveText(/^\d+%$/);
+  const shown = () => readOut.textContent().then((t) => Number(t!.replace("%", "")));
+  const drawn = () => canvas.boundingBox().then((b) => b!.width);
+
+  const firstPercent = await shown();
+  const firstWidth = await drawn();
+
+  // One step in doubles nothing in particular, but the ratio the read-out claims
+  // is the ratio the canvas actually grows by.
+  await doc.getByTitle("Zoom in").click();
+  await expect(readOut).not.toHaveText(`${firstPercent}%`);
+  const nextPercent = await shown();
+  const nextWidth = await drawn();
+  expect(nextWidth / firstWidth).toBeCloseTo(nextPercent / firstPercent, 1);
+
+  await doc.getByTitle("Close").click();
+  exec(c, "aos", "rm", "-rf", `/home/aos/${dir}`);
+});

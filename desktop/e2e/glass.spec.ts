@@ -45,3 +45,30 @@ test("sustained slow frames switch Liquid Glass off, with a notification", async
   // The switch reflects the off state; leave Glass off for later specs.
   await expect(glass).toHaveAttribute("aria-checked", "false");
 });
+
+// Switching the theme has to repaint the menu bar and the Dock. They are
+// backdrop-filtered layers, which Chrome does not re-read when only an
+// ancestor's custom properties change, so on the Host where M4.8 item 8.9 was
+// found they kept the old palette until some unrelated repaint. It does not
+// reproduce under headless Chromium — the palette swap alone is enough there —
+// so this spec cannot assert the pixels; it guards the nudge that fixes it:
+// applyTheme drops the filters for a frame (data-theming) and puts them back.
+test("switching the theme nudges the backdrop layers to repaint", async ({ page }) => {
+  await page.goto("/");
+  await openViaSpotlight(page, "System Settings");
+  const win = page.locator('.window[aria-label="System Settings"]').last();
+  await win.locator(".set__navitem", { hasText: "Appearance" }).click();
+  const themes = win.getByRole("radiogroup", { name: "Theme" });
+  const html = page.locator("html");
+
+  const seen = page.waitForFunction(() => document.documentElement.hasAttribute("data-theming"));
+  await themes.getByRole("radio", { name: "Dark" }).click();
+  await seen;
+  await expect(html).toHaveAttribute("data-theme", "dark");
+  // …and the filters come back, so Liquid Glass is not left switched off.
+  await expect(html).not.toHaveAttribute("data-theming", "");
+  await expect(page.locator(".menubar")).toHaveCSS("background-color", "rgba(38, 38, 42, 0.72)");
+
+  // Leave the Desktop on the default for the specs that follow.
+  await themes.getByRole("radio", { name: /^Auto/ }).click();
+});

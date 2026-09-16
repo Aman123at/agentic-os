@@ -44,3 +44,33 @@ test("the Trash in the Dock puts a file back and empties after asking", async ({
 
   sh(c, "aos", `rm -f ~/${keep}`);
 });
+
+// The Trash used to draw a generic document for everything and the Dock's tile
+// never changed (PLAN.md M4.8 item 8.19).
+test("the Trash uses type icons and the Dock shows a full bin", async ({ page }) => {
+  const c = loadCompose();
+  const name = `pw-trash-icon-${Date.now()}.png`;
+  sh(c, "aos", `printf 'not really a png\\n' > ~/${name}`);
+
+  await page.goto("/");
+  await openApp(page, "Finder");
+  const finder = page.locator('.window[aria-label="Finder"]').last();
+  await finder.locator(".finder__sidebar").getByText("Home").click();
+  await finder.locator(".finder__row", { hasText: name }).click({ button: "right" });
+  await page.getByRole("button", { name: "Move to Trash" }).click();
+
+  // The Dock's Trash swaps to the full bin, as on macOS.
+  const tile = page.locator('.dock__tile[title="Trash"]');
+  await expect(tile).toHaveAttribute("data-full", "");
+
+  // The deleted file keeps the icon its type gets in a folder listing.
+  await openApp(page, "Trash");
+  const trash = page.locator('.window[aria-label="Trash"]');
+  await expect(trash.locator(".finder__row", { hasText: name }).locator(".finder__icon")).toHaveText("🖼️");
+
+  // Put it back, so the Machine is left as it was — and the bin empties again.
+  await trash.locator(".finder__row", { hasText: name }).click({ button: "right" });
+  await page.getByRole("button", { name: "Put Back" }).click();
+  await expect(tile).not.toHaveAttribute("data-full", "");
+  sh(c, "aos", `rm -f ~/${name}`);
+});

@@ -3,11 +3,11 @@
 // — with live logs through StreamLogs, and every listening port with a button
 // that opens it. It refreshes on ServiceChanged events (the store's serviceEpoch)
 // and on a light poll, so ports stay current.
-import { ConnectError } from "@connectrpc/connect";
 import { useCallback, useMemo, useState } from "react";
 
 import { openPort } from "../../api/ports";
 import { supervisor } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { Listener, ServiceInfo } from "../../gen/aos/v1/types_pb";
 import { useDesktop } from "../../store";
 import { Confirm } from "../../ui/Confirm";
@@ -33,7 +33,7 @@ export default function Services() {
       setServices(resp.services);
       setListeners(resp.listeners);
     } catch (err) {
-      if (!signal?.aborted) setError(ConnectError.from(err).message);
+      if (!signal?.aborted) setError(friendlyError(err));
     }
   }, []);
 
@@ -47,7 +47,7 @@ export default function Services() {
         await fn();
         await refresh();
       } catch (err) {
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
       } finally {
         setBusy("");
       }

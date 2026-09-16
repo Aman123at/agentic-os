@@ -13,6 +13,7 @@ import previewIcon from "./preview.svg?url";
 import terminalIcon from "./terminal.svg?url";
 import texteditIcon from "./textedit.svg?url";
 import trashIcon from "./trash.svg?url";
+import trashFullIcon from "./trash-full.svg?url";
 import wallpaperDark from "./wallpaper-dark.svg?url";
 import wallpaperLight from "./wallpaper-light.svg?url";
 
@@ -31,6 +32,10 @@ export const appArt: Partial<Record<AppId, string>> = {
   textedit: texteditIcon,
   trash: trashIcon,
 };
+
+// The Trash tile swaps to this while the Trash has something in it, the way
+// macOS shows a full bin (PLAN.md M4.8 item 8.19).
+export const trashFullArt = trashFullIcon;
 
 // The Dock's Downloads stack, which is not an app.
 export const downloadsArt = downloadsIcon;

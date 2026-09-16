@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 
 	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
 	"github.com/amantiwari/agentic-os/internal/api"
+	"github.com/amantiwari/agentic-os/internal/policy"
 	"github.com/amantiwari/agentic-os/internal/session"
 	"github.com/amantiwari/agentic-os/internal/store"
 )
@@ -61,8 +63,13 @@ func (l *locks) paths() []string {
 
 // Protect implements api.Protected. Locks apply to Agent Sessions from their next command.
 func (l *locks) Protect(ctx context.Context, path string) error {
+	// A plain sentence, not the lstat error: this reaches the user in System
+	// Settings and Finder (PLAN.md M4.8 item 8.13).
 	if _, err := os.Lstat(path); err != nil {
-		return err
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("there is nothing at %s to lock", path)
+		}
+		return fmt.Errorf("%s cannot be read, so it cannot be locked", path)
 	}
 	if !strings.HasPrefix(path, l.home+"/") {
 		return fmt.Errorf("only paths inside the home folder can be locked; %s is outside it", path)
@@ -96,24 +103,41 @@ func (l *locks) Unprotect(ctx context.Context, path string) error {
 	return l.load()
 }
 
-// IsProtected implements api.Protected (for Finder's lock badge).
-func (l *locks) IsProtected(path string) bool {
-	for _, p := range l.paths() {
+// IsProtected implements api.Protected (for Finder's lock badge): it answers
+// why path is protected — "user" for a path the user locked, "default" for a
+// built-in Protected Path, "inherited" for anything inside one of those, and ""
+// when it is not protected. Finder shows the badge for all three and offers
+// Unprotect only for "user", since that is the only kind that can be unlocked.
+func (l *locks) IsProtected(path string) string {
+	path = filepath.Clean(path)
+	user := l.paths()
+	defaults := policy.DefaultPaths(l.home)
+	for _, p := range user {
 		if path == p {
-			return true
+			return "user"
 		}
 	}
-	return false
+	for _, p := range defaults {
+		if path == p {
+			return "default"
+		}
+	}
+	for _, p := range append(user, defaults...) {
+		if policy.Within(path, p) {
+			return "inherited"
+		}
+	}
+	return ""
 }
 
 // List implements api.Protected.
 func (l *locks) List(context.Context) ([]*aosv1.ListProtectedResponse_Entry, error) {
 	var out []*aosv1.ListProtectedResponse_Entry
-	for _, p := range []string{"/etc", "/usr", "/bin", "/sbin", "/lib*", "/boot", "/var/lib", "/shared (the Shared Folder)"} {
+	for _, p := range policy.DefaultPaths(l.home) {
+		if p == "/shared" {
+			p = "/shared (the Shared Folder)"
+		}
 		out = append(out, &aosv1.ListProtectedResponse_Entry{Path: p, Source: "default", Kernel: true})
-	}
-	for _, name := range []string{".ssh", ".gnupg", ".config", ".bashrc", ".profile", ".bash_logout"} {
-		out = append(out, &aosv1.ListProtectedResponse_Entry{Path: filepath.Join(l.home, name), Source: "default", Kernel: true})
 	}
 	for _, p := range l.paths() {
 		out = append(out, &aosv1.ListProtectedResponse_Entry{Path: p, Source: "user", Kernel: true})

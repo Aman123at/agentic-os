@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
-import { appArt } from "../assets";
+import { appArt, trashFullArt } from "../assets";
 import { APPS, DOCK_APPS, type AppId } from "../apps/registry";
 import { useDesktop } from "../store";
 import { DownloadsFan, DownloadsTile } from "./DownloadsStack";
@@ -17,6 +17,7 @@ export default function Dock() {
   // selector that built a new Set each call would loop (never Object.is-equal).
   const windows = useDesktop((s) => s.windows);
   const running = new Set(windows.map((w) => w.appId));
+  const trashCount = useDesktop((s) => s.trashCount);
   const ref = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
   const [fan, setFan] = useState<DOMRect | null>(null);
@@ -56,18 +57,22 @@ export default function Dock() {
           open={fan !== null}
           onToggle={() => setFan((f) => (f ? null : (ref.current?.querySelector('.dock__tile[title="Downloads"]')?.getBoundingClientRect() ?? null)))}
         />
-        <DockTile id="trash" running={running.has("trash")} onOpen={() => openApp("trash")} />
+        <DockTile id="trash" running={running.has("trash")} onOpen={() => openApp("trash")} art={trashCount > 0 ? trashFullArt : undefined} />
       </div>
       {fan && <DownloadsFan anchor={fan} onClose={closeFan} />}
     </div>
   );
 }
 
-function DockTile({ id, running, onOpen }: { id: AppId; running: boolean; onOpen: () => void }) {
+// A tile can override its art: the Trash shows a full bin while it has something
+// in it, as on macOS — the picture is the signal, with no count (PLAN.md M4.8
+// item 8.19). The tooltip stays the app's name, so the Dock reads the same
+// whatever state a tile is in.
+function DockTile({ id, running, onOpen, art: override }: { id: AppId; running: boolean; onOpen: () => void; art?: string }) {
   const app = APPS[id];
-  const art = appArt[id];
+  const art = override ?? appArt[id];
   return (
-    <button className="dock__tile" title={app.name} onClick={onOpen}>
+    <button className="dock__tile" title={app.name} data-full={override ? "" : undefined} onClick={onOpen}>
       {art ? (
         <img className="dock__icon dock__icon--art" src={art} alt="" draggable={false} />
       ) : (

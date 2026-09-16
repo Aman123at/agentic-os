@@ -10,6 +10,20 @@ export function applyTheme(pref: ThemePref): void {
   } else {
     root.dataset.theme = pref;
   }
+  repaintBackdrops();
+}
+
+// Chrome does not re-read what is behind a backdrop-filtered layer when only an
+// ancestor's custom properties change, so the menu bar and the Dock kept the old
+// palette until some unrelated repaint (PLAN.md M4.8 item 8.9). Dropping the
+// filter for one frame tears those layers down and rebuilds them against the new
+// theme; index.css turns backdrop-filter off while data-theming is set.
+function repaintBackdrops(): void {
+  const root = document.documentElement;
+  root.dataset.theming = "";
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => delete root.dataset.theming);
+  });
 }
 
 // resolvedTheme is what the user actually sees, following the Host when "auto".

@@ -2,10 +2,10 @@
 // here wins over the one from .env, across restarts, until "Use key from .env".
 // Only a hint (sk-…abcd) of any key ever leaves aosd, so the field starts empty
 // and the current key shows only as that hint.
-import { ConnectError } from "@connectrpc/connect";
 import { useState } from "react";
 
 import { settings } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import { useDesktop } from "../../store";
 
 export default function ApiKeyPane() {
@@ -27,7 +27,7 @@ export default function ApiKeyPane() {
       setSource("settings");
       setDraft("");
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }
@@ -41,7 +41,7 @@ export default function ApiKeyPane() {
       setHint(resp.hint);
       setSource(resp.hint ? "env" : "");
     } catch (err) {
-      setError(ConnectError.from(err).message);
+      setError(friendlyError(err));
     } finally {
       setBusy(false);
     }

@@ -2,10 +2,10 @@
 // now, each with its Agent Session(s) and a button that opens the Terminal to
 // Watch that Session read-only. Tasks come live from the store; Sessions are
 // polled, since a Task's Session comes and goes as it works.
-import { ConnectError } from "@connectrpc/connect";
 import { useMemo, useState } from "react";
 
 import { sessions as sessionApi } from "../../api/client";
+import { friendlyError } from "../../api/error";
 import type { SessionInfo } from "../../gen/aos/v1/services_pb";
 import { useDesktop } from "../../store";
 import { isLive, shortCost, stateLabel, taskTitle, when } from "../agent/format";
@@ -26,7 +26,7 @@ export default function Agents() {
       setError("");
       setSessions(resp.sessions.filter((s) => s.agent && !s.ended));
     } catch (err) {
-      if (!signal.aborted) setError(ConnectError.from(err).message);
+      if (!signal.aborted) setError(friendlyError(err));
     }
   }, POLL_MS);
 

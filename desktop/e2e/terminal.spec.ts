@@ -2,7 +2,7 @@
 // and Watch replays an Agent's Session even after its Task has ended. The xterm
 // buffer is read through the test-only hook, so the checks are renderer-
 // independent (WebGL draws to a canvas with no DOM text).
-import { docker, expect, loadCompose, openApp, startTask, test } from "./harness";
+import { docker, expect, loadCompose, openApp, sh, startTask, test } from "./harness";
 import { termText } from "./term-helpers";
 
 test("a User Session runs a command as aos", async ({ page }) => {
@@ -60,4 +60,45 @@ test("Watch replays an Agent Session whose Task has ended", async ({ page }) => 
   // Attaching replays what the Agent's terminal showed, then reports the end.
   await expect.poll(() => termText(page), { timeout: 15_000 }).toContain("watch-replay-ok");
   await expect.poll(() => termText(page)).toContain("[the session ended]");
+});
+
+test("a new Session opens on a clean prompt", async ({ page }) => {
+  await page.goto("/");
+  await openApp(page, "Terminal");
+  await page.waitForFunction(() => Boolean((window as unknown as { __aosTerm?: unknown }).__aosTerm));
+
+  // The framing aosd types to synchronise with the shell is internal plumbing
+  // (PLAN.md §10); what the user opens on is a prompt, not `__aos_c …`.
+  await expect.poll(() => termText(page), { timeout: 10_000, message: "the Session never drew a prompt" }).toContain("aos$");
+  expect(await termText(page)).not.toContain("__aos_c");
+});
+
+test("a reload re-attaches the Session instead of leaving it running", async ({ page }) => {
+  const c = loadCompose();
+  const shells = () => Number(sh(c, "root", "ls -d /run/aos/sessions/u_* 2>/dev/null | wc -l").trim());
+
+  await page.goto("/");
+  await openApp(page, "Terminal");
+  const term = page.locator('.window[aria-label="Terminal"]').last();
+  await expect(term.locator(".term__pane .xterm")).toBeVisible();
+  await page.waitForFunction(() => Boolean((window as unknown as { __aosTerm?: unknown }).__aosTerm));
+
+  const marker = `reattach-${Date.now()}`;
+  await term.locator(".term__pane").click();
+  await page.keyboard.type(`echo ${marker}`);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => termText(page), { timeout: 15_000 }).toContain(marker);
+  const before = shells();
+
+  // Let the debounced save record which Session this window has, then reload.
+  await page.waitForTimeout(900);
+  await page.reload();
+  await expect(page.locator('.window[aria-label="Terminal"]').last().locator(".term__pane .xterm")).toBeVisible();
+  await page.waitForFunction(() => Boolean((window as unknown as { __aosTerm?: unknown }).__aosTerm));
+
+  // The same shell: its scrollback is replayed, and no second one was started.
+  await expect
+    .poll(() => termText(page), { timeout: 15_000, message: "the reload did not re-attach the Session" })
+    .toContain(marker);
+  expect(shells(), "the reload started another shell and orphaned the old one").toBe(before);
 });

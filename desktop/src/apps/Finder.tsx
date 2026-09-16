@@ -5,14 +5,16 @@
 // which starts a Task. The open folder refreshes live through Watch (§15), and
 // long folders are virtualised (§4.3 rule 5).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConnectError } from "@connectrpc/connect";
 
 import { files, trash } from "../api/client";
+import { friendlyError } from "../api/error";
 import { watchFolder } from "../api/watch";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import { Confirm } from "../ui/Confirm";
+import { ContextMenu, MenuItem } from "../ui/ContextMenu";
+import { Skeleton } from "../ui/Skeleton";
 import { VirtualList } from "../ui/VirtualList";
 import {
   PLACES,
@@ -48,6 +50,10 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   // The folder and view are kept with the window, so a reload reopens them.
   const [savedDir, saveDir] = useWinState("dir", "~");
   const [savedView, saveView] = useWinState("view", "list");
+  // The Trash has no event of its own, so the Desktop counts it after every
+  // change made here; the Dock's tile reads that count (PLAN.md M4.8 item 8.19).
+  const setTrashCount = useDesktop((s) => s.setTrashCount);
+  const refreshTrashCount = useDesktop((s) => s.refreshTrashCount);
   const [dir, setDir] = useState<string>(trashOnly ? TRASH : savedDir);
   const [entries, setEntries] = useState<FileInfo[]>([]);
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
@@ -92,6 +98,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
       try {
         if (loc === TRASH) {
           const items = (await trash.listTrash({})).items;
+          setTrashCount(items.length);
           if (!current()) return;
           setTrashItems(items);
           setEntries([]);
@@ -102,13 +109,13 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
         }
       } catch (err) {
         if (!current()) return;
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
         setEntries([]);
         setTrashItems([]);
         setLoading(false);
       }
     },
-    [show],
+    [show, setTrashCount],
   );
 
   // A folder follows the Machine through Watch; the Trash is listed when opened
@@ -212,19 +219,22 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
       try {
         await fn();
         reload();
+        void refreshTrashCount();
       } catch (err) {
-        setError(ConnectError.from(err).message);
+        setError(friendlyError(err));
       } finally {
         setBusy("");
       }
     },
-    [reload],
+    [reload, refreshTrashCount],
   );
 
   const doDownload = (e: FileInfo) => downloadToHost(e.path, e.name);
+  // Only a path the user locked can be unlocked; the menu disables the item for
+  // the other kinds, so this decides on the same field it shows.
   const doProtect = (e: FileInfo) =>
-    run(e.protected ? "Unprotecting…" : "Protecting…", () =>
-      e.protected ? files.unprotect({ path: e.path }) : files.protect({ path: e.path }),
+    run(e.protectSource === "user" ? "Unprotecting…" : "Protecting…", () =>
+      e.protectSource === "user" ? files.unprotect({ path: e.path }) : files.protect({ path: e.path }),
     );
   const doDelete = (e: FileInfo) => run(`Moving ${e.name} to Trash…`, () => files.delete({ path: e.path }));
   const doRestore = (it: TrashItem) => run("Restoring…", () => trash.restore({ id: it.id }));
@@ -394,6 +404,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
             // a path does not flash.
             <ColumnView
               dir={dir}
+              loading={loading}
               entries={loading || error ? [] : entries}
               selected={selected}
               onReveal={reveal}
@@ -401,7 +412,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
               onMenu={(x, y, file) => setMenu({ x, y, file })}
             />
           ) : loading ? (
-            <div className="finder__empty">Loading…</div>
+            <Skeleton />
           ) : error ? (
             <div className="finder__empty finder__empty--error">{error}</div>
           ) : inTrash ? (
@@ -466,7 +477,10 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
               <MenuItem label="Download…" onClick={() => act(() => doDownload(menu.file!))} />
             </>
           )}
-          <MenuItem label={menu.file.protected ? "Unprotect" : "🔒 Protect"} onClick={() => act(() => doProtect(menu.file!))} />
+          {(() => {
+            const it = protectItem(menu.file);
+            return <MenuItem label={it.label} title={it.title} disabled={it.disabled} onClick={() => act(() => doProtect(menu.file!))} />;
+          })()}
           <MenuItem label="Ask Agent…" onClick={() => act(() => setAsk(menu.file!))} />
           <div className="menu__sep" />
           <MenuItem label="Move to Trash" danger onClick={() => act(() => doDelete(menu.file!))} />
@@ -559,7 +573,7 @@ function FileList({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsP
           <span className="finder__col-name">
             <span className="finder__icon">{iconFor(e)}</span>
             <span className="finder__name">{e.name}</span>
-            {e.protected && <span className="finder__lock" title="Protected">🔒</span>}
+            {e.protected && <span className="finder__lock" title={lockTitle(e)}>🔒</span>}
           </span>
           <span className="finder__col-size">{formatSize(e.size, e.dir)}</span>
           <span className="finder__col-when">{formatWhen(e.modifiedAt)}</span>
@@ -587,7 +601,7 @@ function IconGrid({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsP
         >
           <span className="finder__tile-icon">{iconFor(e)}</span>
           <span className="finder__tile-name">{e.name}</span>
-          {e.protected && <span className="finder__tile-lock" title="Protected">🔒</span>}
+          {e.protected && <span className="finder__tile-lock" title={lockTitle(e)}>🔒</span>}
         </button>
       ))}
     </div>
@@ -600,6 +614,7 @@ function IconGrid({ entries, selected, onSelect, onOpen, onMenu, onMove }: RowsP
 // and clicking a file selects it in its folder.
 function ColumnView({
   dir,
+  loading,
   entries,
   selected,
   onReveal,
@@ -607,6 +622,7 @@ function ColumnView({
   onMenu,
 }: {
   dir: string;
+  loading: boolean;
   entries: FileInfo[];
   selected: string;
   onReveal: (dir: string, select: string) => void;
@@ -633,6 +649,7 @@ function ColumnView({
             key={c.path}
             path={c.path}
             live={last ? entries : undefined}
+            loading={last && loading}
             isOn={(e) => (last ? e.path === selected : e.name === next)}
             onClick={(e) => (e.dir ? onReveal(join(c.path, e.name), "") : onReveal(c.path, e.path))}
             onOpen={onOpen}
@@ -659,6 +676,7 @@ function ColumnView({
 function Column({
   path,
   live,
+  loading,
   isOn,
   onClick,
   onOpen,
@@ -666,24 +684,30 @@ function Column({
 }: {
   path: string;
   live?: FileInfo[];
+  loading?: boolean;
   isOn: (e: FileInfo) => boolean;
   onClick: (e: FileInfo) => void;
   onOpen: (e: FileInfo) => void;
   onMenu: (x: number, y: number, file: FileInfo) => void;
 }) {
   const [listed, setListed] = useState<FileInfo[]>([]);
+  // Every column follows its folder, not just the open one: a file the Terminal
+  // creates appears without re-navigating (PLAN.md M4.8 item 8.17). watchFolder
+  // keeps this inside the Desktop's one-stream budget — the folder in front gets
+  // the stream, the columns behind it are polled.
   useEffect(() => {
     if (live) return;
-    let gone = false;
-    files.list({ path }).then(
-      (r) => !gone && setListed(r.entries),
-      () => !gone && setListed([]),
-    );
-    return () => {
-      gone = true;
-    };
+    return watchFolder(path, {
+      onEntries: setListed,
+      onError: () => setListed([]),
+    });
   }, [path, live]);
   const items = live ?? listed;
+  if (items.length === 0) {
+    // Blank while the listing is still on its way, so walking down a path does
+    // not flash "No items" at every step.
+    return <div className="finder__column finder__column--empty">{loading ? "" : "No items"}</div>;
+  }
   return (
     <VirtualList
       className="finder__column"
@@ -703,7 +727,7 @@ function Column({
         >
           <span className="finder__icon">{iconFor(e)}</span>
           <span className="finder__name">{e.name}</span>
-          {e.protected && <span className="finder__lock" title="Protected">🔒</span>}
+          {e.protected && <span className="finder__lock" title={lockTitle(e)}>🔒</span>}
           {e.dir && <span className="finder__colchev">›</span>}
         </div>
       )}
@@ -742,7 +766,9 @@ function TrashList({
           }}
         >
           <span className="finder__col-name">
-            <span className="finder__icon">{it.dir ? "📁" : "📄"}</span>
+            {/* The same type icons the folder listing uses, from the name the
+                item had before it was deleted (PLAN.md M4.8 item 8.19). */}
+            <span className="finder__icon">{iconFor({ name: basename(it.originalPath), dir: it.dir, symlink: false })}</span>
             <span className="finder__name">{it.originalPath}</span>
           </span>
           <span className="finder__col-size">{formatSize(it.size, it.dir)}</span>
@@ -753,20 +779,27 @@ function TrashList({
   );
 }
 
-function ContextMenu({ x, y, children }: { x: number; y: number; children: React.ReactNode }) {
-  return (
-    <div className="menu" style={{ left: x, top: y }} onClick={(e) => e.stopPropagation()}>
-      {children}
-    </div>
-  );
+// A Protected Path the user locked can be unlocked again; a built-in one, and
+// anything inside either kind, cannot (PLAN.md §7.3). The menu says which it is
+// rather than offering an action that would fail.
+function protectItem(e: FileInfo): { label: string; title: string; disabled: boolean } {
+  switch (e.protectSource) {
+    case "user":
+      return { label: "Unprotect", title: `You locked ${e.name}`, disabled: false };
+    case "default":
+      return { label: "🔒 Protected by AOS", title: "A built-in Protected Path; it cannot be unlocked", disabled: true };
+    case "inherited":
+      return { label: "🔒 Protected", title: "Inside a Protected Path; lock or unlock that folder instead", disabled: true };
+    default:
+      return { label: "🔒 Protect", title: "Lock this path: the Agent must ask before changing it", disabled: false };
+  }
 }
 
-function MenuItem({ label, onClick, danger }: { label: string; onClick: () => void; danger?: boolean }) {
-  return (
-    <button className={`menu__item${danger ? " menu__item--danger" : ""}`} onClick={onClick}>
-      {label}
-    </button>
-  );
+// lockTitle is the badge's tooltip, which says why the entry is locked.
+function lockTitle(e: FileInfo): string {
+  if (e.protectSource === "user") return "Protected: you locked this path";
+  if (e.protectSource === "inherited") return "Protected: inside a Protected Path";
+  return "Protected: a built-in Protected Path";
 }
 
 // AskDialog collects a request and starts a Task that references the file; the
