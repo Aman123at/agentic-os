@@ -30,3 +30,9 @@ The prototype at `tools/spikes/install/` is the concrete reference for the insta
 **The ADRs are written in the same commit as this PLAN section**, so every reference resolves when Aman reads it and one approval covers the package. The set is fixed: **new** ADR-0009 (*The Machine is the host: a native Linux install*) and ADR-0010 (*Configuration lives in one file, and runtime writes back to it*); **amended** 0003, 0004, 0005, 0007 and 0008. §20 gains rows for the new ADRs and for three amended decisions, since the table is titles-only and amendments are invisible in it otherwise.
 
 Two M6 code sub-tasks fall out of the review and belong in the sub-task list: `internal/agent/instructions.go:38` tells Agents "There is no systemd", and `internal/browser/browser.go:31,36` justifies `--no-sandbox` by a container that no longer exists.
+
+## Input from *Removing the Shared Folder* (resolved 2026-09-17)
+
+**Ordering is now fixed for two sub-tasks that were flagged as colliding:** the Shared Folder removal lands *before* the filesystem widening, because it shrinks `Layout` and `Policy()` and lets the widening rewrite one smaller function instead of rewriting the widened one twice.
+
+**The Trash generalisation belongs to the Shared Folder sub-task**, not the widening: Trash selection becomes an `st_dev` comparison rather than a path prefix, the item ID becomes a validated absolute path instead of a two-value enum, and `ListTrash` enumerates mounts from `/proc/self/mountinfo`. Sizing note: this also means `PrepareHome` needs a migration step to remove the root-owned `~/Shared` symlink, which no existing install can delete for itself.

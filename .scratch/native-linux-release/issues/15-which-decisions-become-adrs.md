@@ -89,3 +89,7 @@ Recorded so it is not re-litigated. All PLAN-section material, each for the same
 
 1. `internal/agent/instructions.go:38` tells every Agent "There is no systemd." False on the primary deployment.
 2. `internal/browser/browser.go:31,36` — the `--no-sandbox` flag and the comment justifying it by the container.
+
+## Input from *Removing the Shared Folder* (resolved 2026-09-17)
+
+The first of 0004's two blockers is cleared. Its home-layout list loses the `~/Shared` root-owned symlink and the sentence explaining why the Shared Folder is mounted outside home (M0 finding F2). The M6 amendment now waits only on *Installing Chromium lazily* (12), which owes ADR-0008 its text.

@@ -23,3 +23,7 @@ Work to do:
 ## Input from *The systemd unit and the `aos service` lifecycle* (resolved 2026-09-17)
 
 `aos daemon` (Agentic OS itself, one systemd unit) versus `aos service <name>` (a **Service**: a user's supervised program) is exactly the distinction the glossary must make unmissable, now that Machine and Host have collapsed and a real systemd exists on the box. `CONTEXT.md` currently lists "systemd unit" under _Avoid_ (`CONTEXT.md:23`), and `internal/agent/instructions.go:38` tells Agents "There is no systemd" — both need revisiting.
+
+## Input from *Removing the Shared Folder* (resolved 2026-09-17)
+
+The **Shared Folder** glossary entry (`CONTEXT.md:37`) is deleted, not rewritten. This ticket owns the replacement: a short **"Retired terms"** line at the foot of the glossary, naming words that appear in old commits, ADRs and docs but no longer exist in the product — Shared Folder first among them. Decide whether Host joins it or is redefined, since Machine and Host collapse rather than disappear.
