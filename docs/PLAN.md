@@ -16,7 +16,7 @@ A single `docker compose up --build` gives the user an Ubuntu Machine in which O
 
 - One Go binary `aosd`: Agent runtime, Tools, Sessions, policy, API, Service supervisor, embedded Desktop.
 - `aos` CLI inside the container: interactive chat and one-shot `aos run`.
-- The Desktop: menu bar, Dock, windows, Spotlight, Notification Center, light and dark themes; apps Finder, Terminal, Agent, TextEdit, Preview, Activity Monitor, Software, System Settings, Trash, Downloads.
+- The Desktop: menu bar, Dock, windows, Spotlight, Notification Center, light and dark themes; apps Finder, Terminal, Agent, TextEdit, Preview, Activity Monitor, Software, System Settings, Trash, Downloads; and, opt-in with `INCLUDE_BROWSER=true`, a Browser (ADR-0008, M5.2).
 - Protection: Autonomy levels, Approvals, Protected Paths (enforced by Landlock), Trash, Audit Log.
 - Software: Install Ledger, Checkpoints, Restore, Replay at startup.
 - Services with port forwarding to the Host.
@@ -24,7 +24,7 @@ A single `docker compose up --build` gives the user an Ubuntu Machine in which O
 
 **Not in v1** (candidates for v2)
 
-- Linux GUI apps streamed into a Desktop window (ADR-0001)
+- Linux GUI apps streamed into a Desktop window (ADR-0001), other than the opt-in Browser (ADR-0008)
 - A headless browser Tool for JavaScript-heavy sites
 - Sub-tasks (the data model allows them; not exposed)
 - Host-side CLI (the API already supports it)
@@ -157,6 +157,7 @@ flowchart LR
 | Software | Install Ledger, Checkpoints, Restore, Replay progress |
 | System Settings | API key (masked), model, Autonomy, Protected Paths, Memory, keyboard shortcuts, appearance, Mode and Landlock status |
 | Trash | Browse, restore, empty |
+| Browser | Opt-in (`INCLUDE_BROWSER=true`), pinned in the Dock when included: one page Chromium's headless shell renders inside the Machine and streams into the window; back, forward, reload and an address bar that searches DuckDuckGo for anything that isn't an address. Web pages only; downloads land in `~/Downloads` (M5.2, ADR-0008) |
 | Downloads stack | A Dock stack of the newest files in `~/Downloads`, with downloads in progress (M4) |
 
 **Rules for smoothness** (enforced by review and by the performance tests in §17)
@@ -302,13 +303,14 @@ volumes:
 
 Everything else is installed on demand and recorded in the Install Ledger.
 
-**Image size targets** (M0 finding F3), measured as the unpacked size (`du -sx /` in the image): `cli` < 520 MB, `ui` < 540 MB. Compressed (`docker image inspect` on arm64): < 180 MB.
+**Image size targets** (M0 finding F3), measured as the unpacked size (`du -sx /` in the image): `cli` < 520 MB, `ui` < 540 MB. Compressed (`docker image inspect` on arm64): < 180 MB. The opt-in `ui` build with `INCLUDE_BROWSER=true` has its own targets (M5.2): < 820 MB unpacked, < 300 MB compressed (measured 769 and 271 on arm64).
 
 ### 6.4 Environment variables (`.env.example`)
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `AOS_MODE` | `ui` | `cli` or `ui`; selects the build target and runtime behaviour |
+| `INCLUDE_BROWSER` | `false` | `true` or `false` only. `true` builds Chromium's headless shell into the `ui` image and adds the Browser app (M5.2); ignored, with a warning, in `cli` Mode. Needs `docker compose up --build` |
 | `OPENAI_API_KEY` | — | Delivered to `aosd` as a secret file. Can also be set later in System Settings. |
 | `OPENAI_MODEL` | `gpt-5.6-terra` | Model for Agents. Precedence: System Settings > `OPENAI_MODEL` > built-in default. |
 | `OPENAI_REASONING_EFFORT` | unset | Optional reasoning-effort hint |
@@ -533,6 +535,8 @@ stateDiagram-v2
 | `http_request` | Internet | Only when sending a body (upload) | HTML converted to readable Markdown |
 | `web_search` | Internet | No | OpenAI hosted tool |
 | `open_in_desktop` · `notify` | Desktop | No | Offered only in `ui` Mode. `open_in_desktop` shows a file or folder in the Finder, or, for a port, sends a notification with an Open button (browsers block pop-ups no click started); it never opens web addresses. `notify` is capped at 5 per Task |
+| `browser_open` · `browser_read` · `browser_back` | Browser | No | Offered only when the Machine includes the Browser (M5.3). Use the Desktop's Browser page, whose window opens for the user to watch; return the page's text and numbered interactive elements (12 KB inline, the rest via `read_output`) |
+| `browser_click` · `browser_type` | Browser | Only when submitting a form (a submit button, or `browser_type` with `submit`) | A real click or typing on an element number; grants are per site. `browser_type` refuses password, card and code fields |
 | `ask_user` | Coordination | — | Makes the Task Awaiting User with a question |
 | `remember` | Coordination | — | Proposal; the user accepts |
 | `create_checkpoint` | Coordination | No | |
@@ -833,6 +837,141 @@ downloads), a real Service and port forwarding, Checkpoints/Restore/Replay with
 real packages, Interrupt/Resume, Immersive mode, Safari path-forwarding mode, and
 the Windows and Linux Hosts.
 
+### M5.1 — Desktop polish (found while using the Agent app)
+
+Six gaps in the Desktop's own flow, all reachable from the Agent window and the
+desktop itself:
+
+1. **Start a Task from the Agent app.** A `＋ New Task` composer in the Tasks
+   toolbar (`NewTask.tsx`) with an Autonomy select, doing exactly what `aos run`
+   does — `store.createTask` already existed but was unreachable from the app.
+2. **Delete a Task.** New `TaskService.DeleteTask` RPC and `Manager.Delete`,
+   refused while the Task is queued/running/awaiting; it removes the Task's
+   `grants`, `approvals` and `task_steps` and the Task, in one tx (no migration —
+   only `audit_log` carries the no-delete trigger, and its `task_id` is FK-free,
+   so the record survives). `TaskChanged` gained `removed` (mirroring
+   `ServiceChanged`) so every tab converges. In the UI: a row context menu and a
+   Delete button in the detail, both behind `ui/Confirm.tsx`.
+3. **Clear the Audit Log.** A view-level floor in `AuditLog.tsx` (Clear / Show
+   all), never a DELETE — the append-only invariant is untouched, and the dialog
+   says so.
+4. **Dock spacing.** `gap 6→20px`, `padding 6px 10px→6px 14px`, so a hovered tile
+   (PEAK 1.6×) no longer overlaps its neighbours. No JS change.
+5. **Minimize / restore animation.** Windows fly to and from their Dock tile
+   (compositor-only WAAPI transform/opacity, `Window.tsx` + `dockRect.ts`), a
+   local `hidden` state lagging the store so `display:none` is not animated;
+   `prefers-reduced-motion` skips it.
+6. **Generated wallpapers.** Right-click the desktop → Change Wallpaper opens a
+   picker of ~6 generated CSS designs (`shell/wallpaper.ts`, `WallpaperPicker.tsx`)
+   tuned by hue and saturation, no network. `WallpaperPref` widened to keep the
+   `"aurora"|"none"` literals; `adoptPreferences`'s wallpaper compare fixed to a
+   value compare. Finder's `ContextMenu`/`MenuItem` were promoted to
+   `ui/ContextMenu.tsx` and `.menu` raised above the Dock.
+
+7. **Resizable panes.** The Agent app's view sidebar and Task list, and Finder's
+   Places sidebar, were fixed widths; all three now have a divider between them
+   (`ui/Splitter.tsx`). A drag writes the pane's width straight to the DOM in
+   rAF and commits once on pointer-up (§4.3 rule 1), so it never re-renders
+   React. It is a real `separator`: ←/→ nudge, Home/End run to the limits, Enter
+   or a double-click collapses and restores, and dragging well past the minimum
+   collapses too, leaving a chevron handle. Widths ride with the window through
+   `useWinState`, so a reload brings them back. The Browser's bookmarks sidebar
+   (M5.2 item 5) uses the same divider.
+
+Tests: `manager_test.go` (delete removes children, keeps the Audit Log, refuses
+while active); Playwright `agent.spec.ts` (New Task, row-menu delete, audit
+clear/show all), new `desktop.spec.ts` (right-click wallpaper, survives a
+reload) and new `split.spec.ts` (drag, reload, collapse/restore, keyboard).
+Nothing committed; changes stay in the tree for review.
+
+### M5.2 — Browser app (opt-in)
+
+`INCLUDE_BROWSER=true` in `.env` (default `false`, `ui` Mode only) adds a Browser
+to the Desktop, pinned in the Dock (ADR-0008):
+
+1. **Build.** `compose.yaml` passes `INCLUDE_BROWSER` as a build argument and to
+   `aosd`. The Dockerfile's `ui` target is `FROM ui-browser-${INCLUDE_BROWSER}`:
+   the `true` stage adds Playwright's pinned `chromium-headless-shell` (at
+   `/opt/aos-browser/chrome`), its libraries and two font families, and checks
+   with `ldd` that nothing is missing; a default build never downloads it.
+   `config` accepts only `true`/`false`.
+2. **`internal/browser`.** A minimal DevTools client over
+   `--remote-debugging-pipe`; one shared page; the screencast runs only while a
+   viewer can see it and waits for a viewer to send each frame before the next;
+   the browser starts on the first viewer and stops 5 minutes after the last.
+   `Policy` allows http(s) and `about:blank`, refuses aosd's port, turns bare
+   hosts into addresses and everything else into a DuckDuckGo search, and turns
+   away refused redirects; popups open in the page; dialogs are answered and
+   shown as notices; downloads go to `~/Downloads`. The daemon launches it as
+   `aos`, Landlock-confined like an Agent, in its own process group.
+3. **API.** `GET /ws/browser` (behind the usual auth): JPEG frames one way,
+   `state`/`notice` text frames and checked Commands the other.
+   `InfoResponse.browser` / `browser_unavailable` tell the Desktop, and
+   `aos doctor` prints them.
+4. **Desktop.** `apps/browser` (its own chunk, CSS included): toolbar, a canvas
+   the frames are drawn on outside React, pointer/wheel/keyboard input through a
+   hidden textarea (input methods and paste work), streaming paused while
+   minimized or the tab is hidden, the last address kept with the window.
+   `appShown` hides the app from the Dock and Spotlight unless the Machine asked
+   for it; opened in an image built without it, it says to rebuild.
+5. **Bookmarks.** A sidebar beside the page (`apps/browser/Bookmarks.tsx`),
+   behind the same `ui/Splitter.tsx` divider as Finder's Places, so it drags,
+   collapses and comes back. ☆ in the toolbar keeps the page showing (filled ★
+   when it is already kept, and starring while the sidebar is away opens it);
+   ▤ puts the sidebar away and back; a row opens its page, and its right-click
+   menu opens or removes it. The list is kept with the *window*, like the
+   address — each Browser window has its own and a reload brings it back — so a
+   bookmark is a JSON string in `useWinState`, and one that fails to parse reads
+   as no bookmarks rather than breaking the window.
+
+Tests: `config_test.go`; `browser_test.go` (address policy, input translation,
+frame acks, idle stop, popups) against a fake DevTools pipe; `api/browser_test.go`
+(auth, 404 without the Browser, the socket's messages); Playwright
+`browser.spec.ts` (Dock tile, a page served in the Machine, link, Back, a
+refused `file:` address, reload, and bookmarks: star, open, survive a reload,
+resize and hide the sidebar, remove from the row menu); `tools/ci image` builds and measures the
+`ui+browser` image and checks only it carries the browser.
+
+### M5.3 — Agents use the Browser
+
+When the Machine includes the Browser (M5.2), Agents get five Tools for its
+page, so "open the browser and go to github" happens in front of the user:
+
+1. **`internal/browser/agent.go`.** `Manager.Agent(taskID)` gives one Task at a
+   time a lease on the shared page (another Task gets "another Task is using
+   the Browser"); the lease keeps the browser running without a window, ends
+   with the Task (`Release`) or after 2 idle minutes, and shows in the
+   toolbar state (`agent`). The Agent's scripts run in an isolated world
+   (`Page.createIsolatedWorld`), which the page can't see: a snapshot returns
+   the page's text and up to 300 visible interactive elements, numbered and
+   remembered there until the document changes. Clicks are real mouse events
+   at the element's centre (after scrolling to it; a covered element is
+   clicked directly); typing selects the field and uses `Input.insertText`,
+   then Enter if asked; lists pick an option by its text. Password, card and
+   one-time-code fields are refused. Opening waits for the load (15 s at
+   most); a click waits briefly for one to start. None of this is reachable
+   from `Viewer.Do`, so a Browser window still can't run scripts.
+2. **Tools** (`internal/tool/browser.go`, §9). `browser_click` on a submit
+   button and `browser_type` with `submit` are Risky, with the site as the
+   grant folder; opening, reading and going back aren't. The first call in a
+   Task publishes `OpenInDesktop{app: "browser"}`, and the Desktop opens or
+   focuses the Browser window. Results say page content is data, not
+   instructions, and so does the system prompt's Browser section, which is
+   only there when the Tools are.
+3. **Desktop.** The toolbar shows "🤖 Agent is browsing" (it opens the Task)
+   while a Task holds the page; a window that starts while an Agent holds it
+   doesn't restore its own last address over the Agent's.
+
+Tests: `agent_test.go` (snapshot, isolated world, click, type and Enter,
+refused password field, stale numbers, waiting for a load, the lease) against
+the fake DevTools pipe; `tool/browser_test.go` (Risky classification, summaries,
+window shown once, output cut to `read_output`, busy and missing Browser);
+Playwright `browser.spec.ts` with `ui-browser.json` (the window opens on the
+Agent's page, typing, the submit Approval with a per-site grant, the badge).
+
+Not yet: screenshots for the model (needs image input in `llm`), more than
+one tab, and Agents signing in.
+
 ### M5 — Hardening and release
 
 - All §16 targets enforced in CI.
@@ -866,6 +1005,7 @@ the Windows and Linux Hosts.
 | `aosd` supervises Services (no systemd) | [ADR-0005](adr/0005-aosd-supervises-services.md) |
 | Connect-RPC + Session WebSocket | [ADR-0006](adr/0006-connect-rpc-plus-session-websocket.md) |
 | API always authenticated, even on localhost | [ADR-0007](adr/0007-api-always-authenticated.md) |
+| Opt-in Browser: one page streamed from a headless shell | [ADR-0008](adr/0008-opt-in-streamed-browser.md) |
 
 ## 21. Pending decisions
 
