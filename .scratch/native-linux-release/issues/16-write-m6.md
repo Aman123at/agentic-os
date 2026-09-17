@@ -18,3 +18,9 @@ It must:
 6. Note the order of work, including which sub-tasks must land before others (the Shared Folder removal and the filesystem widening both touch `Layout`).
 
 Then stop. **No implementation code until Aman approves it.**
+
+## Input from *install.sh, written and read* (resolved 2026-09-17)
+
+**"What software a native Machine has" is a sub-task of its own**, not a footnote of the installer. The Docker image curates ~25 apt packages plus a pinned Node; `install.sh` installs none of them; `internal/agent/instructions.go` promises Agents `pipx` and `npm` regardless.
+
+The prototype at `tools/spikes/install/` is the concrete reference for the installer sub-tasks. It is throwaway — M6 writes the real script.

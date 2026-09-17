@@ -18,3 +18,10 @@ Scaffold enough of it to judge, then settle:
 6. **Whether `install.sh` is served from this site**, since Aman's plan is `https://amantiwari.co.in/agent-os/install.sh` — if so, the site's deployment and the release workflow are coupled and the script must be versioned alongside.
 
 Link the scaffold from this ticket.
+
+## Input from *install.sh, written and read* (resolved 2026-09-17)
+
+- The Install page shows **both** invocation forms: `curl -fsSL … | sudo sh` first, the download-inspect-run form directly beneath it.
+- A page must state plainly that **the Desktop password is root on this server** — the `aos` user holds `NOPASSWD:ALL` and `bind: 0.0.0.0` puts the sign-in screen on the internet.
+- The documented path is **`/agentic-os/`**, not `/agent-os/`. The canonical script URL is `raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh`; the domain redirects to it, so a docs deploy can never break installs.
+- The commented `config.yml` template is the first documentation surface a user meets. Keep it and the docs saying the same thing about write-back, the generated password and the forced reset.
