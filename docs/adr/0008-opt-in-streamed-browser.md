@@ -22,3 +22,24 @@ Agents drive the page the user watches rather than a browser of their own: the u
 - **Opera / "Opera Light"**: rejected; no Linux arm64 build and no lite desktop edition.
 - **NetSurf, Dillo, surf**: tiny, but they can't run modern JavaScript sites, and they'd still need X and VNC.
 - **An `<iframe>` in the Desktop**: rejected; most sites refuse to be framed, and it would browse from the Host, not the Machine.
+
+## M6 amendment (native install, 2026-09-17)
+
+Two claims in the Consequences above are container-specific. "The container is the
+outer boundary" for `--no-sandbox` **vanishes natively**: there is no container, so
+the browser gets **its own narrow Landlock ruleset** (its profile and `~/Downloads`
+only) rather than borrowing the Agent's, or M6's widening to `/` would hand an
+unsandboxed Chromium write access to the whole server (M6.7). `--no-sandbox` is
+kept either way, and whether Chromium's own sandbox *could* work at all depends on
+the Ubuntu version (22.04 allows unprivileged user namespaces; 24.04+ refuses them
+via AppArmor) — the ADR states the dependence rather than a flat impossibility;
+the answer is a question for Aman.
+
+The image no longer bakes the headless shell in. `sudo aos browser install` fetches
+Chrome-for-Testing on demand — a 120 MB zip keyed by the Chrome version, pinned by
+**a sha256 we pin ourselves** (Playwright verifies nothing), checked with a
+`debug/elf` `DT_NEEDED` scan against `ldconfig -p`, refused under 1 GB free, and
+kept **out of the Install Ledger** (Restore would otherwise remove its libraries
+out from under it). This gives true Compose/native parity and leaves the Dockerfile
+with one runtime stage. The setuid `chrome_sandbox` path is dead twice over: it is
+not in the headless-shell zip, and `no_new_privs` makes it inert. See M6.11.

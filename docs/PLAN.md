@@ -8,26 +8,27 @@
 
 ## 1. Goal
 
-A single `docker compose up --build` gives the user an Ubuntu Machine in which OpenAI-powered Agents carry out everyday computer work: moving files, installing software, downloading, running Services. The user watches and steers them from a terminal (`cli` Mode) or from a macOS-like Desktop in the browser (`ui` Mode). It must feel **fast and smooth**, must **never destroy important data without asking**, and must work on **macOS, Windows and Linux Hosts**.
+A one-line `install.sh` turns a fresh Ubuntu server into a Machine in which OpenAI-powered Agents carry out everyday computer work: moving files, installing software, downloading, running Services. The user watches and steers them from a terminal (`cli` Mode) or from a macOS-like Desktop reached in the browser over the network (`ui` Mode), behind a password. It must feel **fast and smooth**, must **never destroy important data without asking**, and runs **natively on Linux** (Ubuntu) or, as a sandboxed alternative, under **Docker Compose** (M6, ADR-0009).
 
 ## 2. Scope
 
 **In v1**
 
 - One Go binary `aosd`: Agent runtime, Tools, Sessions, policy, API, Service supervisor, embedded Desktop.
-- `aos` CLI inside the container: interactive chat and one-shot `aos run`.
-- The Desktop: menu bar, Dock, windows, Spotlight, Notification Center, light and dark themes; apps Finder, Terminal, Agent, TextEdit, Preview, Activity Monitor, Software, System Settings, Trash, Downloads; and, opt-in with `INCLUDE_BROWSER=true`, a Browser (ADR-0008, M5.2).
+- `aos` CLI on the Machine: interactive chat and one-shot `aos run`, plus `aos daemon`, `aos config`, `aos mode`, `aos model`, `aos user`, `aos browser`, `aos status` and `aos uninstall` (M6).
+- The Desktop: menu bar, Dock, windows, Spotlight, Notification Center, light and dark themes; apps Finder, Terminal, Agent, TextEdit, Preview, Activity Monitor, Software, System Settings, Trash, Downloads; and, opt-in with `include_browser: true`, a Browser fetched on demand (ADR-0008, M5.2, M6).
 - Protection: Autonomy levels, Approvals, Protected Paths (enforced by Landlock), Trash, Audit Log.
-- Software: Install Ledger, Checkpoints, Restore, Replay at startup.
-- Services with port forwarding to the Host.
+- Software: Install Ledger, Checkpoints, Restore; Replay at startup on a Compose install only (M6, ADR-0003).
+- Services with port forwarding (`/port/<n>/`, authenticated).
 - Machine Profile, Memory, Follow-ups, Resume, Retry guard, optional Cost Limit.
+- Native install (`install.sh` + systemd), Configuration in `/etc/aos/config.yml`, username/password UI authentication, and Agents reaching the whole filesystem with Protected Paths asking first (M6).
 
 **Not in v1** (candidates for v2)
 
 - Linux GUI apps streamed into a Desktop window (ADR-0001), other than the opt-in Browser (ADR-0008)
 - A headless browser Tool for JavaScript-heavy sites
 - Sub-tasks (the data model allows them; not exposed)
-- Host-side CLI (the API already supports it)
+- A CLI on your own computer (the API already supports it)
 - Providers other than OpenAI (Chat Completions adapter)
 - Multiple users
 - Backup/export of the home volume
@@ -38,9 +39,8 @@ A single `docker compose up --build` gives the user an Ubuntu Machine in which O
 
 ```mermaid
 flowchart LR
-  subgraph Host["Host: macOS / Windows / Linux"]
+  subgraph Client["Your computer: macOS / Windows / Linux"]
     BR["Browser: Desktop"]
-    SF[("Shared Folder")]
   end
   subgraph M["Docker container: the Machine (Ubuntu 24.04)"]
     D["aosd (Go, root)"]
@@ -62,8 +62,9 @@ flowchart LR
   D --> SV
   D --> DB
   D -- "HTTPS" --> OAI
-  SF <--> M
 ```
+
+_The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009) the Machine is the Ubuntu server itself: there is no separate computer above it and no Shared Folder, `aosd` is run by systemd, and the Desktop is reached over the network behind a password._
 
 **What happens in one Task:**
 
@@ -200,6 +201,7 @@ flowchart LR
 
 ```
 agentic-os/
+├── install.sh                      # one-line native install (M6); fetches the release tarball
 ├── compose.yaml
 ├── compose.override.example.yaml   # copy to compose.override.yaml to publish extra ports
 ├── .env.example
@@ -218,18 +220,30 @@ agentic-os/
 │   └── src/{shell,apps/<app>,lib,assets/manifest.json}
 ├── tools/
 │   ├── ci/                         # `go run ./tools/ci`: every check, runs locally and in GitHub Actions
-│   └── hostcheck/                  # checks behind `aos doctor --host-check` (Host acceptance report)
+│   ├── docsgen/                    # M6: generated command reference for the docs site
+│   └── spikes/                     # throwaway prototypes (install, docs-site), out of the build
 ├── .github/workflows/              # thin wrappers around tools/ci
 ├── tests/
 │   ├── e2e/                        # Playwright
 │   ├── perf/                       # frame-time and latency checks
 │   └── live/                       # real-model evaluation Tasks
+├── docs-site/                      # M6: Astro + Starlight site, built to static files, never served by aosd
 ├── testdata/cassettes/             # recorded model conversations for the fake provider
 ├── CONTEXT.md
 └── docs/{PLAN.md,adr/}
 ```
 
 ## 6. Container and Compose
+
+> **M6.** This section describes the **Compose install**, now the sandboxed
+> alternative rather than the primary shape (ADR-0009). M6 rebuilds it from the
+> same one binary: the `cli`/`ui` targets collapse into a single image (they
+> measured 1 MB apart, M0 F3), `AOS_IMAGE_MODE` and `INCLUDE_BROWSER` build-time
+> forking are gone (Mode and the browser are runtime `config.yml` keys, M6.10/M6.11),
+> Chromium is fetched on demand rather than baked in, and the Shared Folder is
+> removed — Compose gets a plain bind mount into home with no symlink and no
+> Protected entry (M6.6). Compose generates `/etc/aos/config.yml` from its
+> environment on first start, so the two shapes share one configuration system.
 
 ### 6.1 Dockerfile stages
 
@@ -274,7 +288,7 @@ services:
       - aos-home:/home                # /home/aos plus /home/.aos-protected (§7.2)
       - aos-state:/var/lib/aos
       - aos-pkgcache:/var/cache/aos
-      - ${AOS_SHARED_DIR:-./shared}:/shared   # ~/Shared is a symlink to it
+      # M6: no Shared Folder — a plain bind mount into home if you want one, no symlink
 secrets:
   openai_api_key:
     environment: OPENAI_API_KEY
@@ -288,7 +302,7 @@ volumes:
 
 - Compose reads `.env` only to fill in `${…}` values. Environment variables are passed explicitly, so `OPENAI_API_KEY` reaches the container only as the secret file. M0.4 verifies it is absent from every process environment.
 - Compose cannot add a port mapping only when an env var is set. Publishing extra ports (`AOS_PUBLISH_PORTS`) therefore lives in `compose.override.example.yaml`: copy it to `compose.override.yaml`, which Compose loads automatically on every Host.
-- The home folder is a named volume for speed on every Host. Only the Shared Folder is a bind mount.
+- The home folder is a named volume for speed. M6 removes the Shared Folder, so there is no longer a bind mount by default (which also removes the `~/Desktop` hang below).
 - The volume is mounted at `/home`, not `/home/aos`, so the relocated Protected dotfiles in `/home/.aos-protected` persist too.
 - `OPENAI_API_KEY` must be *defined* for `docker compose up` to start, even if empty (M0 finding F4). The README quick start therefore begins with `cp .env.example .env`. An empty value means "no key yet".
 - On macOS Hosts, Docker Desktop hangs on bind mounts from `~/Desktop`, `~/Documents` or `~/Downloads` unless it has been granted access to them (finding F6). This goes in README troubleshooting, together with `AOS_SHARED_DIR`.
@@ -331,6 +345,8 @@ Everything else is installed on demand and recorded in the Install Ledger.
 | `AOS_TRASH_MAX_GB` | `5` | Trash size cap |
 | `TZ` | `UTC` | Machine timezone |
 
+**M6 changes to this list.** `AOS_MODE` and `INCLUDE_BROWSER` stop being build-time: they become the `mode:` and `include_browser:` keys in `config.yml` (M6.10/M6.11). `AOS_ACCESS_TOKEN` is deleted — username/password with JWTs replaces the shared token (ADR-0007, M6.3) — and so is `AOS_SHARED_DIR`, with the Shared Folder itself (M6.6). `AOS_BIND` defaults to `0.0.0.0` on a native install (M6.4). `AOS_UID`/`AOS_GID` matter only to a Compose bind mount now. On a native install every setting above is a key in `/etc/aos/config.yml` (M6.1), not an environment variable.
+
 There is deliberately **no step limit**.
 
 ## 7. Security model
@@ -346,6 +362,8 @@ There is deliberately **no step limit**.
 | Services | `aos` by default, root only via an approved Privileged Tool | Same confinement as whoever created them | as creator |
 
 A plain `docker compose exec aos …` runs as root (aosd is the container's main process, so the container's user is root). The `aos` CLI works either way.
+
+**M6.** On a native install `aosd` is run by systemd as root; the `aos` user is in sudoers with `NOPASSWD:ALL`, so a User Session — and the Desktop password behind it — is effectively root on the VPS. Kept deliberately (a single-user personal server), but said out loud (M6.17, ADR-0009). Agents stay confined: `no_new_privs` still blocks `sudo`, and the Landlock ruleset widens only to `/` minus the Protected list (M6.8, ADR-0004).
 
 ### 7.2 Landlock ruleset for Agent Sessions (validated in M0, ADR-0004)
 
@@ -372,7 +390,7 @@ A plain `docker compose exec aos …` runs as root (aosd is the container's main
 
 - **Read and execute:** everything except Hidden paths: `/run/secrets`, `/var/lib/aos` and other Sessions' directories under `/run/aos/sessions`.
 - **Write, create and remove:** all of home, `/tmp`, `/var/tmp`, `/dev` (`/dev/null`, `/dev/tty`, the PTY) and the Session's own directory.
-- **Not writable:** everything else, including `/home/.aos-protected`, the Shared Folder (mounted at `/shared`, outside home: finding F2) and system folders.
+- **Not writable:** everything else, including `/home/.aos-protected` and system folders. (On a Compose install the Shared Folder used to be here too; M6.6 removes it.)
 - **Paths the user locks** (🔒, `aos protect`) inside a Writable tree are carved out: every folder from home down to the locked path is split into per-entry grants.
   - In a split folder, home included, a new entry can be created but not written until the Session is re-sandboxed, which happens before its next command.
   - When a failed command created entries in a split folder, the Tool result tells the Agent to clean up and re-run.
@@ -380,6 +398,8 @@ A plain `docker compose exec aos …` runs as root (aosd is the container's main
 - **Symlinks are never granted**, because Landlock would grant their target.
 - **Process isolation:** a confined process cannot ptrace an unconfined one. On kernels with Landlock ABI ≥ 6, signals and abstract Unix sockets are also scoped, so Agents cannot signal or reach User Sessions or `aosd`.
 - **Files Tools** (§9) run as `aos` in a confined helper with the same ruleset, never as root inside `aosd`, so symlink tricks cannot turn them into root file access.
+
+**M6 (native install).** The Writable set widens from home to **`/` minus an explicit Protected list** (M6.8, ADR-0004): `/boot`, `/proc`, `/sys`, `/snap`, `/root`, other users' homes, and AOS's own binaries and systemd unit, with `/var/lib/aos` and `/etc/aos` Hidden and `/dev` still Writable. Agents already read all of `/`; only writing widens. The walk stays bounded because `carve` descends only into directories that contain an exclusion, so no exclusion may live under `/proc` or `/sys`. The Browser gets its own narrow ruleset rather than borrowing the Agent's (M6.7), or the widening would hand it write access to the server.
 
 ### 7.3 Protected Paths (built-in defaults, plus your own in System Settings)
 
@@ -389,8 +409,8 @@ The built-in defaults below are read-only in System Settings — weakening `~/.s
 
 - `/etc`, `/usr`, `/bin`, `/sbin`, `/lib*`, `/boot`, `/var/lib`
 - `~/.ssh`, `~/.gnupg`, `~/.config`, `~/.bashrc`, `~/.profile`, `~/.bash_logout` (all in `/home/.aos-protected`)
-- The whole Shared Folder
-- AOS's own state: `/var/lib/aos`
+- AOS's own state: `/var/lib/aos` and `/etc/aos`
+- On a native install (M6.8): `/boot`, `/proc`, `/sys`, `/snap`, `/root`, other users' homes, and AOS's own binaries and systemd unit
 - Paths the user locks (🔒 in Finder, `aos protect`)
 
 **Enforced by policy only** (patterns that Landlock cannot express; a script can still change them, which is documented):
@@ -424,12 +444,32 @@ Shell analysis is only an early warning so the Agent can ask first. Landlock is 
 - **Unix socket** (`/run/aos/aosd.sock`): `aosd` reads the caller's `SO_PEERCRED` and rejects any process whose `/proc/<pid>/status` shows `NoNewPrivs: 1`, meaning Agent-confined.
 - **Unexpected actors:** settings changes and Approval decisions from anything other than the Desktop or a User Session are refused and written to the Audit Log.
 
-### 7.6 Access from the Host (ADR-0007)
+### 7.6 Access to the Desktop (ADR-0007)
 
-- **Token:** generated on first start. `docker compose up` logs and `aos desktop-url` print `http://localhost:7700/#code=<one-time>`. The Desktop exchanges the code for an HttpOnly, SameSite=Strict cookie.
-- **Request checks:** every request's `Host` must be `localhost`, `127.0.0.1` or `<port>.localhost`, which defeats DNS rebinding. `Origin` must match on RPC and WebSocket upgrades. No CORS.
-- **Media loads:** `<img>`, `<video>` and downloads send no `Origin`, so the Desktop's cookie may `GET /files/raw` without one only when `Sec-Fetch-Site: same-origin`. A page on a forwarded port is the same *site* as the Desktop, so SameSite alone would let it in, but it is never the same *origin*.
-- **Path-forwarded Services** (`/port/<n>/`) are served with `Content-Security-Policy: sandbox …` without `allow-same-origin`. They get an opaque origin and cannot use the Desktop's cookie.
+Rewritten by M6.3/M6.4 — the earlier one-time-code + HttpOnly-cookie + `Host`-check
+design is superseded. The Desktop is reached over the network, `http://<ip>:7700`
+by default, behind a username and password (one user, M6.3).
+
+- **Sign-in:** initial credentials are written to `config.yml` at install and must be
+  changed on first login. A JWT **access token** (in memory, 15 min) and a **refresh
+  token** (in `localStorage`, 30 days, rotated on use with family revocation on replay)
+  authenticate RPCs. Both travel in **headers, never cookies**, so DNS rebinding gains
+  nothing and the two `Host` checks are deleted (M6.4).
+- **Browser-initiated loads** — both WebSockets, `<img>`/`<video>` on `/files/raw`, PDF
+  ranges and the download anchor — carry no header, so each is authorised by a
+  **single-use 30-second ticket** the Desktop mints from its access token.
+- **Request checks:** `Origin` must match on RPC and WebSocket upgrades. This is the real
+  CSRF defence and it handles an arbitrary public host, which is why the `Host` allow-list
+  can go. No CORS.
+- **Path-forwarded Services** (`/port/<n>/`) are served only after the ticket is exchanged,
+  **inside the authenticator** (M6.4), for a cookie scoped to `Path=/port/<n>/`, with
+  `Content-Security-Policy: sandbox` and no `allow-same-origin` — an opaque origin that
+  cannot ride on the Desktop's session. A Service that binds `0.0.0.0` bypasses the
+  forwarder entirely and is flagged as publicly reachable (M6.13).
+- **Not a secure context:** plain `http://<ip>:7700` leaves Service Workers, `crypto.subtle`
+  and the async clipboard API unavailable; auth no longer depends on any of them. A user who
+  puts nginx and TLS in front (their own business, out of scope) gets them back.
+- **Compose install:** the same model, with `bind` defaulting to `127.0.0.1`.
 
 ### 7.7 API key
 
@@ -437,11 +477,13 @@ Shell analysis is only an early warning so the Agent can ask first. Landlock is 
 - **Where it's used:** only `aosd`'s `llm` package reads it. The UI shows `sk-…abcd`.
 - **Replacing it:** possible from System Settings. A key saved there is written to the same root-only file and wins over the Compose secret, across restarts, until you choose the key from `.env` again. Only a hint (`sk-…abcd`) ever leaves `aosd`; the Audit Log records each change with that hint.
 
+- **M6 (native install).** There is no Compose secret. The key is set in System Settings or `aos config set openai_api_key …` and stored in the same root-only file (`/var/lib/aos/keys/openai`), out of Agents' reach by Landlock and by file mode; it is never written into `config.yml`. The JWT signing key (M6.3) lives beside it in `/var/lib/aos/`, likewise never in `config.yml`.
+
 ### 7.8 Trash
 
 - **Standard layout:** the freedesktop.org Trash specification, one Trash per filesystem, so deleting is always an instant rename:
   - `~/.local/share/Trash` for the home volume
-  - `/shared/.Trash-<uid>` for the Shared Folder (a hidden folder, visible on the Host)
+  - `.Trash-<uid>` at the mount root of any other filesystem, found by walking up until the device changes (an `st_dev` comparison, M6.6). On a one-filesystem VPS everything shares home's device, so deletes are a plain rename into the home Trash.
 - **Agent `rm`:** an `rm` shim early in Agent `PATH` sends deletions to Trash. `/tmp`, `/var/tmp`, `node_modules`, `__pycache__`, `.cache` and build outputs are deleted permanently.
 - **Expiry:** after `AOS_TRASH_RETENTION_DAYS`, or oldest-first above `AOS_TRASH_MAX_GB`.
 - **Emptying:** only the user can empty the Trash.
@@ -607,12 +649,13 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
   - `aos service stop` lasts until the next start or the next restart of the Machine; `aos service remove` deletes the Service.
 - **Logs:** ring buffer in memory plus a rotated file. Visible in Activity Monitor and via `aos service logs`.
 - **Port discovery:** `/proc/net/tcp{,6}` is scanned every 2 s for listening sockets, feeding Activity Monitor and the Desktop's "Open" buttons.
-- **Forwarding:**
-  - `http://<port>.localhost:7700`: `aosd` routes by `Host` header to `127.0.0.1:<port>`, including WebSockets. The default in every browser; Chrome and Safari verified in M0 (finding F5).
-  - `http://localhost:7700/port/<port>/`: prefix stripped, CSP sandbox applied. A fallback for setups where `*.localhost` doesn't resolve (proxies, custom resolvers). Apps that need their own cookies or localStorage may not work in this mode.
-  - Both modes strip the Desktop's session cookie from requests, and drop any `Set-Cookie` that names it or carries a `Domain` attribute.
-  - Published ports via `compose.override.yaml`: full fidelity in every browser, needs a restart.
-- **Low ports:** Docker containers normally allow unprivileged binding to ports below 1024 (verified in M0), so nginx on port 80 works as `aos`.
+- **Forwarding** (M6 reorders these):
+  - `http://<ip>:7700/port/<port>/` is the **canonical** form: prefix stripped, served inside the authenticator after a single-use ticket is exchanged for a cookie scoped to `Path=/port/<n>/` (M6.4), CSP sandbox applied so the page gets an opaque origin. It is the only form that works from a remote browser. Apps that need their own cookies or localStorage may still misbehave in this mode.
+  - `http://<port>.localhost:7700` is a **local convenience only**: `aosd` routes by `Host` header to `127.0.0.1:<port>`, including WebSockets. `*.localhost` resolves to `127.0.0.1` on the machine running the browser, so it **cannot reach a remote VPS** — it is for a browser on the same box (Compose on a laptop). Chrome and Safari verified in M0.
+  - The per-Service cookie above is scoped to its own path and carries no Desktop session; there is no shared session cookie to strip (that mechanism is gone with the cookie itself, ADR-0007/M6.3).
+  - **Compose only:** published ports via `compose.override.yaml` — full fidelity in every browser, needs a restart. There is no such file on a native install.
+- **Low ports.** This differs by shape. Under Docker, `ip_unprivileged_port_start` is set to `0` in the container (M0.7), so nginx on port 80 works as `aos`. On a **native install** the kernel default is `1024`, so binding port 80 as `aos` fails unless the operator lowers it (`sysctl net.ipv4.ip_unprivileged_port_start=80`) or grants a capability — Agents should use ports ≥ 1024 or a proxy. *(Aman to confirm the VPS value: `cat /proc/sys/net/ipv4/ip_unprivileged_port_start`.)*
+- **A wildcard listener is a publish (M6.13).** Under Docker an unpublished port was unreachable — the network namespace was the barrier. Natively there is none, so a Service on `0.0.0.0` or `::` is on the public internet directly, bypassing the forwarder and the Account. Activity Monitor, the Services list and `aos status` flag such listeners as reachable from outside (`wildcard()` in `ports.go`), and the Agent prompt tells Agents to bind `127.0.0.1` unless the user asked for public.
 
 ## 13. API (Connect-RPC, `proto/aos/v1`)
 
@@ -644,18 +687,35 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
   - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
 - **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
 
-## 15. Cross-Host support
+## 15. Install shapes and clients
 
-| | macOS Host | Windows Host | Linux Host |
+M6 retires the "Cross-Host" matrix along with the word *Host* (ADR-0009). The
+Machine is the Ubuntu server on a **native install**, or a container on a
+**Compose install**. What used to vary by Host now varies by install shape; the
+only thing that still varies by the computer you browse from is client-side.
+
+**The two install shapes**
+
+| | Native install | Compose install |
+|---|---|---|
+| What runs it | `install.sh` + systemd on Ubuntu (ADR-0009) | `docker compose up` on any Docker host |
+| The Machine | the VPS itself; Agents write `/` minus the Protected list (M6.8) | a container; Replay rebuilds system state |
+| Reach | `http://<ip>:7700`, binds `0.0.0.0`, behind a password (M6.4) | `http://localhost:7700`, binds `127.0.0.1` |
+| Replay at boot | off — the Ledger is user-initiated (M6.9, ADR-0003) | on |
+| Landlock | required; Ubuntu kernels ship it | linuxkit / WSL2 / Docker Engine, as before |
+| Low ports | kernel default 1024 unless the operator lowers it (§12) | `ip_unprivileged_port_start=0` in the container (§12) |
+| Browser | fetched by `aos browser install` (M6.11) | fetched the same way; not baked in |
+
+**Client-side** — the computer you browse from ("your computer", not a Host):
+
+| | macOS | Windows | Linux |
 |---|---|---|---|
-| Runtime | Docker Desktop (Apple Silicon, Intel) | Docker Desktop, WSL2 backend | Docker Engine; Podman/rootless: best effort |
-| Landlock | ✅ confirmed (linuxkit kernel) | ✅ in WSL2 kernel config | Depends on distro and kernel; fallback per ADR-0004 |
-| Shared Folder ownership | Automatic | Automatic | `AOS_UID`/`AOS_GID` applied at startup (re-owns home only when changed) |
-| Shared Folder live updates | 2 s polling (`FileService.Watch`) | 2 s polling (Windows changes aren't reliably seen by file notifications) | 2 s polling |
-| Service subdomains | Chrome, Safari ✅ (M0); Edge, Firefox expected | ✅ | ✅ |
 | Reserved shortcuts | ⌘Space, ⌘Tab, ⌘W, ⌘Q | Alt+Space, Alt+Tab, Alt+F4, Win, Ctrl+W | Super, Alt+Tab, Ctrl+W |
-| Start command | `docker compose up --build` (zsh/bash) | same (PowerShell/cmd) | same |
-| Verified by | Me, during every milestone | You, via `aos doctor --host-check` + manual Desktop checklist | You, same |
+| Service subdomains | Chrome, Safari ✅ (M0), local convenience only (§12) | ✅ local only | ✅ local only |
+| Verified by | Me, for the Compose install | Aman, on the Ubuntu VPS (native install) | — |
+
+Nothing else about your computer is AOS's to decide: only which keyboard shortcuts
+it prefers (`browserOS()`, M6.14) and where a download should land.
 
 ## 16. Performance targets
 
@@ -672,6 +732,8 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | Desktop initial bundle | < 150 KB gzipped | Vite build size check |
 
 A CI run that misses any deterministic target fails.
+
+**M6 (native install).** These targets were set for Docker Desktop on Apple Silicon. The client-side ones (Desktop bundle < 150 KB, drag/keystroke fps, tool-dispatch overhead) carry over unchanged. The Machine-side ones do not translate directly: `docker compose up` timing is Compose-only, the eight-window real-GPU drag depends on the browsing computer not the VPS, and `aosd` idle memory and image size shift on a persistent server. Which VPS targets apply, and what they become on a 1-vCPU box, are measured by Aman once the install exists — they cannot be set from this Mac.
 
 ## 17. Testing strategy
 
@@ -698,8 +760,9 @@ A CI run that misses any deterministic target fails.
    - "start a static site Service on port 3000"
    - "move all PDFs from Shared to ~/Documents"
 7. **Where tests run:**
-   - All checks run through `go run ./tools/ci`, locally on the macOS Host. GitHub Actions calls the same script once the remote repo exists.
-   - Windows and Linux Hosts are tested by you with `aos doctor --host-check` plus a short manual Desktop checklist.
+   - All checks run through `go run ./tools/ci`, locally on the macOS Host. GitHub Actions calls the same script once the repository is public (M6.20).
+   - **M6:** the native install on the Ubuntu VPS is tested by Aman — `install.sh` end to end, the M6 acceptance checks, and the VPS-only measurements (§16, `ip_unprivileged_port_start`, re-plan cost). This Mac ships unit and logic tests only; it cannot exercise a VPS.
+8. **M6 additions to the suite (this Mac):** `config`/`auth`/`store`-migration unit tests; the sandbox's widened ruleset asserted in Docker (`unit-linux`); the installer rehearsed with `DRY_RUN=1` plus `shellcheck`; a `release`-stage asset-name and arch-matrix test; the command-reference drift check and a README link-check in `lint`; the fake-provider Playwright auth flow. Live suite (real key, Aman) covers the first native Task's toolchain install and real side effect.
 
 ## 18. Milestones
 
@@ -982,6 +1045,333 @@ one tab, and Agents signing in.
 
 **Accepted when:** a fresh user on each Host goes from `git clone` to a finished Task in the Desktop by following only the README.
 
+### M6 — Native Linux install (Ubuntu VPS)
+
+The Machine stops being a container the user runs on their laptop and becomes the
+Ubuntu server itself. A one-line `install.sh` drops prebuilt `aosd`/`aos` binaries
+onto a fresh VPS, systemd runs the Daemon, and the Desktop is reached over the
+network at `http://<ip>:7700` behind a password. Agents act on the whole server,
+not a curated image. Docker Compose stays as the sandboxed alternative, built from
+the same one binary. See **ADR-0009** (*The Machine is the host*) for the umbrella
+decision and **ADR-0010** for the Configuration file; ADRs 0003, 0004, 0005, 0007
+and 0008 are amended in this same commit, so every reference below resolves.
+
+This Mac cannot exercise a Linux VPS (the standing constraint for the whole
+effort), so M6 ships **unit and logic tests** — table tests, fakes, the sandbox's
+own Landlock assertions run in Docker, the installer rehearsed with `DRY_RUN=1` —
+and Aman runs the acceptance checks on real hardware and reports back. Where a
+value can only be measured on the VPS (§16, low ports, re-plan cost) the sub-task
+says so and carries the exact command.
+
+**Order of work.** The sub-tasks are numbered in build order, and four orderings
+are load-bearing rather than tidy:
+
+- **M6.4 is atomic.** The public bind, deleting the two `Host` checks, moving the
+  forwarder inside the authenticator, and dropping the TCP listener in `cli` Mode
+  must land in *one* commit. Split any apart and there is a commit in between where
+  every Agent-started port is on the public internet with nothing to refuse it.
+- **Remove the Shared Folder (M6.6) before widening the filesystem (M6.8)**, so the
+  widening rewrites one smaller `Policy()` instead of the widened one twice.
+- **The browser's own ruleset (M6.7) lands before or with the widening (M6.8)**,
+  or there is a commit where an unsandboxed Chromium can write to `/`.
+- **The generated command reference (M6.22) lands last**, after every M6 command
+  exists, because it is generated from the command tree it documents.
+
+#### Foundation
+
+1. **Configuration in `/etc/aos/config.yml` (ADR-0010).** The file replaces the
+   SQLite `settings` table as the single source of truth (`internal/settings`).
+   Root-owned `0600`, outside `/home/aos`. `aos config get|set|list` and the UI
+   write back through `yaml.v3`'s `Node` API — comments and key order survive,
+   written atomically via a temp file and `rename()`. A malformed file or an
+   unknown key **refuses the start** rather than falling back to defaults;
+   startup-only keys are accepted, written and marked *(pending restart)*. Compose
+   generates the same file from its environment on first start, so there is one
+   configuration system, not two. *Acceptance:* `aos config set autonomy auto`
+   survives a restart; a hand-added comment is still there afterwards; an unknown
+   key stops the Daemon with a named error. *Tests:* `config_test.go` — round-trip
+   with comments, atomic write, unknown-key refusal, precedence (UI over file,
+   file over built-in default), startup-only marking; a golden `config.yml`.
+
+2. **The Daemon under systemd (ADR-0005, ADR-0009).** `/etc/systemd/system/aos.service`,
+   `Type=notify` so `install.sh` cannot race the listener, `Restart=always` with a
+   start-limit so a bad config fails loudly instead of looping, `KillMode=mixed`,
+   `TimeoutStopSec=60s`. Hardening directives are deliberately absent, argued by
+   layer in a comment in the unit itself: systemd would confine `aosd` and every
+   Agent indiscriminately, where Landlock plus uid separation confines each Agent
+   precisely. The verbs are `aos daemon start|stop|restart|logs` with `aos status`
+   as the front door; the control socket becomes `0600` root-only with a uid
+   check (it was `0666` and unauthenticated — harmless in a one-user container, a
+   local root API on a VPS). HTTP shutdown drains Tasks *before* the socket
+   closes. *Acceptance:* `systemctl start aos` reaches a listening socket before
+   `install.sh` returns; `aos status` prints Mode, port and health; a bad config
+   fails the unit instead of looping. *Tests:* `daemon_test.go` — drain-before-shutdown
+   ordering, socket mode and uid guard; a unit-file golden checked by `tools/ci lint`.
+
+#### Authentication and reach
+
+3. **The authentication model (ADR-0007).** One user, stored in SQLite
+   (`users`, `refresh_tokens` in `0005_m6.sql`). Password hashing is stdlib
+   `crypto/pbkdf2` (no new dependency). A **single-use 30-second ticket**
+   authenticates every browser-initiated load — both WebSockets, `<img>`/`<video>`
+   on `/files/raw`, PDF ranges and the download anchor — because removing cookies
+   removes what served all four. Refresh token in `localStorage` (XSS-readable,
+   said plainly in the docs), access token in memory, 15 min / 30 days, rotated on
+   use with family revocation on replay. The signing key lives in `/var/lib/aos/`,
+   never in `config.yml`. `AOS_ACCESS_TOKEN` and `aos desktop-url` are deleted.
+   Tokens travel in headers, never cookies, or DNS rebinding returns. *Acceptance:*
+   sign-in, refresh, replay-revokes-the-family, and a served image all work with
+   auth in headers only. *Tests:* `auth_test.go` — ticket single-use and expiry,
+   refresh rotation and family revocation, pbkdf2 verify, `/files/raw` behind a
+   ticket; `store` migration test for `0005_m6.sql`.
+
+4. **Public bind, and the four things that close behind it — one commit.**
+   (a) Bind defaults to `0.0.0.0`; a fresh install answers at `http://<ip>:7700`
+   with no proxy. (b) Both `Host` checks are deleted (`aos doctor --host-check`,
+   `tools/hostcheck`, and the request-time `Host` allow-list): the `Origin` check
+   already handles arbitrary hosts and is the real CSRF defence, so nothing is
+   lost. (c) The forwarder moves *inside* the authenticator
+   (`daemon_linux.go:198`): `/port/<n>/` is served only after the single-use
+   ticket is exchanged for a cookie scoped to `Path=/port/<n>/`. (d) `cli` Mode
+   starts **no TCP listener at all** — the Unix socket and nothing else
+   (`daemon_linux.go:198,229` start it unconditionally today). The first-run
+   window is closed by initial credentials written to `config.yml` at install plus
+   a mandatory password change on first login, the pre-reset token restricted to
+   that one call. *Acceptance:* on a public bind, an unauthenticated request to
+   `/port/<n>/` and to any RPC is refused; `cli` Mode opens no TCP port
+   (`ss -ltn` shows none). *Tests:* `api/auth_test.go` — forwarder refuses without
+   the scoped cookie, Origin check on RPC and WS, no `Host` allow-list remains;
+   `daemon_test.go` — `cli` Mode binds only the socket.
+
+5. **The Desktop's authentication screens (ADR-0007).** The login screen is the
+   `needs-signin` boot phase promoted (`App.tsx:22`); the forced first change is a
+   third boot phase; an expired session is a **modal over the desktop, never a
+   bounce** — `sessionStorage` restores the window layout on reload, though unsaved
+   TextEdit buffers and terminal scrollback die with it. Refresh runs proactively
+   on a timer, because a 401-triggered refresh would queue behind the held streams
+   that occupy the browser's six connections. Logout revokes the refresh family
+   *and* closes the streams and WebSockets it authorised. Twelve-character minimum,
+   refused not warned; changing the password signs every other session out. The
+   `cli` → `ui` switch (`aos mode ui`) is the account-creation moment: it guards,
+   generates and prints the password, writes `mode: ui` and restarts. *Acceptance:*
+   sign in, forced first change, an expired token shows the modal and re-auth
+   resumes without a reload, logout closes a live feed. *Tests:* Playwright
+   `auth.spec.ts` against the fake provider — the three boot phases, the expiry
+   modal, proactive refresh, logout closing a stream; `aos mode ui` unit-tested for
+   the guard and password generation.
+
+#### The filesystem
+
+6. **Remove the Shared Folder — everywhere, including Compose.** `Ops.Shared` and
+   `Layout.Shared` go; the `~/Shared` symlink is actively removed by `PrepareHome`
+   (root-owned in a sticky `1775` home, it strands otherwise). Trash selection
+   becomes an **`st_dev` comparison**, not a path prefix: same device as home →
+   the home Trash, otherwise `.Trash-<uid>` at the mount root found by walking up
+   until the device changes; the item ID becomes a validated absolute path, and
+   `ListTrash` enumerates mounts from `/proc/self/mountinfo`. Compose gets a plain
+   bind mount into home with no Protected entry and no symlink — which also deletes
+   the repo's most-documented setup failure (the `/shared` bind mount that hangs
+   Docker Desktop on `~/Desktop`). *Acceptance:* deleting `/etc/nginx.conf` on a
+   one-filesystem VPS is a plain rename into `~/.local/share/Trash`; nothing is
+   created at `/`; an old volume's `~/Shared` link is gone after one start. *Tests:*
+   `trash_test.go` — `st_dev` selection, mount-root Trash, path-ID validation,
+   migration removes the symlink; `layout_test.go` — no `Shared` remains.
+
+7. **The browser gets its own Landlock ruleset (ADR-0008).** `browser_linux.go:69`
+   stops borrowing `d.agentPolicy()` and gets a narrow allow-list of its own, so
+   the widening in M6.8 does not hand an unsandboxed Chromium write access to the
+   whole server. Lands before or with M6.8. *Acceptance:* the browser process can
+   write only its profile and `~/Downloads`, refused elsewhere, asserted in Docker.
+   *Tests:* `browser_linux_test.go` — the ruleset denies a write to `/etc` and to
+   home outside Downloads.
+
+8. **Widen the filesystem to the whole VPS (ADR-0004).** Agents already *read* all
+   of `/` (`Plan` carves Read+List from `/` today), so only `Writable` changes: to
+   `/` minus an explicit Protected list — `/boot`, `/proc`, `/sys`, `/snap`,
+   `/root`, other users' homes, and AOS's own binaries and unit — with
+   `/var/lib/aos` and `/etc/aos` Hidden and `/dev` still Writable. Other users'
+   homes join the built-in Protected list. The walk cost is bounded because
+   `carve` only descends into directories that contain an exclusion, which makes
+   **"no exclusion may live under `/proc` or `/sys`" a hard rule**. AOS owns
+   `/home/aos`, created by the installer; `PrepareHome`'s dotfile relocation must
+   **never** run against a home AOS did not create — pointed at a live
+   `/home/ubuntu` it would move the `authorized_keys` that is the only way into the
+   server. *Acceptance:* an Agent writes `/opt/thing` after an Approval, is refused
+   at `/boot` and `/home/otheruser` by the kernel, and `~/.ssh` still refuses.
+   *Tests:* `sandbox_linux_test.go` in Docker — write allowed under `/opt`, refused
+   under each Protected root; `PrepareHome` refuses a home it did not create.
+   *On the VPS (Aman):* the re-plan cost and how often `/run` churning triggers
+   `Ruleset.Stale` — the one number this Mac cannot produce.
+
+#### Software, model and Mode
+
+9. **Replay is off natively (ADR-0003).** The Install Ledger is still recorded and
+   Checkpoint/Restore stay available, but user-initiated: re-applying the Ledger at
+   every boot is right for a disposable container and destructive on a persistent
+   server. *Acceptance:* a restart does not re-run the Ledger; `aos software restore`
+   still works on demand. *Tests:* `replay_test.go` — boot does not trigger Replay
+   in native Mode; Restore still diffs and applies.
+
+10. **One binary, one image.** The `desktop` build tag and `embed_none.go` go;
+    `Assets()` returns nil when `dist/index.html` is absent (the test stage never
+    builds the Desktop). The Dockerfile's `cli`/`ui` targets collapse into one
+    image — they measured 1 MB apart (M0 F3) — taking `AOS_IMAGE_MODE` and the
+    `main.go:45` refusal with them. Mode is a runtime `config.yml` key.
+    *Acceptance:* one tarball serves both Modes; `aos mode` switches without a
+    rebuild. *Tests:* `assets_test.go` — nil without `dist`; a build test that the
+    single image carries the Desktop.
+
+11. **Lazy browser install (ADR-0008).** `sudo aos browser install` fetches
+    Chrome-for-Testing (a 120 MB zip from Google's bucket, keyed by Chrome version)
+    pinned by **a sha256 we pin ourselves** (Playwright verifies nothing), checks
+    `DT_NEEDED` against `ldconfig -p` with stdlib `debug/elf`, refuses under 1 GB
+    free, downloads to `.tmp` then `rename`s, and writes `include_browser: true`
+    itself. It stays **out of the Install Ledger** (Restore would otherwise remove
+    the browser's libraries out from under it). `aos browser remove` reverses it.
+    The published image carries no Chromium and no browser libraries either — true
+    parity, one runtime stage. *Acceptance:* a fresh install has no browser; after
+    `aos browser install` the Browser app appears and works; a corrupt download is
+    rejected by the sha256. *Tests:* `browser_install_test.go` — sha256 mismatch
+    refused, `DT_NEEDED` check against a fake `ldconfig`, free-space refusal,
+    write-back; not in the Ledger.
+
+#### Product language
+
+12. **The Agent prompt and the Machine Profile, rewritten whole.** Three sentences
+    are false natively and one is behaviour-shaping. In `internal/agent/instructions.go`:
+    "running in Docker on \<host\>" (line 31), "There is no systemd" (line 38), and
+    "The Machine restarts with a fresh system: only the home folder … survive" —
+    the last is what makes Agents cram everything into home and distrust the
+    filesystem M6 opens. The Machine Profile (`internal/profile/profile.go:86-88`)
+    repeats the same falsehoods in a second file the same Agent reads in the same
+    request: `~/Shared`, `http://<port>.localhost:<port>` as the way to reach a
+    Service, and the "survive a restart" line. Both are rewritten together, and
+    `browser.go:31,36`'s `--no-sandbox` comment (which cited a container that no
+    longer exists) is rewritten with them; `LibDir` and its `LD_LIBRARY_PATH` are
+    deleted, since `libgbm1` is an ordinary package once nothing is kept out of an
+    image. *Acceptance:* the prompt and Profile name systemd, `/port/<n>/` and the
+    real filesystem; no "fresh system" sentence remains. *Tests:*
+    `instructions_test.go`, `profile_test.go` — the retired phrases are absent, the
+    new ones present.
+
+13. **A wildcard listener is a publish, and AOS says so.** Under Docker an
+    unpublished port was unreachable — the network namespace was the barrier.
+    Natively there is none, so an Agent that starts a dev server on `0.0.0.0:3000`
+    has put it on the internet, bypassing the forwarder and the Account. Activity
+    Monitor, the Services list and `aos status` flag a listener on `0.0.0.0` or
+    `::` as reachable from outside (`internal/service/ports.go:144` already has the
+    `wildcard()` helper), and the Agent prompt gains one sentence telling Agents to
+    bind Services to `127.0.0.1` unless the user asked for public. *Acceptance:* a
+    Service on `0.0.0.0` is marked "reachable from outside" in all three surfaces.
+    *Tests:* `ports_test.go` — `wildcard()` classification feeds the reachable flag;
+    the prompt carries the bind sentence.
+
+14. **The Desktop's product language.** The four `Host` surfaces are a text-and-rename
+    sweep — no behaviour changes, only the word: `keyboard.ts:13` (`hostOS()` →
+    `browserOS()`), `AppearancePane.tsx:12` ("Follow the Host" → "Follow your
+    computer"), `KeyboardPane.tsx:115`, `Finder.tsx:237` (`downloadToHost` →
+    `download`). Finder's **Places** become Home, Downloads, Filesystem (`/`) and
+    Trash, now that `/` is reachable. *Acceptance:* no user-visible "Host" remains
+    in the Desktop; Places lists Filesystem and it opens `/`. *Tests:* Playwright
+    `finder.spec.ts` — Places has Filesystem, it navigates to `/`; a grep test in
+    `tools/ci lint` that no retired product term reappears in `desktop/src`.
+
+#### Installer, release and docs
+
+15. **What software a native Machine has.** The Docker image curates ~25 apt
+    packages plus a pinned Node; `install.sh` installs none of them, and the Agent
+    prompt promises `pipx`/`npm` on a box that may have neither. M6 decides the
+    contract: the installer installs **only `aosd`**, and the prompt/Profile state
+    that Agents install what they need through the Install Ledger (which persists
+    natively) rather than assuming a toolchain is present. *Acceptance:* a first
+    Task that needs Node installs it through a Tool and it persists across a
+    restart. *Tests:* covered by the live suite (Aman); the prompt text is asserted
+    in M6.12.
+
+16. **The Model Catalogue ships as data.** It seeds `/var/lib/aos/models.yaml`,
+    open rather than a strict allow-list, because `GET /v1/models` reports nothing
+    about reasoning effort. Fix the live defect found on the way: the fixed effort
+    list (`internal/settings/settings.go:74`) is missing `max`, still offers the
+    legacy `minimal`, and is per-model in reality, where a wrong value is an HTTP
+    400, not a clamp. *Acceptance:* the catalogue loads from data; a per-model
+    effort list is offered; `max` is present and `minimal` gone. *Tests:*
+    `models_test.go` — catalogue seeding, per-model effort, the corrected list.
+
+17. **`install.sh`** (prototype at `tools/spikes/install/`, rehearsable with
+    `DRY_RUN=1`). POSIX `sh`, `set -eu`, body in a `main()` called on the last line
+    so a truncated `curl | sh` does nothing. Version-less asset names mean no GitHub
+    API call and no rate limit; `grep`-then-`sha256sum -c` (because `--ignore-missing`
+    passes vacuously); `install` + `mv` because writing over a running binary is
+    `ETXTBSY`. It checks `/run/systemd/system` and refuses cleanly on a non-systemd
+    box, naming Compose as the alternative. `useradd --uid 1000` is the
+    administrator's uid on stock Ubuntu, and the `NOPASSWD:ALL` grant means the
+    Desktop password is root — kept, but said out loud in the docs. No rollback:
+    every step is idempotent, so re-running is the repair, and an upgrade refuses
+    while a Task is running. *Acceptance (Aman, on the VPS):* `curl … | sh` on a
+    fresh VPS reaches a password screen; re-running upgrades in place; a truncated
+    pipe is a no-op. *Tests:* `DRY_RUN=1` rehearsal in `tools/ci` from any machine;
+    `shellcheck` in `lint`.
+
+18. **Release engineering.** A hand-written `release` stage in `tools/ci` (not
+    GoReleaser — the Dockerfile already compiles Go and GoReleaser would need a
+    second toolchain that drifts) builds `linux/amd64` and `linux/arm64` tarballs
+    with **version-less asset names** (`agentic-os-linux-<arch>.tar.gz`) so
+    `/releases/latest/download/` resolves without the API. Two traps: `-ldflags -X`
+    silently cannot write `Version` while it is a `const` (it becomes a `var`), and
+    the first tag must be `v0.1.0` — a `-m6` suffix makes GitHub treat it as a
+    prerelease and `/releases/latest` 404s. Reconcile `version_linux_test.go` (which
+    ties `Version` to the newest `### M<n>` heading) with tag-derived versions.
+    *Acceptance:* a tag produces two tarballs at a stable URL; `aos --version` and
+    the tag agree. *Tests:* `release_test.go` — asset names, arch matrix,
+    `-X`-writable `Version`; the version-scheme reconciliation.
+
+19. **`aos uninstall`.** Removes the binary and the systemd unit; keeps
+    `/home/aos`, `/var/lib/aos` and the config unless `--purge`. *Acceptance:*
+    `aos uninstall` leaves data, `--purge` removes it. *Tests:* `uninstall_test.go`
+    against a temp root — units and binary gone, data kept without `--purge`.
+
+20. **Make the repository public** — a decision, not code, but ordered *ahead of
+    the release stage running*, because two sub-tasks are inert while it is private:
+    `raw.githubusercontent.com/…/install.sh` and `/releases/latest/download/…` both
+    return 404 on a private repo, and GitHub Pages is unavailable on a private repo
+    under Free. Confirm public-at-first-tag is acceptable (open question for Aman).
+
+21. **The documentation site** (prototype at `tools/spikes/docs-site/`). Astro 7 +
+    Starlight 0.42, `base: "/agentic-os/"` (a sub-path deploy 404s on the real host
+    with the default base), the fifteen-page map, deployed on tag to
+    `https://amantiwari.co.in/agentic-os/`. Never served by `aosd`, never in the
+    binary. One version (Starlight's versioning is a third-party plugin).
+    *Acceptance (Aman):* the site builds and deploys under the sub-path without 404s.
+    *Tests:* the Astro build is an optional `docs` stage in `tools/ci`, named like
+    `live`.
+
+22. **The generated command reference** (`tools/docsgen`). 120 lines of our own,
+    not `cobra/doc` (whose package pulls `go-md2man` and `blackfriday` into a module
+    graph ADR-0002 is proud of). One production change first: `rootCmd()`
+    (`internal/cli/cli.go:40`) becomes exported `Root()`. **Lands last**, after
+    every M6 command exists (the generator produces 22 pages against today's tree,
+    before M6 adds `daemon`, `config`, `mode`, `model`, `user`, `browser`, `status`
+    and `uninstall` and deletes `desktop-url`). *Acceptance:* the reference matches
+    the command tree. *Tests:* a drift check joins `lint` (pure Go, fails like
+    `gofmt -l`).
+
+23. **Rewrite `README.md` whole.** Its thesis is falsified — "An Ubuntu Machine in
+    Docker", `docker compose up --build` as the Quick start, `INCLUDE_BROWSER`,
+    `AOS_MODE`, and a Troubleshooting section entirely about the Shared Folder. It
+    becomes the public front door the moment the repository goes public: `curl …
+    | sh` first, Compose second, the password and public-bind facts stated plainly.
+    *Acceptance:* a fresh reader goes from the README to a signed-in Desktop on a
+    VPS. *Tests:* link-check in `lint`.
+
+**Accepted when:** a fresh user on a fresh Ubuntu VPS runs the one-line
+`install.sh`, opens `http://<ip>:7700`, sets a password, and drives a Task to a
+real side effect on the server's own filesystem — following only the README. The
+Compose install still comes up from the same binary, and `go run ./tools/ci` is
+green on this Mac (unit, unit-linux, the fake-provider Playwright gate, the
+installer's `DRY_RUN` rehearsal, the reference-drift check). VPS-only measurements
+(§16 targets, `ip_unprivileged_port_start`, re-plan cost) are reported by Aman.
+
+
 ## 19. Risks
 
 | Risk | Mitigation |
@@ -1006,15 +1396,27 @@ one tab, and Agents signing in.
 | Connect-RPC + Session WebSocket | [ADR-0006](adr/0006-connect-rpc-plus-session-websocket.md) |
 | API always authenticated, even on localhost | [ADR-0007](adr/0007-api-always-authenticated.md) |
 | Opt-in Browser: one page streamed from a headless shell | [ADR-0008](adr/0008-opt-in-streamed-browser.md) |
+| The Machine is the host: a native Linux install (M6) | [ADR-0009](adr/0009-native-linux-install.md) |
+| Configuration in one file; runtime writes back | [ADR-0010](adr/0010-config-file-writeback.md) |
+| Agents write `/` minus Protected on a native install | [ADR-0004](adr/0004-privilege-separation-with-landlock.md) (amended, M6) |
+| Auth survives a public bind: password + JWT + single-use ticket | [ADR-0007](adr/0007-api-always-authenticated.md) (amended, M6) |
+| Replay is off on a native install | [ADR-0003](adr/0003-install-ledger-and-checkpoints.md) (amended, M6) |
 
 ## 21. Pending decisions
 
-None. M0's findings were decided on 2026-09-14:
-- Option B home layout
-- Shared Folder at `/shared`
-- the new size targets
-- approved Protected Path calls run with a ruleset widened for that one call
-- pattern-based Protected Paths are enforced by policy only, narrowly
+M0's findings were decided on 2026-09-14: Option B home layout; the new size
+targets; approved Protected Path calls run with a ruleset widened for that one
+call; pattern-based Protected Paths enforced by policy only, narrowly. (The
+"Shared Folder at `/shared`" decision is retired by M6.6.)
+
+**Open for Aman, before or within M6:**
+- **Which Ubuntu the VPS runs.** It decides whether Chromium's own sandbox *could* work (22.04 allows unprivileged user namespaces; 24.04+ refuses them via AppArmor). M6 keeps `--no-sandbox` either way; ADR-0008/0009 state the dependence rather than a flat impossibility.
+- **The module-path rename.** `github.com/amantiwari/agentic-os` → `github.com/Aman123at/agentic-os`, mechanical but tree-wide, wants its own commit before the first tag — not folded into M6.
+- **Repository public at the first tag** (M6.20): confirmation this is acceptable.
+- **~2 live API calls** to close the Model Catalogue's reasoning-effort gaps (M6.16), which spend the key.
+- **VPS-only measurements** Aman reports back: `cat /proc/sys/net/ipv4/ip_unprivileged_port_start` (§12), the re-plan cost and `/run` churn (M6.8), and the §16 targets on a 1-vCPU box.
+
+Also open but ruled *not* to block M6: data migration for existing Compose users, non-Ubuntu Linux reach, SQLite retention on a long-running box, and whether `/etc` Checkpoints still earn their place once Replay is off (§19 candidates).
 
 ## 22. Working agreement
 
@@ -1024,7 +1426,7 @@ None. M0's findings were decided on 2026-09-14:
 | Review points | M0: one review at the end, using the findings note. M1–M5: I stop at the end of each milestone for review and a demo against its acceptance criteria. Anytime: I stop immediately if a finding forces a change to this plan or an ADR. |
 | Version control | `git init` at the start of M0. Small commits, one logical change each. A private GitHub repo with Actions once you create it or log in to `gh`. Nothing is pushed without asking. |
 | Checks | `go run ./tools/ci` is the single entry point (lint, unit, integration, e2e, perf, image-size); CI only wraps it |
-| Hosts | I develop and verify on your macOS Host (Apple Silicon; Docker Desktop with 8 CPUs, 8 GB). You test Windows and Linux Hosts with `aos doctor --host-check` and report results. |
+| Install shapes | I develop and verify the **Compose install** on your macOS (Apple Silicon; Docker Desktop, 8 CPUs, 8 GB). You test the **native install** on your Ubuntu VPS — `install.sh`, the M6 acceptance checks and the VPS-only measurements — and report results (M6, ADR-0009). Windows and macOS native installs are out of scope. |
 | Local toolchain | Installed on the macOS Host: Go 1.27.1, buf 1.73.0, golangci-lint 2.13.2. The Dockerfile pins the same Go minor version. Linux-only behaviour (Landlock, PTY Sessions, apt) is always exercised inside Docker. |
 | Model | `aosd`'s built-in default is `gpt-5.6-terra`. `OPENAI_MODEL` overrides it when set, and System Settings overrides both. Test conversations are recorded with the default model. |
 | API key for development | You put it in your local `.env` (git-ignored) yourself, with a spending cap on the OpenAI project; I never handle the key. Actual spend is reported after each live run or recording session. |

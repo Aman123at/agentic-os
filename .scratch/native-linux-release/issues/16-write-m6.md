@@ -1,7 +1,7 @@
 # Write M6 into docs/PLAN.md
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 01, 02, 03, 05, 06, 07, 08, 10, 11, 12, 13, 14, 15, 17
 
 ## Question
@@ -91,3 +91,50 @@ Three code sub-tasks the sweep found:
 - **The Desktop's four Host surfaces**, a text-and-rename sub-task: `desktop/src/shell/keyboard.ts:13` (`hostOS()` → `browserOS()`), `desktop/src/apps/settings/AppearancePane.tsx:12` ("Follow the Host" → "Follow your computer"), `desktop/src/apps/settings/KeyboardPane.tsx:115`, and `desktop/src/apps/Finder.tsx:237` (`downloadToHost` → `download`). None of these behaviours change — the browser still decides them — only the word does.
 
 Scope rule, so the sweep does not run away: retirement binds **product language** (the glossary, the docs, the Desktop's own words, the Agent prompt, the Machine Profile). It does not bind code identifiers that mean something else, so `internal/proxy`'s Host checks, every `http` `Host` header and `agent.Host` keep their spelling. The one user-visible exception, `aos doctor --host-check`, belongs to the still-open *what `aos doctor` means without a container*.
+
+## Answer
+
+Written 2026-09-17 on Aman's "write M6 now". The M6 section, the two new ADRs and
+the five amendments are all in one commit; the wayfinder destination's final gate —
+Aman's approval — is what remains, and no implementation code has been written.
+
+**What landed in `docs/PLAN.md`:**
+
+- **§18 gains M6 — Native Linux install (Ubuntu VPS)**: 23 numbered sub-tasks in
+  build order under five headings (Foundation; Authentication and reach; The
+  filesystem; Software, model and Mode; Product language; Installer, release and
+  docs), each with an acceptance criterion and a Tests paragraph in the M0–M5
+  voice, plus an "Order of work" note calling out the four load-bearing orderings
+  (M6.4 atomic; Shared Folder before widening; browser ruleset before/with
+  widening; the reference generated last) and a single §18-style **Accepted when**
+  for the milestone as a whole.
+- **The sweep of the invalidated sections**: §1 Goal; §2 Scope; the §3 diagram
+  (relabelled *your computer*, Shared Folder node removed, caption added); §5
+  layout (`install.sh`, `docs-site/`, `tools/docsgen`, `tools/spikes/`, hostcheck
+  gone); §6 Container/Compose (M6 banner + target collapse, Shared-Folder mount and
+  the `~/Desktop` hang removed, env-var note); §7 (7.1 sudoers reality, 7.2
+  widening + stale not-writable line, 7.3 Protected roots, **7.6 rewritten as
+  *Access to the Desktop***, 7.7 native key delivery, 7.8 Trash `st_dev`); §12 five
+  corrections + the wildcard-publish; **§15 replaced** as *Install shapes and
+  clients*; §16 native perf note; §17 testing (host-check reference replaced, M6
+  test kinds added); §20 decision-log rows; §21 pending decisions (no longer
+  "None"); §22 working-agreement Hosts row.
+- **ADRs, same commit**: new **0009** (*The Machine is the host*) and **0010**
+  (*Configuration in one file, runtime writes back*); amended **0007** (opening
+  paragraph rewritten, dated M6 note), **0004** (key-custody sentence fixed, a
+  dated *Widening to the whole filesystem* section edited into the spec in place),
+  **0003**, **0005** and **0008** (dated M6 amendment sections).
+
+**Scope held.** The retirement swept the sections ticket 16 enumerated. Container-era
+language that survives in **§4 Components, §8 Machine Profile and §13 API** was left
+untouched (not on the enumerated list; §4/§13 are largely internal identifiers, and
+§8's Machine-Profile text is the thing M6.12 rewrites in code). §19 Risks and the
+M5 milestone record also keep their Compose/Host wording — both flagged to Aman
+rather than silently rewritten, since M5 is a prior milestone and reconciling M5's
+release story with M6's is Aman's call.
+
+**Left open for Aman** (recorded in §21, none blocking the writing): which Ubuntu
+the VPS runs; the module-path owner rename in its own commit before the first tag;
+public-at-first-tag confirmation; the ~2 live API calls for the Model Catalogue;
+and the VPS-only measurements (`ip_unprivileged_port_start`, re-plan cost, §16).
+

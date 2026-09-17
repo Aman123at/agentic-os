@@ -1,6 +1,6 @@
 # Agents run unprivileged and Landlock-confined inside the single container
 
-`aosd` runs as root and alone holds the OpenAI API key, which it reads from a Docker secret file, never an environment variable.
+`aosd` runs as root and alone holds the OpenAI API key, which it reads from a root-only file in `/var/lib/aos/keys` (delivered as a Docker secret file on a Compose install; set through System Settings or `aos config` on a native install), never an environment variable.
 
 Every command an Agent runs executes as the unprivileged `aos` user with `no_new_privs` set, inside a Landlock ruleset that makes Protected Paths read-only and the secrets directory unreadable for that process tree. No script can bypass the guard. Anything needing root, or touching a Protected Path, must go through a Tool, where Autonomy and Approval are enforced.
 
@@ -54,6 +54,36 @@ Landlock grants access to whole trees and cannot carve an exception out of a gra
   - `chmod`/`touch` on files the Agent's uid owns.
   - Unprotected dotfiles such as `~/.local/bin`. The Session `PATH` lists system folders first.
   - Files an Agent writes that the user later executes unconfined, such as git hooks or scripts.
+
+## Widening to the whole filesystem (native install, M6; decided 2026-09-17)
+
+This section is the spec the sandbox code cites, so it is edited in place rather
+than forked into a new ADR. On a **Compose install** the ruleset above is
+unchanged. On a **native install** (ADR-0009) the Writable set widens, because the
+Machine is the user's real server and confining Agents to home would defeat the
+point:
+
+- **Only `Writable` changes; reading is already `/`.** `Plan` carves Read+List from
+  `/` today, so nothing about reading widens. `Writable` becomes **`/` minus an
+  explicit Protected list**: `/boot`, `/proc`, `/sys`, `/snap`, `/root`, other
+  users' homes, and AOS's own binaries and systemd unit. `/var/lib/aos` and
+  `/etc/aos` stay Hidden; `/dev` stays Writable. Other users' homes join the
+  built-in Protected list.
+- **The walk is bounded by construction.** `carve` descends only into directories
+  that contain an exclusion, so the cost is the size of the ancestor chains of the
+  Protected paths, not the filesystem. This makes **"no exclusion may live under
+  `/proc` or `/sys`" a hard rule** — an exclusion there would force a descent into
+  a pseudo-filesystem.
+- **The re-plan hazard.** `/etc` becomes a split directory, so every package
+  install re-plans the ruleset, and `/run` churns on a real server in a way it
+  never did in a container. `Ruleset.Stale` drives the re-plan; its cost and the
+  churn rate are measurable only on the VPS (reported by Aman).
+- **The Browser gets its own ruleset**, not the Agent's (ADR-0008), or the widening
+  would hand an unsandboxed Chromium write access to the whole server. It lands
+  before or with the widening.
+- **`PrepareHome` must never relocate dotfiles in a home AOS did not create.** AOS
+  owns `/home/aos`, made by the installer; pointed at a live `/home/ubuntu` the
+  relocation would move the `authorized_keys` that is the only way into the server.
 
 ## Considered Options
 

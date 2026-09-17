@@ -12,3 +12,15 @@ Recreating the container discards everything outside volumes, so software an Age
 - **Volumes over `/usr`, `/etc`, `/var`**: rejected; breaks on image upgrades as the base image and the volume diverge.
 - **Accept ephemeral system state**: rejected; violates the expectation that "install X" is lasting.
 - **Full filesystem snapshots as Checkpoints**: rejected; hundreds of MB and seconds each, too heavy to take automatically.
+
+## M6 amendment (native install, 2026-09-17)
+
+The opening premise — "recreating the container discards everything outside
+volumes" — is the **Compose install's**. On a **native install** (ADR-0009) the
+Machine is a persistent Ubuntu server: nothing is discarded on a restart, so
+**Replay is off at boot**. Re-applying the whole Ledger to a live server is
+needless and destructive (it would `apt-get`-pin packages and rewrite `/etc` the
+user may have changed). The Install Ledger is still recorded, and Checkpoint and
+Restore stay available **user-initiated**, so "restore to before that Task" still
+works on demand. Whether `/etc` Checkpoints still earn their place once Replay is
+off is left open (§21). See M6.9.
