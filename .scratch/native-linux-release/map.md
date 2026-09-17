@@ -34,7 +34,7 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Configuration lives in `/etc/aos/config.yml`**, root-owned `0600` — deliberately *not* under `/home/aos`, which is the Agents' writable tree. `aos config set` and the UI override at runtime; a restart re-reads the file.
 - **Config precedence**: runtime changes are written back into `config.yml`, so the file stays the single source of truth and a restart never silently reverts a setting (Q19 option (b)).
 - **Port**: base **7700**, scanning upward if taken; the chosen port is recorded and printed by `aos service status`; an explicit `port:` pins it and fails loudly rather than moving.
-- **Bind**: `127.0.0.1`. Public access is the user's own business — nginx in front, with or without TLS. (Consequence to settle: see *Reach, bind and the two Host checks*.)
+- **Bind**: `0.0.0.0` (settled 2026-09-17, reversing the earlier `127.0.0.1`). A fresh install is reachable from a browser at `http://IP:7700` with no proxy in front; nginx and TLS stay optional and are the user's own business. The password screen, not the bind address, is what stands between the internet and the Machine — which raises the stakes on *The authentication model* and on the two `Host` checks, since both refuse anything that is not localhost today.
 - **Authentication**: username + password, stored in the existing SQLite database, one user only. JWT access token plus a working refresh token, signup on first UI use, password change requiring the current password, logout. No email or SMS, so no forgotten-password flow. The CLI is not authenticated — it is never exposed.
 - **Agent identity**: Agents run as the unprivileged `aos` user, which is in sudoers; privileged actions go through the existing Privileged Tool + Approval path, so root is reachable but always explicit and audited.
 - **Agent reach**: Agents read the whole filesystem and may write outside `/home/aos`, with the existing Protected Paths asking first. Other users' homes join the built-in Protected list.
@@ -47,6 +47,14 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Upgrade/uninstall**: re-running `install.sh` upgrades in place; `aos uninstall` removes the binary and unit but keeps `/home/aos`, `/var/lib/aos` and the config unless `--purge`.
 - **Docs site**: Astro Starlight, in this repo, built to static files Aman hosts on his own domain. Never served by `aosd`, never in the binary.
 
+### Settled 2026-09-17, second round
+
+- **Repository**: `Aman123at/agentic-os`, **private**, created and pushed this session. The five commits of M5.1/M5.2/M5.3 work plus this charting are now on `main`; the tree cross-compiles clean for `linux/amd64`.
+- **One name: `agentic-os`.** It already matches the Go module's repo segment and the image name in `compose.yaml`. Consequence: the module path's *owner* segment is still wrong (`amantiwari`, not `Aman123at`) — see *Naming*.
+- **Password hashing**: Go's stdlib `crypto/pbkdf2`, not `golang.org/x/crypto`/argon2id. ADR-0002 is proud of the single binary; this costs zero new dependencies.
+- **YAML**: `gopkg.in/yaml.v3` is accepted as a new dependency. There is no stdlib option, and a file users hand-edit needs comments.
+- **Widening Agents to `/` is approved.** The Landlock ruleset only needs to walk the *ancestor chain* of each Protected Path, not the whole filesystem, so the cost concern in *Widening the filesystem to the whole VPS* is bounded by construction — but it is verifiable only on the VPS.
+
 ### From resolved tickets
 
 <!-- one line per closed ticket, newest last -->
@@ -54,6 +62,8 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - [The model catalogue: which models, and which support reasoning effort](issues/04-model-catalogue.md): the catalogue must ship as data — `GET /v1/models` reports nothing about reasoning effort — and it seeds `/var/lib/aos/models.yaml`, open rather than a strict allow-list. Found a live defect on the way: the fixed effort list in `internal/settings/settings.go:74` is missing `max`, still offers the legacy `minimal`, and is per-model in reality, where a wrong value is an HTTP 400 rather than a clamp.
 
 - [Release engineering: multi-arch binaries and GitHub Releases](issues/09-release-engineering.md): a hand-written `release` stage in `tools/ci`, not GoReleaser, because the existing Dockerfile compiles Go itself and GoReleaser would need a second one that drifts. Version-less asset names let `install.sh` avoid the GitHub API and its per-IP rate limit entirely. Two traps found: `-ldflags -X` silently cannot write `Version` because it is a `const`, and the first tag must be `v0.1.0` — a `-m6` suffix makes GitHub treat it as a prerelease and `/releases/latest` 404s.
+
+- [Naming: module path, repo, binary and Docker Hub namespace](issues/17-naming.md): one name, `agentic-os`, everywhere. The repo is `Aman123at/agentic-os` (private, pushed). Release assets are `agentic-os-linux-<arch>.tar.gz`, version-less so `/releases/latest/download/` resolves. Docker Hub is `aman123at/agentic-os`. Binaries stay `aos` and `aosd`; the product stays "Agentic OS". One loose end raised for Aman: the module path's owner segment and the stated install URL path (`/agent-os/`) both still say something else.
 
 ## Not yet specified
 
@@ -63,7 +73,8 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Performance targets (§16) on a VPS.** The existing targets assume Docker Desktop on Apple Silicon. A 1-vCPU VPS will miss several. Which targets apply natively, and what they become, can't be set until the install exists to measure.
 - **Finder against pseudo-filesystems and huge directories.** `/proc`, `/sys` and `/usr/lib` will be reachable for the first time. The shape of the fix (exclusions, lazy counting, a depth guard) depends on how the filesystem widening lands.
 - **Whether `/etc` Checkpoints still earn their place** once Replay is off and the box is persistent.
-- **Whether the milestone-derived version scheme survives.** `version_linux_test.go` ties `Version` to the newest `### M<n>` heading in the plan, which fights tag-derived release versions. Reconciling them properly needs the naming and release decisions first.
+- **Whether the milestone-derived version scheme survives.** `version_linux_test.go` ties `Version` to the newest `### M<n>` heading in the plan, which fights tag-derived release versions. Reconciling them is now unblocked — naming and release engineering are both settled.
+- **When the module path gets renamed.** `github.com/amantiwari/agentic-os` should be `github.com/Aman123at/agentic-os`. Mechanical but tree-wide, and it wants its own commit before the first tag, not folded into M6's work.
 - **Observability of a long-running VPS service** — log rotation, journal size, what `aos service status` shows about uptime and restarts.
 
 ## Out of scope
