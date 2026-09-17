@@ -22,3 +22,7 @@ Settle:
 ## Constraint from *Widening the filesystem to the whole VPS* (2026-09-17)
 
 **Do not delete the Shared Folder's Trash code — move it.** `internal/files/ops.go:26` implements the freedesktop `.Trash-<uid>`-at-the-mount-root rule for the Shared Folder, and that is exactly the mechanism a whole-filesystem Finder needs for deleting outside `/home/aos`. It generalises to "the mount point of the path being deleted". Removing the Shared Folder must carry that code across rather than take it with it.
+
+## Constraint from *Which decisions become ADRs* (resolved 2026-09-17)
+
+This ticket's outcome edits **ADR-0004's home-layout list** in place — `~/Shared` is a root-owned symlink to `/shared` in the layout the sticky bit protects, and 0004's `## Ruleset` section is the spec the sandbox code cites. Resolve it knowing the ADR text changes with it; 0004's M6 amendment cannot be finished until this closes.

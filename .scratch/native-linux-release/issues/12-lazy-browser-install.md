@@ -19,3 +19,12 @@ Settle:
 5. **Disk check and uninstall.** Refusing when space is short; an `aos browser remove`.
 6. **Compose parity.** Compose uses a build argument today, so its browser decision is made at build time. With the image published to Docker Hub prebuilt, does the published image include Chromium, ship in two variants, or fetch lazily too?
 7. **Version pinning** — `PLAYWRIGHT_VERSION` is pinned in the Dockerfile and must stay in step with `desktop/package.json`. Where does that pin live once the download is at runtime?
+8. **Chromium's own sandbox, natively** — see the constraint below; it is not optional for M6.
+
+## Constraint from *Which decisions become ADRs* (resolved 2026-09-17)
+
+**The `--no-sandbox` justification dies with the container, and nothing here notices.** ADR-0008 says Chromium's own sandbox is off "because it needs user namespaces Docker's default seccomp profile refuses. **The container is the outer boundary.**" `internal/browser/browser.go:31` repeats it in a comment, and `:36` passes the flag.
+
+On a native install Docker's seccomp profile is not in the way, so the *reason* for the flag is gone — and the container that made it acceptable is gone in the same move. That leaves a browser rendering arbitrary web pages, unsandboxed, as a uid that sits in `NOPASSWD:ALL` sudoers. This ticket must answer it: does the native build drop `--no-sandbox` (and what does the headless shell then need — user namespaces unprivileged-enabled, or the setuid `chrome-sandbox` helper), and does Compose keep it?
+
+Whatever this decides is **ADR-0008's amendment**, which is owed to this ticket along with the build-time-to-runtime move. It is question 8 above, and it is not optional for M6.

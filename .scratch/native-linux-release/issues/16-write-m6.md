@@ -24,3 +24,9 @@ Then stop. **No implementation code until Aman approves it.**
 **"What software a native Machine has" is a sub-task of its own**, not a footnote of the installer. The Docker image curates ~25 apt packages plus a pinned Node; `install.sh` installs none of them; `internal/agent/instructions.go` promises Agents `pipx` and `npm` regardless.
 
 The prototype at `tools/spikes/install/` is the concrete reference for the installer sub-tasks. It is throwaway — M6 writes the real script.
+
+## Input from *Which decisions become ADRs* (resolved 2026-09-17)
+
+**The ADRs are written in the same commit as this PLAN section**, so every reference resolves when Aman reads it and one approval covers the package. The set is fixed: **new** ADR-0009 (*The Machine is the host: a native Linux install*) and ADR-0010 (*Configuration lives in one file, and runtime writes back to it*); **amended** 0003, 0004, 0005, 0007 and 0008. §20 gains rows for the new ADRs and for three amended decisions, since the table is titles-only and amendments are invisible in it otherwise.
+
+Two M6 code sub-tasks fall out of the review and belong in the sub-task list: `internal/agent/instructions.go:38` tells Agents "There is no systemd", and `internal/browser/browser.go:31,36` justifies `--no-sandbox` by a container that no longer exists.
