@@ -11,6 +11,7 @@ import { useDesktop } from "../../store";
 import { Confirm } from "../../ui/Confirm";
 import { costLine, isFinished, isLive, stateLabel, stepIcon, taskTitle, toolSummary } from "./format";
 import { friendlyError } from "../../api/error";
+import { Markdown } from "./Markdown";
 
 export default function TaskDetail() {
   const openTask = useDesktop((s) => s.openTask);
@@ -29,6 +30,9 @@ export default function TaskDetail() {
     [allApprovals, openTask],
   );
 
+  // Running or queued: the Agent is working and the composer stays disabled.
+  const working = task?.state === TaskState.RUNNING || task?.state === TaskState.QUEUED;
+
   // A different Task starts with an empty composer.
   useEffect(() => {
     setReply("");
@@ -39,7 +43,7 @@ export default function TaskDetail() {
   useEffect(() => {
     const el = feed.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [steps, approvals.length]);
+  }, [steps, approvals.length, working]);
 
   if (!openTask || !task) {
     return (
@@ -99,7 +103,17 @@ export default function TaskDetail() {
         {steps.map((s) => (
           <Step key={s.id} step={s} />
         ))}
-        {steps.length === 0 && <div className="tasks__loading">Loading steps…</div>}
+        {steps.length === 0 && !working && <div className="tasks__loading">Loading steps…</div>}
+        {working && (
+          <div className="tasks__working" role="status" aria-live="polite">
+            <span className="tasks__dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <span>The Agent is working…</span>
+          </div>
+        )}
         {approvals.map((a) => (
           <div key={a.id} className="approval approval--inline" role="group" aria-label="Approval for this Task">
             <div className="approval__head">
@@ -110,7 +124,10 @@ export default function TaskDetail() {
         ))}
       </div>
 
-      {finished && task.summary && (
+      {/* On success the summary is the model's final message, already the last
+          AGENT_TEXT step in the feed — showing it again duplicated the reply.
+          Only the failed/cancelled notes, which aren't in the feed, show here. */}
+      {finished && task.state !== TaskState.SUCCEEDED && task.summary && (
         <div className={`tasks__summary${task.state === TaskState.FAILED ? " tasks__summary--bad" : ""}`}>{task.summary}</div>
       )}
 
@@ -184,13 +201,17 @@ export default function TaskDetail() {
 
 function Step({ step }: { step: TaskStep }) {
   const tool = step.kind === StepKind.TOOL_CALL;
-  const text = tool ? toolSummary(step) : step.text;
   const result = tool ? step.toolCall?.result : "";
   return (
     <div className={`tasks__step tasks__step--${kindClass(step.kind)}`}>
       <span className="tasks__stepicon">{stepIcon(step)}</span>
       <div className="tasks__stepbody">
-        <div className="tasks__steptext">{text}</div>
+        {step.kind === StepKind.AGENT_TEXT ? (
+          // The Agent replies in Markdown; render it rather than show the raw markers.
+          <Markdown className="tasks__steptext" text={step.text} />
+        ) : (
+          <div className="tasks__steptext">{tool ? toolSummary(step) : step.text}</div>
+        )}
         {tool && result && <div className="tasks__stepresult">{result}</div>}
       </div>
     </div>

@@ -13,6 +13,7 @@ import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import { Confirm } from "../ui/Confirm";
+import { Splitter } from "../ui/Splitter";
 import { ContextMenu, MenuItem } from "../ui/ContextMenu";
 import { Skeleton } from "../ui/Skeleton";
 import { VirtualList } from "../ui/VirtualList";
@@ -37,6 +38,8 @@ const ROW_H = 28;
 const COL_ROW_H = 24;
 const TRASH = ""; // the Trash "folder" browses TrashService, not FileService
 const DRAG_TYPE = "application/x-aos-path"; // an internal move, told apart from a Host-file drop
+// The Places sidebar’s width, kept with the window like the folder and the view.
+const SIDEBAR = { fallback: 160, min: 120, max: 360 };
 
 interface Menu {
   x: number;
@@ -50,6 +53,8 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   // The folder and view are kept with the window, so a reload reopens them.
   const [savedDir, saveDir] = useWinState("dir", "~");
   const [savedView, saveView] = useWinState("view", "list");
+  const [savedSide, setSidew] = useWinState("sidew", String(SIDEBAR.fallback));
+  const sidew = Number(savedSide);
   // The Trash has no event of its own, so the Desktop counts it after every
   // change made here; the Dock's tile reads that count (PLAN.md M4.8 item 8.19).
   const setTrashCount = useDesktop((s) => s.setTrashCount);
@@ -315,7 +320,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
       }}
     >
       {!trashOnly && (
-        <nav className="finder__sidebar">
+        <nav className={`finder__sidebar${sidew === 0 ? " finder__sidebar--off" : ""}`} style={{ width: sidew }}>
           <div className="finder__group">Places</div>
           {PLACES.map((p) => (
             <button
@@ -328,6 +333,16 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
             </button>
           ))}
         </nav>
+      )}
+      {!trashOnly && (
+        <Splitter
+          size={sidew}
+          onSize={(w) => setSidew(String(w))}
+          min={SIDEBAR.min}
+          max={SIDEBAR.max}
+          restore={SIDEBAR.fallback}
+          label="Resize the Places sidebar"
+        />
       )}
 
       <div className="finder__main">

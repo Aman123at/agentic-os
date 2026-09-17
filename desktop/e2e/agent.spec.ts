@@ -97,6 +97,26 @@ test("the Agent app starts a Task from its toolbar and deletes it from the row m
   await expect(row).toHaveCount(0);
 });
 
+test("the Agent renders its Markdown reply once, with no duplicate summary", async ({ page }) => {
+  await page.goto("/");
+  await startTask(page, `e2e-md: show the machine status ${Date.now()}`);
+  const win = agent(page);
+  const feed = win.locator(".tasks__feed");
+  await expect(win.locator(".tasks__state")).toHaveText("Done");
+
+  // The reply is parsed as Markdown, not shown with its raw markers: the heading
+  // line is bold, the bullets are a real list, and no ** or ` leaks through.
+  await expect(feed.locator("strong", { hasText: "Machine status:" })).toBeVisible();
+  await expect(feed.locator(".md__list li")).toHaveCount(3);
+  await expect(feed.locator("code", { hasText: "1.0 GiB total" })).toBeVisible();
+  await expect(feed).not.toContainText("**");
+
+  // The final message is the last feed step; it must not be repeated in a
+  // summary block below the feed (the bug this fixes).
+  await expect(win.locator(".tasks__summary")).toHaveCount(0);
+  await expect(feed.getByText("Total RAM", { exact: false })).toHaveCount(1);
+});
+
 test("the Audit Log view clears to a floor and shows everything again", async ({ page }) => {
   await page.goto("/");
   await startTask(page, `e2e-ui: audit clear ${Date.now()}`);
@@ -107,7 +127,9 @@ test("the Audit Log view clears to a floor and shows everything again", async ({
   await expect(win.locator(".audit__row").first()).toBeVisible();
 
   // Clear hides what is in view (a floor, not a delete); Show all brings it back.
-  await win.getByRole("button", { name: "Clear" }).click();
+  // Exact: this Task's prompt says "clear" too, and a row carrying it would
+  // otherwise match the toolbar's button by name.
+  await win.getByRole("button", { name: "Clear", exact: true }).click();
   const confirm = page.getByRole("alertdialog", { name: "Clear the Audit Log view?" });
   await expect(confirm).toBeVisible();
   await confirm.getByRole("button", { name: "Clear" }).click();

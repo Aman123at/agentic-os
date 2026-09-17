@@ -21,3 +21,9 @@ export function useWinFocused(): boolean {
   const id = useContext(WinContext);
   return useDesktop((s) => s.focused === id);
 }
+
+// useWinMinimized reports whether the app's window is minimized to the Dock.
+export function useWinMinimized(): boolean {
+  const id = useContext(WinContext);
+  return useDesktop((s) => Boolean(s.windows.find((w) => w.id === id)?.minimized));
+}

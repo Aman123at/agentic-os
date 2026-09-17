@@ -1,0 +1,8 @@
+{
+  "prompt": "e2e-md:",
+  "turns": [
+    {
+      "text": "**Machine status:** Healthy and lightly loaded.\n\n- Total RAM: **7.7 GiB**\n- Used: **921 MiB**\n- Swap: `1.0 GiB total`, 0 used"
+    }
+  ]
+}

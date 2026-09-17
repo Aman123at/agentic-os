@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-import { test as base, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 // A Host port of our own, apart from the user's Machine (7700) and tools/e2e
 // (7793). The Host guard accepts 127.0.0.1, and the browser sends a matching
@@ -167,6 +167,25 @@ export async function openApp(page: Page, name: string): Promise<void> {
 
 // The e2e `test`: every context gets the harness flag before any script runs, so
 // the test-only terminal hook (see apps/terminal/term.ts) is available.
+// The pane dividers (PLAN.md M5.1), shared by the specs that pull them.
+export const paneWidth = async (l: Locator) => Math.round((await l.boundingBox())!.width);
+
+// A window plays a 140 ms scale-in when it mounts and after a reload; a box
+// measured mid-flight is the scaled one, not the laid-out one.
+export async function settled(win: Locator): Promise<void> {
+  await win.evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished.catch(() => {}))));
+}
+
+// dragDivider pulls a divider dx pixels sideways, as a pointer does.
+export async function dragDivider(page: Page, divider: Locator, dx: number): Promise<void> {
+  const box = (await divider.boundingBox())!;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + box.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + dx, y, { steps: 8 });
+  await page.mouse.up();
+}
+
 export const test = base.extend({
   context: async ({ context }, use) => {
     await context.addInitScript(() => {

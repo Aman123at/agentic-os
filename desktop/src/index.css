@@ -596,6 +596,55 @@ button.stack__item:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* -------------------------------------------------- pane dividers (Splitter)
+   A 7px hit area over a 1px line, so it is easy to grab without looking like a
+   gutter. Collapsed, it widens into a handle with a chevron. */
+.split {
+  flex: none;
+  position: relative;
+  width: 7px;
+  margin: 0 -3px;
+  z-index: 2;
+  cursor: col-resize;
+  background: none;
+  border: 0;
+  touch-action: none;
+}
+.split__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--border);
+}
+.split:hover .split__grip,
+.split--live .split__grip { background: var(--accent); }
+.split:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.split--off {
+  width: 12px;
+  margin: 0;
+  cursor: e-resize;
+}
+.split--off .split__grip {
+  left: 0;
+  width: 12px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+/* The chevron that says a collapsed pane is still there. */
+.split--off .split__grip::after {
+  content: "\203A";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+.split--off:hover .split__grip { background: var(--border); }
+
 /* ---------------------------------------------------------------- finder */
 .finder {
   display: flex;
@@ -608,7 +657,6 @@ button.stack__item:hover {
   flex: none;
   padding: 8px 6px;
   background: var(--panel);
-  border-right: 1px solid var(--border);
   overflow-y: auto;
 }
 .finder__group {
@@ -1595,6 +1643,107 @@ button.stack__item:hover {
   background: var(--error);
   border-color: var(--danger);
 }
+
+/* The Agent's replies render as Markdown (M5.1). Block spacing is tight so a
+   short answer stays compact inside the feed; `white-space: normal` undoes the
+   pre-wrap that .tasks__steptext sets for plain steps. */
+.md {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md__p {
+  margin: 0 0 6px;
+}
+.md__h {
+  margin: 8px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.md__list {
+  margin: 4px 0 6px;
+  padding-left: 20px;
+}
+.md__list li {
+  margin: 1px 0;
+}
+.md code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.md__code {
+  margin: 4px 0 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.md__code code {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+.md a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* While a Task is running or queued, an animated indicator sits at the foot of
+   the feed; the composer is disabled until the Agent asks or finishes. */
+.tasks__working {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.tasks__dots {
+  display: inline-flex;
+  gap: 3px;
+}
+.tasks__dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.35;
+  animation: tasks-dot 1.2s infinite ease-in-out;
+}
+.tasks__dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.tasks__dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes tasks-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tasks__dots span {
+    animation: none;
+    opacity: 0.6;
+  }
+}
 .tasks__await {
   flex: none;
   margin: 0 12px 8px;
@@ -1666,7 +1815,6 @@ button.stack__item:hover {
   flex: none;
   padding: 8px 6px;
   background: var(--panel);
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1705,7 +1853,6 @@ button.stack__item:hover {
   flex: none;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
 }
 .agent__toolbar {
   flex: none;
@@ -3038,4 +3185,13 @@ button.stack__item:hover {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 2px;
+}
+
+/* A collapsed pane keeps its element (and its state) but shows nothing. */
+.agent__nav--off,
+.agent__listpane--off,
+.finder__sidebar--off {
+  padding-left: 0;
+  padding-right: 0;
+  overflow: hidden;
 }

@@ -8,6 +8,7 @@ import { useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
 import { Confirm } from "../../ui/Confirm";
 import { ContextMenu, MenuItem } from "../../ui/ContextMenu";
+import { Splitter } from "../../ui/Splitter";
 import { VirtualList } from "../../ui/VirtualList";
 import NewTask from "./NewTask";
 import TaskDetail from "./TaskDetail";
@@ -16,10 +17,14 @@ import { TASK_FILTERS, isLive, matchesFilter, millis, shortCost, stateLabel, tas
 // How much Task history the list loads; boot loads only the newest 50.
 const HISTORY = 500;
 const ROW_HEIGHT = 52;
+// The list pane’s width, kept with the window like the pick and the filter.
+const LIST = { fallback: 260, min: 180, max: 560 };
 
 export default function TasksView() {
   const [taskId, setTaskId] = useWinState("task", "");
   const [filter, setFilter] = useWinState("filter", "all");
+  const [listw, setListw] = useWinState("listw", String(LIST.fallback));
+  const width = Number(listw);
   const tasks = useDesktop((s) => s.tasks);
   const approvals = useDesktop((s) => s.approvals);
   const selectTask = useDesktop((s) => s.selectTask);
@@ -73,7 +78,7 @@ export default function TasksView() {
 
   return (
     <div className="agent__tasks">
-      <div className="agent__listpane">
+      <div className={`agent__listpane${width === 0 ? " agent__listpane--off" : ""}`} style={{ width }}>
         <div className="agent__toolbar">
           <select className="agent__select" aria-label="Filter by state" value={filter} onChange={(e) => setFilter(e.target.value)}>
             {TASK_FILTERS.map((f) => (
@@ -129,6 +134,14 @@ export default function TasksView() {
           />
         )}
       </div>
+      <Splitter
+        size={width}
+        onSize={(w) => setListw(String(w))}
+        min={LIST.min}
+        max={LIST.max}
+        restore={LIST.fallback}
+        label="Resize the Tasks list"
+      />
       <div className="agent__detail">
         <TaskDetail />
       </div>

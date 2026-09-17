@@ -1,8 +1,10 @@
 // The Agent app (PLAN.md §4.3, M4.2): the Tasks, with their live step feeds and
 // the controls to follow up, answer, cancel and resume; the Audit Log of every
 // Tool call; and model Usage against the Cost Limits. Which view and which Task
-// it shows are kept with its window, so a reload brings them back.
+// it shows — and how wide its panes are — are kept with its window, so a reload
+// brings them back.
 import { useWinState } from "../../shell/win";
+import { Splitter } from "../../ui/Splitter";
 import AuditLog from "./AuditLog";
 import TasksView from "./TasksView";
 import UsageView from "./UsageView";
@@ -13,12 +15,20 @@ const VIEWS = [
   { id: "usage", name: "Usage", icon: "📊" },
 ] as const;
 
+const NAV = { fallback: 150, min: 110, max: 320 };
+
 export default function Agent() {
   const [view, setView] = useWinState("view", "tasks");
+  const [navw, setNavw] = useWinState("navw", String(NAV.fallback));
+  const width = Number(navw);
 
   return (
     <div className="agent">
-      <nav className="agent__nav" aria-label="Agent views">
+      <nav
+        className={`agent__nav${width === 0 ? " agent__nav--off" : ""}`}
+        style={{ width }}
+        aria-label="Agent views"
+      >
         {VIEWS.map((v) => (
           <button
             key={v.id}
@@ -33,6 +43,14 @@ export default function Agent() {
           </button>
         ))}
       </nav>
+      <Splitter
+        size={width}
+        onSize={(w) => setNavw(String(w))}
+        min={NAV.min}
+        max={NAV.max}
+        restore={NAV.fallback}
+        label="Resize the Agent views sidebar"
+      />
       <div className="agent__main">
         {view === "audit" ? <AuditLog /> : view === "usage" ? <UsageView /> : <TasksView />}
       </div>
