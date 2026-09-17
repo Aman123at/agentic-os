@@ -61,3 +61,15 @@ Five sub-tasks, one of them order-critical:
 - **The Dockerfile collapses to one runtime stage**, deleting `browser-dist`, `ui-browser-true`, `ui-browser-false`, `INCLUDE_BROWSER` and `PLAYWRIGHT_VERSION`. Together with *Mode switching*'s target collapse, this is the whole of the file's build-time forking. `compose.yaml` gains a named volume for `/opt/aos-browser`.
 - **The `--no-sandbox` comment at `internal/browser/browser.go:31,36`** is rewritten (already booked here via *Which decisions become ADRs*); `LibDir` and its `LD_LIBRARY_PATH` are deleted with it, since `libgbm1` becomes an ordinary package once nothing is being kept out of an image.
 - **`tools/ci` loses the `ui+browser` image** and gains a cheap pin-drift check against `playwright-core/browsers.json` plus an on-demand browser-install rehearsal that downloads 120 MB.
+
+## Input from *The documentation site* (resolved 2026-09-17)
+
+Five sub-tasks, one of them ordered against the release:
+
+- **Make the repository public**, before the release stage is ever run. Measured: `raw.githubusercontent.com/Aman123at/agentic-os/main/…` and `/releases/latest/download/…` both return 404 while it is private, so `install.sh`'s canonical URL and the installer's own download are inert until this lands. It is a decision, not code, but it belongs in the ordered list because two other sub-tasks are dead without it.
+- **`docs-site/`** — Astro 7 + Starlight 0.42, `base: "/agentic-os/"`, the fifteen-page map, deployed on tag to `https://amantiwari.co.in/agentic-os/`. Prototyped at [`tools/spikes/docs-site/`](../../../tools/spikes/docs-site/).
+- **`tools/docsgen`** — the generated command reference. Needs one production change first: `rootCmd()` at `internal/cli/cli.go:40` becomes exported `Root()`. **This sub-task lands late**, after every M6 command exists, because the reference is generated from the tree it documents.
+- **`tools/ci`**: the reference-drift check joins `lint` (pure Go, milliseconds, fails like `gofmt -l`); the Astro build becomes an **optional `docs` stage** named explicitly, like `live`.
+- **Rewrite `README.md` whole.** Tickets 07 and 12 book two line-edits to it, but its thesis is falsified — "An Ubuntu Machine in Docker", `docker compose up --build` as the Quick start, `INCLUDE_BROWSER`, `AOS_MODE`, and a Troubleshooting section entirely about the Shared Folder. It becomes the public front door the moment the repository goes public.
+
+Sizing note: the generator produces 22 pages against today's tree, before M6 adds `daemon`, `config`, `mode`, `model`, `user`, `browser`, `status` and `uninstall` and deletes `desktop-url`.

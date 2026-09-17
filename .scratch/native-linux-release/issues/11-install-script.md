@@ -102,3 +102,11 @@ It is irreversible, so it prints exactly what goes and what stays and requires c
 
 - ***The documentation site***: the "Install" page shows both invocation forms; a page must state that the Desktop password is root on the server; the path is `/agentic-os/`.
 - ***Write M6 into docs/PLAN.md***: "what software a native Machine has" is a sub-task of its own, not a footnote of the installer.
+
+## Input from *The documentation site* (resolved 2026-09-17)
+
+Decision 8's hosting stands, with two additions.
+
+**It is inert while the repository is private** — `raw.githubusercontent.com/Aman123at/agentic-os/main/README.md` returns 404, measured. Going public is now an M6 sub-task ordered ahead of the first tag; the documentation is written as though it has already happened.
+
+**Nothing the documentation site publishes may sit at `/agentic-os/install.sh`.** That path is a *redirect* to `raw.githubusercontent.com`; a static file at the same path in a docs deploy would silently shadow it, and `curl -fsSL … | sudo sh` would start receiving a web page. The prototype puts that sentence in a comment in `astro.config.mjs`, where the person adding a page will meet it.

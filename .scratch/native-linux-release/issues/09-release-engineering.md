@@ -47,3 +47,16 @@ Also: prerelease-skipping in `install.sh` needs no code — `/releases/latest` e
 ## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
 
 `tools/ci` loses the `ui+browser` image entirely (`main.go:26,38`) and the browser-presence check at `main.go:372` flips from "only the `INCLUDE_BROWSER` image has it" to "no image has it". Two stages replace it: a **pin-drift check** comparing the Chrome version pinned in Go source against `playwright-core/browsers.json`'s `chromium-headless-shell.browserVersion` — cheap, every run — and a **browser install rehearsal** inside a container, which downloads about 120 MB and therefore runs on demand rather than on every PR. The release tarball is unaffected: it never carried Chromium.
+
+## Input from *The documentation site* (resolved 2026-09-17)
+
+**The repository must be public before the first tag, and nobody had booked it.** Measured while writing the install page:
+
+```
+raw=404   https://raw.githubusercontent.com/Aman123at/agentic-os/main/README.md
+rel=404   https://github.com/Aman123at/agentic-os/releases/latest/download/agentic-os-linux-amd64.tar.gz
+```
+
+Private release assets are not served anonymously at all — this is not the rate limit that finding 2 designed around, and no fallback ladder helps. So the version-less asset scheme, the `gh release create` publish and `install.sh`'s whole download path are correct and inert until the repository's visibility changes. M6 carries it as an ordered sub-task ahead of the release stage.
+
+Second consumer: the documentation site deploys **on tag**, not on every push to `main`, so it can never describe a command that is not in anyone's binary. Whatever runs the release stage builds `docs-site/` too.
