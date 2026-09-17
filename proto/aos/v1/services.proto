@@ -173,11 +173,15 @@ message DesktopStateChanged {
   string origin = 2;
 }
 
-// An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool).
+// An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool),
+// or an app (the Browser Tools).
 message OpenInDesktop {
   string task_id = 1;
   string path = 2;
   bool dir = 3;
+  // An app to open (or bring forward) instead of a path: "browser" when an
+  // Agent starts using the Browser (PLAN.md M5.3).
+  string app = 4;
 }
 
 message ServiceChanged {
@@ -765,6 +769,12 @@ message InfoResponse {
   string api_key_hint = 14;
   // settings | env: where the key in use came from.
   string api_key_source = 15;
+  // The Browser app can run (ui Mode, INCLUDE_BROWSER=true, and the image has
+  // the browser; PLAN.md M5.2).
+  bool browser = 16;
+  // Why the Browser can't run although INCLUDE_BROWSER=true, such as an image
+  // built before it was set; "" otherwise.
+  string browser_unavailable = 17;
 }
 
 message AuditRequest {

@@ -44,6 +44,14 @@ func doctorCmd() *cobra.Command {
 				if !i.PricesKnown {
 					fmt.Fprintf(w, "Prices:    none for %s in /var/lib/aos/prices.yaml: costs are unknown and Cost Limits can't apply\n", i.Model)
 				}
+				switch {
+				case i.Browser:
+					fmt.Fprintln(w, "Browser:   included (INCLUDE_BROWSER=true)")
+				case i.BrowserUnavailable != "":
+					fmt.Fprintf(w, "Browser:   unavailable: %s\n", i.BrowserUnavailable)
+				case i.Mode == "ui":
+					fmt.Fprintln(w, "Browser:   not included (set INCLUDE_BROWSER=true in .env, then docker compose up --build)")
+				}
 				if r := i.Replay; r != nil && r.State != aosv1.ReplayState_REPLAY_STATE_UNSPECIFIED {
 					fmt.Fprintf(w, "Replay:    %s\n", replayText(r))
 				}

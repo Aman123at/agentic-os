@@ -7,6 +7,11 @@ ARG GO_VERSION=1.27.1
 ARG NODE_VERSION=24.21.0
 ARG NODE_SHA256_ARM64=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
 ARG NODE_SHA256_X64=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+# The Browser app (PLAN.md M5.2, ADR-0008): `true` adds Chromium's headless
+# shell to the ui image. Playwright pins the build; keep this in step with
+# desktop/package.json's @playwright/test.
+ARG INCLUDE_BROWSER=false
+ARG PLAYWRIGHT_VERSION=1.63.0
 
 # ---------------------------------------------------------------- Desktop (ui only)
 FROM --platform=$BUILDPLATFORM node:24-slim AS desktop-build
@@ -72,6 +77,36 @@ RUN set -eu; \
     tar -xJf /tmp/node.tar.xz -C /opt/node --strip-components=1 --no-same-owner; \
     rm -rf /opt/node/include /opt/node/share /opt/node/*.md /opt/node/LICENSE
 
+# ---------------------------------------------------------------- Browser (ui, INCLUDE_BROWSER=true)
+# Downloaded for the target architecture in a stage of its own, so npm's cache
+# never reaches the image. /opt/aos-browser/chrome is the path aosd runs.
+FROM ubuntu:24.04 AS browser-dist
+ARG PLAYWRIGHT_VERSION
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+COPY --from=node-dist /opt/node/ /usr/local/
+RUN set -eu; \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/aos-browser npx --yes "playwright@${PLAYWRIGHT_VERSION}" install --only-shell chromium; \
+    bin="$(find /opt/aos-browser -type f \( -name chrome-headless-shell -o -name headless_shell \) | head -n1)"; \
+    test -x "$bin"; \
+    ln -s "$bin" /opt/aos-browser/chrome; \
+    rm -rf /opt/aos-browser/.links /opt/aos-browser/ffmpeg-*; \
+    # Page text in other languages is unaffected; only Chromium's own strings
+    # (error pages) fall back to English. Saves about 45 MB.
+    find "$(dirname "$bin")/locales" -type f ! -name 'en-US.pak' -delete
+# The shell links libgbm, but only loads Mesa's drivers when it opens a GPU,
+# which a headless shell never does. Installing libgbm1 would pull in Mesa and
+# LLVM (about 180 MB), so only the library itself is kept, beside the browser;
+# aosd puts /opt/aos-browser/lib on the browser's library path.
+RUN set -eu; \
+    apt-get update; \
+    cd /tmp; \
+    apt-get download libgbm1; \
+    dpkg-deb -x libgbm1_*.deb gbm; \
+    mkdir -p /opt/aos-browser/lib; \
+    cp -P gbm/usr/lib/*/libgbm.so.1* /opt/aos-browser/lib/; \
+    rm -rf /var/lib/apt/lists/* /tmp/*
+
 # ---------------------------------------------------------------- The Machine
 FROM ubuntu:24.04 AS machine
 ENV LANG=C.UTF-8 TZ=UTC
@@ -109,7 +144,30 @@ COPY --from=aosd-cli /out/ /usr/local/bin/
 ENV AOS_IMAGE_MODE=cli
 ENTRYPOINT ["/usr/local/bin/aosd"]
 
-FROM machine AS ui
+# Build arguments pick one of these two; BuildKit never builds the other, so a
+# default build downloads no browser. Any value but true or false fails here.
+FROM machine AS ui-browser-false
+
+FROM machine AS ui-browser-true
+# Only the libraries the headless shell links (the ldd check below keeps this
+# honest) and a small set of fonts: Liberation for the web's common faces, Noto
+# for emoji. apt's cache and lists go to /tmp here: the Machine's apt config
+# keeps downloaded packages for Replay, and these are part of the image.
+RUN set -eu; \
+    apt="-o Dir::Cache::archives=/tmp/apt/archives -o Dir::State::lists=/tmp/apt/lists"; \
+    mkdir -p /tmp/apt/archives/partial /tmp/apt/lists/partial; \
+    apt-get $apt update; \
+    DEBIAN_FRONTEND=noninteractive apt-get $apt install -y --no-install-recommends \
+      libglib2.0-0t64 libnspr4 libnss3 libatk1.0-0t64 libatspi2.0-0t64 libdbus-1-3 libudev1 \
+      libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxrandr2 libxkbcommon0 \
+      libasound2t64 libdrm2 libexpat1 \
+      libfontconfig1 libfreetype6 fonts-liberation fonts-noto-color-emoji; \
+    rm -rf /tmp/apt /var/cache/apt/*.bin
+COPY --from=browser-dist /opt/aos-browser/ /opt/aos-browser/
+# Fail the build, not the first launch, if a library is missing.
+RUN ! LD_LIBRARY_PATH=/opt/aos-browser/lib ldd /opt/aos-browser/chrome | grep "not found"
+
+FROM ui-browser-${INCLUDE_BROWSER} AS ui
 COPY --from=aosd-ui /out/ /usr/local/bin/
 ENV AOS_IMAGE_MODE=ui
 ENTRYPOINT ["/usr/local/bin/aosd"]

@@ -1564,12 +1564,16 @@ func (x *DesktopStateChanged) GetOrigin() string {
 	return ""
 }
 
-// An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool).
+// An Agent asks the Desktop to show a file or folder (the open_in_desktop Tool),
+// or an app (the Browser Tools).
 type OpenInDesktop struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
-	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
-	Dir           bool                   `protobuf:"varint,3,opt,name=dir,proto3" json:"dir,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Path   string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Dir    bool                   `protobuf:"varint,3,opt,name=dir,proto3" json:"dir,omitempty"`
+	// An app to open (or bring forward) instead of a path: "browser" when an
+	// Agent starts using the Browser (PLAN.md M5.3).
+	App           string `protobuf:"bytes,4,opt,name=app,proto3" json:"app,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1623,6 +1627,13 @@ func (x *OpenInDesktop) GetDir() bool {
 		return x.Dir
 	}
 	return false
+}
+
+func (x *OpenInDesktop) GetApp() string {
+	if x != nil {
+		return x.App
+	}
+	return ""
 }
 
 type ServiceChanged struct {
@@ -6611,9 +6622,15 @@ type InfoResponse struct {
 	// The key as System Settings shows it, such as sk-…abcd; "" without a key.
 	ApiKeyHint string `protobuf:"bytes,14,opt,name=api_key_hint,json=apiKeyHint,proto3" json:"api_key_hint,omitempty"`
 	// settings | env: where the key in use came from.
-	ApiKeySource  string `protobuf:"bytes,15,opt,name=api_key_source,json=apiKeySource,proto3" json:"api_key_source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	ApiKeySource string `protobuf:"bytes,15,opt,name=api_key_source,json=apiKeySource,proto3" json:"api_key_source,omitempty"`
+	// The Browser app can run (ui Mode, INCLUDE_BROWSER=true, and the image has
+	// the browser; PLAN.md M5.2).
+	Browser bool `protobuf:"varint,16,opt,name=browser,proto3" json:"browser,omitempty"`
+	// Why the Browser can't run although INCLUDE_BROWSER=true, such as an image
+	// built before it was set; "" otherwise.
+	BrowserUnavailable string `protobuf:"bytes,17,opt,name=browser_unavailable,json=browserUnavailable,proto3" json:"browser_unavailable,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *InfoResponse) Reset() {
@@ -6747,6 +6764,20 @@ func (x *InfoResponse) GetApiKeyHint() string {
 func (x *InfoResponse) GetApiKeySource() string {
 	if x != nil {
 		return x.ApiKeySource
+	}
+	return ""
+}
+
+func (x *InfoResponse) GetBrowser() bool {
+	if x != nil {
+		return x.Browser
+	}
+	return false
+}
+
+func (x *InfoResponse) GetBrowserUnavailable() string {
+	if x != nil {
+		return x.BrowserUnavailable
 	}
 	return ""
 }
@@ -7002,11 +7033,12 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x04kind\"C\n" +
 	"\x13DesktopStateChanged\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
-	"\x06origin\x18\x02 \x01(\tR\x06origin\"N\n" +
+	"\x06origin\x18\x02 \x01(\tR\x06origin\"`\n" +
 	"\rOpenInDesktop\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
 	"\x04path\x18\x02 \x01(\tR\x04path\x12\x10\n" +
-	"\x03dir\x18\x03 \x01(\bR\x03dir\"Y\n" +
+	"\x03dir\x18\x03 \x01(\bR\x03dir\x12\x10\n" +
+	"\x03app\x18\x04 \x01(\tR\x03app\"Y\n" +
 	"\x0eServiceChanged\x12-\n" +
 	"\aservice\x18\x01 \x01(\v2\x13.aos.v1.ServiceInfoR\aservice\x12\x18\n" +
 	"\aremoved\x18\x02 \x01(\bR\aremoved\">\n" +
@@ -7285,7 +7317,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"DailyUsage\x12\x10\n" +
 	"\x03day\x18\x01 \x01(\tR\x03day\x12#\n" +
 	"\x05usage\x18\x02 \x01(\v2\r.aos.v1.UsageR\x05usage\"\r\n" +
-	"\vInfoRequest\"\x98\x04\n" +
+	"\vInfoRequest\"\xe3\x04\n" +
 	"\fInfoResponse\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
@@ -7304,7 +7336,9 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"maxRetries\x12 \n" +
 	"\fapi_key_hint\x18\x0e \x01(\tR\n" +
 	"apiKeyHint\x12$\n" +
-	"\x0eapi_key_source\x18\x0f \x01(\tR\fapiKeySource\"Z\n" +
+	"\x0eapi_key_source\x18\x0f \x01(\tR\fapiKeySource\x12\x18\n" +
+	"\abrowser\x18\x10 \x01(\bR\abrowser\x12/\n" +
+	"\x13browser_unavailable\x18\x11 \x01(\tR\x12browserUnavailable\"Z\n" +
 	"\fAuditRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x1b\n" +

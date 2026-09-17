@@ -1,0 +1,239 @@
+/* The Browser app (PLAN.md M5.2). Loaded with the app's own chunk, so it costs
+   the Desktop's first load nothing. */
+.browser {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--window-bg);
+  color: var(--text);
+}
+.browser--off {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+.browser__emoji { font-size: 40px; margin: 0; }
+.browser__hint { font-size: 12px; margin: 0; max-width: 420px; }
+.browser--off p,
+.browser__start p { margin: 0; }
+
+.browser__bar {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-strong);
+}
+.browser__btn {
+  flex: none;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.browser__btn:hover:not(:disabled) { background: var(--bg-raised); }
+.browser__btn:disabled { opacity: 0.35; cursor: default; }
+.browser__btn--on { color: var(--accent); }
+.browser__address {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  margin-left: 4px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.browser__address:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+  background: var(--window-bg);
+}
+/* A thin bar under the toolbar while the page loads. */
+.browser__progress {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  width: 40%;
+  background: var(--accent);
+  animation: browser-load 1.1s ease-in-out infinite;
+}
+@keyframes browser-load {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(260%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser__progress { animation: none; width: 100%; opacity: 0.6; }
+}
+
+/* An Agent is using the page (PLAN.md M5.3). */
+.browser__agent {
+  flex: none;
+  height: 24px;
+  margin-left: 6px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.browser__agent:hover { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+
+/* The bookmarks sidebar beside the page, with the divider between them. */
+.browser__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.browser__sidebar {
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 6px;
+  gap: 4px;
+  overflow-y: auto;
+  background: var(--panel);
+  color: var(--text);
+}
+.browser__markshead {
+  flex: none;
+  margin: 0 0 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.browser__marksempty {
+  margin: 4px 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.browser__marklist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.browser__mark {
+  display: block;
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.browser__mark:hover { background: var(--bg-raised); }
+.browser__mark--on { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.browser__marktitle,
+.browser__markhost {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.browser__marktitle { font-size: 12.5px; }
+.browser__markhost { font-size: 11px; color: var(--muted); }
+
+.browser__viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+}
+.browser__page {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: default;
+  touch-action: none;
+}
+/* Takes the keyboard for the page: focusable, but out of sight. */
+.browser__keys {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  padding: 0;
+  border: 0;
+  resize: none;
+  pointer-events: none;
+}
+.browser__start,
+.browser__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 24px;
+  color: var(--muted);
+  background: var(--window-bg);
+}
+.browser__start { pointer-events: none; }
+.browser__again {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 12px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.browser__notice {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  font-size: 12px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* A collapsed sidebar keeps its element (and its bookmarks) but shows nothing.
+   Last in the file so it beats .browser__sidebar's own padding. */
+.browser__sidebar--off {
+  padding-left: 0;
+  padding-right: 0;
+  overflow: hidden;
+}

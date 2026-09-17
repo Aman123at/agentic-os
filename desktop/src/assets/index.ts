@@ -7,6 +7,7 @@
 import type { AppId } from "../apps/registry";
 import aboutIcon from "./about.svg?url";
 import agentIcon from "./agent.svg?url";
+import browserIcon from "./browser.svg?url";
 import downloadsIcon from "./downloads.svg?url";
 import finderIcon from "./finder.svg?url";
 import previewIcon from "./preview.svg?url";
@@ -27,6 +28,7 @@ export const appArt: Partial<Record<AppId, string>> = {
   finder: finderIcon,
   terminal: terminalIcon,
   agent: agentIcon,
+  browser: browserIcon,
   about: aboutIcon,
   preview: previewIcon,
   textedit: texteditIcon,

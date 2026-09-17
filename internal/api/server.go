@@ -17,6 +17,7 @@ import (
 	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
 	"github.com/amantiwari/agentic-os/gen/go/aos/v1/aosv1connect"
 	"github.com/amantiwari/agentic-os/internal/audit"
+	"github.com/amantiwari/agentic-os/internal/browser"
 	"github.com/amantiwari/agentic-os/internal/desktop"
 	"github.com/amantiwari/agentic-os/internal/events"
 	"github.com/amantiwari/agentic-os/internal/files"
@@ -94,6 +95,8 @@ type Server struct {
 	Software   *software.Manager
 	Supervisor *service.Supervisor
 	Info       func() *aosv1.InfoResponse
+	// Browser is the Browser app's page; nil when it isn't included.
+	Browser *browser.Manager
 	// Assets is the Desktop (ui Mode); nil serves a short note.
 	Assets fs.FS
 }
@@ -118,6 +121,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSoftwareServiceHandler(softwareService{s}, opts...))
 	mux.Handle(aosv1connect.NewSupervisorServiceHandler(supervisorService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
+	mux.HandleFunc("GET /ws/browser", s.browserSocket)
 	mux.HandleFunc("GET /files/raw", s.rawFile)
 	mux.HandleFunc("POST /upload", s.upload)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })

@@ -45,6 +45,8 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
   const envFile = path.join(dir, "pw.env");
   const env: Record<string, string> = {
     AOS_MODE: "ui",
+    // The Browser app is part of the suite (browser.spec.ts).
+    INCLUDE_BROWSER: "true",
     AOS_PORT: PORT,
     AOS_BIND: "127.0.0.1",
     AOS_SHARED_DIR: shared,

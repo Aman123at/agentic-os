@@ -1,7 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 
 import { appArt, trashFullArt } from "../assets";
-import { APPS, DOCK_APPS, type AppId } from "../apps/registry";
+import { APPS, DOCK_APPS, appShown, type AppId } from "../apps/registry";
 import { useDesktop } from "../store";
 import { DownloadsFan, DownloadsTile } from "./DownloadsStack";
 
@@ -18,6 +18,7 @@ export default function Dock() {
   const windows = useDesktop((s) => s.windows);
   const running = new Set(windows.map((w) => w.appId));
   const trashCount = useDesktop((s) => s.trashCount);
+  const info = useDesktop((s) => s.info);
   const ref = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
   const [fan, setFan] = useState<DOMRect | null>(null);
@@ -48,7 +49,7 @@ export default function Dock() {
   return (
     <div className="dock-wrap">
       <div className="dock" ref={ref} onPointerMove={(e) => magnify(e.clientX)} onPointerLeave={reset}>
-        {DOCK_APPS.filter((id) => id !== "trash").map((id) => (
+        {DOCK_APPS.filter((id) => id !== "trash" && appShown(id, info)).map((id) => (
           <DockTile key={id} id={id} running={running.has(id)} onOpen={() => openApp(id)} />
         ))}
         {/* As on macOS, stacks and the Trash sit past a divider at the end. */}

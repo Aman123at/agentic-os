@@ -22,9 +22,21 @@ import (
 )
 
 // Image size targets (PLAN.md §16): unpacked MB per target, compressed MB for any.
-var sizeTargets = map[string]int{"cli": 520, "ui": 540}
+// Unpacked and compressed size targets (PLAN.md §16), per image. ui+browser
+// is ui built with INCLUDE_BROWSER=true (M5.2).
+var sizeTargets = map[string]int{"cli": 520, "ui": 540, "ui+browser": 820}
 
-const compressedTargetMB = 180
+var compressedTargets = map[string]int{"cli": 180, "ui": 180, "ui+browser": 300}
+
+// images are the builds the image stage measures.
+var images = []struct {
+	name, target, tag string
+	args              []string
+}{
+	{"cli", "cli", "agentic-os:cli", nil},
+	{"ui", "ui", "agentic-os:ui", nil},
+	{"ui+browser", "ui", "agentic-os:ui-browser", []string{"--build-arg", "INCLUDE_BROWSER=true"}},
+}
 
 // bundleBudgetKB is the Desktop's initial bundle target, gzipped (PLAN.md §16).
 const bundleBudgetKB = 150
@@ -330,12 +342,12 @@ func gzipSize(path string) (int, error) {
 }
 
 func image() error {
-	for _, target := range []string{"cli", "ui"} {
-		tag := "agentic-os:" + target
-		if err := run("docker", "buildx", "build", "-f", "docker/Dockerfile", "--target", target, "--load", "-t", tag, "."); err != nil {
+	for _, img := range images {
+		args := append([]string{"buildx", "build", "-f", "docker/Dockerfile", "--target", img.target, "--load", "-t", img.tag}, img.args...)
+		if err := run("docker", append(args, ".")...); err != nil {
 			return err
 		}
-		out, err := output("docker", "run", "--rm", "--entrypoint", "sh", tag, "-c", "du -sx --block-size=1M / | cut -f1")
+		out, err := output("docker", "run", "--rm", "--entrypoint", "sh", img.tag, "-c", "du -sx --block-size=1M / | cut -f1")
 		if err != nil {
 			return err
 		}
@@ -343,7 +355,7 @@ func image() error {
 		if err != nil {
 			return fmt.Errorf("image size: %q", out)
 		}
-		out, err = output("docker", "image", "inspect", "--format", "{{.Size}}", tag)
+		out, err = output("docker", "image", "inspect", "--format", "{{.Size}}", img.tag)
 		if err != nil {
 			return err
 		}
@@ -353,9 +365,17 @@ func image() error {
 		}
 		compressed := int(bytes >> 20)
 		fmt.Printf("    %s image: %d MB unpacked (target < %d MB), %d MB compressed (target < %d MB)\n",
-			target, mb, sizeTargets[target], compressed, compressedTargetMB)
-		if mb >= sizeTargets[target] || compressed >= compressedTargetMB {
-			return fmt.Errorf("%s image is over its size target", target)
+			img.name, mb, sizeTargets[img.name], compressed, compressedTargets[img.name])
+		if mb >= sizeTargets[img.name] || compressed >= compressedTargets[img.name] {
+			return fmt.Errorf("%s image is over its size target", img.name)
+		}
+		// The browser is opt-in: only the INCLUDE_BROWSER build may carry it.
+		out, err = output("docker", "run", "--rm", "--entrypoint", "sh", img.tag, "-c", "test -e /opt/aos-browser/chrome && echo yes || echo no")
+		if err != nil {
+			return err
+		}
+		if want := map[bool]string{true: "yes", false: "no"}[img.args != nil]; strings.TrimSpace(out) != want {
+			return fmt.Errorf("%s image: browser present = %s, want %s", img.name, strings.TrimSpace(out), want)
 		}
 	}
 	return nil

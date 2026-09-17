@@ -5,7 +5,9 @@
 // a download (PLAN.md §16, the first visible Agent step).
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
+import type { InfoResponse } from "../gen/aos/v1/services_pb";
+
+export type AppId = "about" | "finder" | "terminal" | "agent" | "browser" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
 
 export interface AppDef {
   id: AppId;
@@ -61,6 +63,18 @@ export const APPS: Record<AppId, AppDef> = {
     singleton: true,
     inDock: true,
     ...app(() => import("./agent/Agent")),
+  },
+  // The Browser: a page Chromium renders inside the Machine, streamed into the
+  // window (PLAN.md M5.2). Only in Machines built with INCLUDE_BROWSER=true;
+  // see appShown.
+  browser: {
+    id: "browser",
+    name: "Browser",
+    icon: "🌐",
+    size: { w: 1024, h: 700 },
+    singleton: true,
+    inDock: true,
+    ...app(() => import("./browser/Browser")),
   },
   // Preview shows one file per window; the store's openFile opens it.
   preview: {
@@ -125,8 +139,9 @@ export const APPS: Record<AppId, AppDef> = {
 // preloadApps fetches every app's chunk while nothing else is going on, newest
 // Desktop first: the Agent app (Spotlight's "Ask the Agent" opens it and §16
 // times the first step from that submit), then the Dock, then the rest.
-export function preloadApps(): void {
+export function preloadApps(info?: InfoResponse): void {
   const order: AppId[] = ["agent", "finder", "terminal", "preview", "textedit", "settings", "trash", "activity", "software", "about"];
+  if (info?.browser) order.splice(3, 0, "browser");
   let i = 0;
   const next = () => {
     const id = order[i++];
@@ -148,3 +163,10 @@ function idle(f: () => void): void {
 export const DOCK_APPS: AppId[] = Object.values(APPS)
   .filter((a) => a.inDock)
   .map((a) => a.id);
+
+// appShown says whether this Machine offers an app. The Browser is there only
+// when the Machine asked for it (INCLUDE_BROWSER=true) — and then it is pinned
+// in the Dock, even if the image lacks it, so opening it explains the rebuild.
+export function appShown(id: AppId, info?: InfoResponse): boolean {
+  return id !== "browser" || Boolean(info?.browser || info?.browserUnavailable);
+}

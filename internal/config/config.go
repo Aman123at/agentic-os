@@ -28,6 +28,9 @@ type Config struct {
 	TrashMaxBytes          int64
 	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
 	TaskCostLimit, DailyCostLimit float64
+	// IncludeBrowser asks for the Browser app (ui Mode only, PLAN.md M5.2). The
+	// image must also have been built with INCLUDE_BROWSER=true.
+	IncludeBrowser bool
 	// FakeModel is a folder of cassettes that replaces OpenAI (tests only).
 	FakeModel string
 	// Set names the variables the environment set, so a setting can say whether
@@ -112,6 +115,15 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	case "false", "0", "no":
 	default:
 		errs = append(errs, fmt.Sprintf("AOS_REQUIRE_LANDLOCK=%q must be true or false", v))
+	}
+	// INCLUDE_BROWSER is a build argument too, where only true and false work, so
+	// it takes exactly those words.
+	switch v := str("INCLUDE_BROWSER", "false"); v {
+	case "true":
+		c.IncludeBrowser = true
+	case "false":
+	default:
+		errs = append(errs, fmt.Sprintf("INCLUDE_BROWSER=%q must be true or false", v))
 	}
 	if len(errs) > 0 {
 		return c, fmt.Errorf("invalid configuration: %s", strings.Join(errs, "; "))

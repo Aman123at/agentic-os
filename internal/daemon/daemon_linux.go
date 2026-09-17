@@ -29,6 +29,7 @@ import (
 	"github.com/amantiwari/agentic-os/internal/agent"
 	"github.com/amantiwari/agentic-os/internal/api"
 	"github.com/amantiwari/agentic-os/internal/audit"
+	"github.com/amantiwari/agentic-os/internal/browser"
 	"github.com/amantiwari/agentic-os/internal/config"
 	"github.com/amantiwari/agentic-os/internal/desktop"
 	"github.com/amantiwari/agentic-os/internal/events"
@@ -99,6 +100,7 @@ type Daemon struct {
 	settings *settings.Store
 	sampler  *sysinfo.Sampler
 	notify   *notify.Center
+	browser  *browser.Manager
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -139,7 +141,8 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, v.Model)
 	}
 	d.osName = osRelease()
-	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1})
+	browserOK, _ := d.browserStatus()
+	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1, Browser: browserOK})
 	ledger := &software.Ledger{DB: d.db}
 	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf,
 		Owners: d.socketOwners}
@@ -154,6 +157,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if cfg.Mode == "ui" {
 		// In cli Mode there is no Desktop to show anything (PLAN.md §9).
 		tools = append(tools, tool.DesktopTools()...)
+	}
+	if browserOK {
+		// Agents use the Desktop's Browser only where it exists (PLAN.md M5.3).
+		tools = append(tools, tool.BrowserTools()...)
 	}
 	registry := tool.NewRegistry(tools...)
 	d.tasks, err = task.New(task.Config{
@@ -170,6 +177,11 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d.settings.OnChange(func(settings.Values) { d.tasks.SettingsChanged() })
 	defer d.services.Close()
 
+	d.browser = d.newBrowser()
+	if d.browser != nil {
+		defer d.browser.Close()
+	}
+
 	userOps := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
 	userFiles := files.AsUser{Ops: userOps, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
@@ -179,6 +191,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
 		Sampler:       d.sampler,
 		Notifications: d.notify,
+		Browser:       d.browser,
 	}
 	handler := srv.Handler()
 
@@ -367,6 +380,9 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	if d.cfg.Mode == "ui" {
 		env.Desktop = d.desktop(env.TaskID)
 	}
+	if d.browser != nil {
+		env.Browser = d.agentBrowser(env.TaskID)
+	}
 	env.Files = func(widen []string) files.Runner {
 		return files.Confined{Ops: ops, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
 			p := d.agentPolicy()
@@ -382,6 +398,9 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	}
 	return func() {
 		agentSession.Close()
+		if d.browser != nil {
+			d.browser.Release(env.TaskID)
+		}
 		d.gitMu.Lock()
 		delete(d.git, env.TaskID)
 		d.gitMu.Unlock()
@@ -543,7 +562,8 @@ func (d *Daemon) info() *aosv1.InfoResponse {
 	key, keySource, hint := keys.status()
 	autonomy := map[policy.Autonomy]aosv1.Autonomy{policy.Auto: aosv1.Autonomy_AUTONOMY_AUTO, policy.ConfirmRisky: aosv1.Autonomy_AUTONOMY_CONFIRM_RISKY, policy.ConfirmAll: aosv1.Autonomy_AUTONOMY_CONFIRM_ALL}[v.Autonomy]
 	today, _ := d.usage.Today(context.Background())
-	return &aosv1.InfoResponse{Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, ApiKeyHint: hint, ApiKeySource: keySource, Model: v.Model, Autonomy: autonomy,
+	browserOK, browserWhy := d.browserStatus()
+	return &aosv1.InfoResponse{Browser: browserOK, BrowserUnavailable: browserWhy, Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, ApiKeyHint: hint, ApiKeySource: keySource, Model: v.Model, Autonomy: autonomy,
 		MaxTasks: int32(v.MaxTasks), MaxRetries: int32(v.MaxRetries), Today: today, PricesKnown: d.pricesKnown(v.Model), Replay: d.software.ReplayStatus(),
 		TaskCostLimitUsd: v.TaskCostLimit, DailyCostLimitUsd: v.DailyCostLimit}
 }

@@ -8,6 +8,9 @@ services:
       context: .
       dockerfile: docker/Dockerfile
       target: ${AOS_MODE:-ui}
+      args:
+        # The Browser app, ui Mode only (PLAN.md M5.2).
+        INCLUDE_BROWSER: ${INCLUDE_BROWSER:-false}
     image: agentic-os:${AOS_MODE:-ui}
     init: true
     hostname: aos
@@ -18,6 +21,7 @@ services:
     # environment of every process. The key arrives only as a secret file.
     environment:
       AOS_MODE: ${AOS_MODE:-ui}
+      INCLUDE_BROWSER: ${INCLUDE_BROWSER:-false}
       AOS_BIND: ${AOS_BIND:-127.0.0.1}
       AOS_PORT: ${AOS_PORT:-7700}
       OPENAI_MODEL: ${OPENAI_MODEL:-}

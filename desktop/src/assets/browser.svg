@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Browser">
+  <defs>
+    <linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f9fc"/>
+      <stop offset="1" stop-color="#dfe5ee"/>
+    </linearGradient>
+    <linearGradient id="bglobe" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4fc3ff"/>
+      <stop offset="1" stop-color="#1467e6"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#bbg)"/>
+  <circle cx="64" cy="64" r="42" fill="url(#bglobe)"/>
+  <g fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="3.5">
+    <circle cx="64" cy="64" r="42"/>
+    <ellipse cx="64" cy="64" rx="18" ry="42"/>
+    <path d="M22 64 h84 M29 42 h70 M29 86 h70"/>
+  </g>
+  <path d="M64 30 l9 34 l-9 34 l-9 -34 z" fill="#ff453a" transform="rotate(40 64 64)"/>
+  <path d="M64 64 l9 0 l-9 34 l-9 -34 z" fill="#ffffff" transform="rotate(40 64 64)"/>
+  <circle cx="64" cy="64" r="4" fill="#1d1d1f"/>
+</svg>

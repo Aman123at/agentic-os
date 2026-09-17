@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { files } from "../api/client";
 import type { FileInfo } from "../gen/aos/v1/services_pb";
-import { APPS, type AppDef, type AppId } from "../apps/registry";
+import { APPS, appShown, type AppDef, type AppId } from "../apps/registry";
 import { PLACES, iconFor } from "../apps/finder/fs";
 import { useDesktop } from "../store";
 
@@ -30,6 +30,7 @@ export default function Spotlight() {
   const openApp = useDesktop((s) => s.openApp);
   const createTask = useDesktop((s) => s.createTask);
   const revealInFinder = useDesktop((s) => s.revealInFinder);
+  const info = useDesktop((s) => s.info);
 
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
@@ -64,6 +65,7 @@ export default function Spotlight() {
     const q = query.trim().toLowerCase();
     const out: Result[] = [];
     for (const app of APP_LIST) {
+      if (!appShown(app.id, info)) continue;
       if (!q || app.name.toLowerCase().includes(q)) out.push({ kind: "app", app });
     }
     if (q) {
@@ -74,7 +76,7 @@ export default function Spotlight() {
       out.push({ kind: "task", prompt: query.trim() });
     }
     return out;
-  }, [query, index]);
+  }, [query, index, info]);
 
   useEffect(() => {
     if (sel >= results.length) setSel(Math.max(0, results.length - 1));

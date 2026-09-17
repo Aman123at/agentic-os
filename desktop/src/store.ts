@@ -233,7 +233,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       });
       set({ phase: "ready", info, replay: info.replay });
       startStream(set);
-      preloadApps();
+      preloadApps(info);
       void get().refreshTrashCount();
     } catch (err) {
       if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
@@ -534,7 +534,8 @@ function startStream(set: SetState) {
     queue = [];
     set((s) => reduce(s, batch));
     // An Agent's open_in_desktop shows a folder in the Finder, and opens a file
-    // in the app for its type.
+    // in the app for its type. An Agent starting to use the Browser opens its
+    // window, so the user watches (PLAN.md M5.3).
     for (const e of batch) {
       // Another tab changed the Machine's preferences.
       if (e.kind?.case === "desktopState") {
@@ -543,7 +544,11 @@ function startStream(set: SetState) {
         continue;
       }
       if (e.kind?.case !== "openInDesktop") continue;
-      const { path, dir } = e.kind.value;
+      const { path, dir, app } = e.kind.value;
+      if (app) {
+        if (app === "browser" && useDesktop.getState().info?.browser) useDesktop.getState().openApp("browser");
+        continue;
+      }
       if (dir) useDesktop.getState().revealInFinder(path, "");
       else useDesktop.getState().openFile(path);
     }
