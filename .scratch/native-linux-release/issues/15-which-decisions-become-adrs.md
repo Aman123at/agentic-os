@@ -102,3 +102,7 @@ ADR-0007's `## M6: passwords, JWT and a public bind` section gains two things th
 - **Family revocation closes live connections.** Revoking a refresh family closes the event streams and session WebSockets it authorised. Without it a held stream outlives the token that authorised it and "sign out" means nothing.
 
 Found on the way and worth a sentence in the same section: **the forwarder is composed outside the authenticator** (`internal/daemon/daemon_linux.go:198`), so `/port/<n>/` is unauthenticated today and was reachable only from loopback. Deleting the Host guard without fixing this would have published every Agent-started port.
+
+## Input from *Mode switching and the single binary* (resolved 2026-09-17)
+
+The no-list entry stands: Mode as a runtime setting and the collapsing Dockerfile targets are PLAN §6.1 material, not a decision record. **One sentence is owed to ADR-0007's M6 section**: in `cli` Mode the API has no TCP surface at all — the listener is not started — which strengthens the ADR's thesis rather than qualifying it, and closes the gap where an unauthenticated forwarder would otherwise sit in the one Mode that has no account.

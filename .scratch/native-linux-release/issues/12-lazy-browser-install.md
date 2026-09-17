@@ -28,3 +28,9 @@ Settle:
 On a native install Docker's seccomp profile is not in the way, so the *reason* for the flag is gone — and the container that made it acceptable is gone in the same move. That leaves a browser rendering arbitrary web pages, unsandboxed, as a uid that sits in `NOPASSWD:ALL` sudoers. This ticket must answer it: does the native build drop `--no-sandbox` (and what does the headless shell then need — user namespaces unprivileged-enabled, or the setuid `chrome-sandbox` helper), and does Compose keep it?
 
 Whatever this decides is **ADR-0008's amendment**, which is owed to this ticket along with the build-time-to-runtime move. It is question 8 above, and it is not optional for M6.
+
+## Input from *Mode switching and the single binary* (resolved 2026-09-17)
+
+**The Dockerfile's `cli` and `ui` targets collapse into one runtime image** and `AOS_IMAGE_MODE` is deleted. That leaves `ui-browser-true` / `ui-browser-false` as the **only** remaining build-time fork in the file, so collapsing it is this ticket's to finish — after which the Dockerfile has exactly one runtime stage and `INCLUDE_BROWSER` is a config key rather than a build argument.
+
+Also relevant: `cli` Mode now starts **no TCP listener at all**, so the Browser — already `ui`-only — has no surface to reach in `cli` Mode either way.

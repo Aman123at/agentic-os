@@ -42,3 +42,12 @@ Two M6 code sub-tasks fall out of the review and belong in the sub-task list: `i
 **One sub-task exists that no ticket had booked: moving forwarded Services inside the session.** `internal/daemon/daemon_linux.go:198` composes the forwarder *outside* the authenticator, so `/port/<n>/` is unauthenticated and was safe only behind a loopback publish. It touches `internal/proxy`, `internal/api/auth.go`, the Desktop's Services surface and `tools/e2e/m2_test.go`, and it must land in the **same sub-task as deleting the two Host checks** — separately, there is a commit in between where every Agent-started port is on the public internet.
 
 Ordering note: the Desktop auth work (three boot phases, the interceptor, the Account pane) depends on the server side of the ticket mechanism existing, so the API sub-task precedes the Desktop one.
+
+## Input from *Mode switching and the single binary* (resolved 2026-09-17)
+
+Two more sub-tasks:
+
+- **No TCP listener in `cli` Mode.** `internal/daemon/daemon_linux.go:198,229` starts it unconditionally today. This must land **with** the bind and forwarding work, not after it, for the same reason the forwarder fix does: in between, a `cli` install on `0.0.0.0` publishes every Agent-started port with no account in existence to refuse anything.
+- **The Agent prompt's Machine paragraph**, rewritten whole rather than line by line. Three sentences are false natively: "running in Docker on <host>" (`internal/agent/instructions.go:31`), "There is no systemd" (line 38), and "The Machine restarts with a fresh system: only the home folder … survive" — the last is behaviour-shaping, since it is what makes Agents cram everything into home and distrust the filesystem M6 opens to them.
+
+Sizing note for the single-binary sub-task: deleting the `desktop` build tag needs `Assets()` to return nil when `dist/index.html` is absent, because the `go-test-run` stage never builds the Desktop and so cannot carry a hard build-time requirement.

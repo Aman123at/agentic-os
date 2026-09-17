@@ -27,3 +27,7 @@ Work to do:
 ## Input from *Removing the Shared Folder* (resolved 2026-09-17)
 
 The **Shared Folder** glossary entry (`CONTEXT.md:37`) is deleted, not rewritten. This ticket owns the replacement: a short **"Retired terms"** line at the foot of the glossary, naming words that appear in old commits, ADRs and docs but no longer exist in the product — Shared Folder first among them. Decide whether Host joins it or is redefined, since Machine and Host collapse rather than disappear.
+
+## Input from *Mode switching and the single binary* (resolved 2026-09-17)
+
+**Mode stops being a property of the image and becomes a runtime setting.** `CONTEXT.md`'s Mode entry and `docs/PLAN.md` §6.1 both describe the build-target version — one image per Mode, `AOS_IMAGE_MODE` baked in, `AOS_MODE=ui` refused on a `cli` image. All of that is deleted. The replacement definition: one binary, one image, `mode:` in `config.yml`, and `cli` Mode means **no TCP listener** rather than "the Desktop is not built in".
