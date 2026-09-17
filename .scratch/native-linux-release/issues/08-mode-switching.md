@@ -18,3 +18,7 @@ Settle:
 4. **The switch guard.** Aman: allow the switch only when no Agent is running and no Task is pending. Define "pending" precisely against the Task states in `docs/PLAN.md` §8.1 — queued, running, awaiting-user all count, but an awaiting-user Task could sit for days. `--wait` to drain and `--force` to cancel were recommended; confirm.
 5. **The command spelling.** `aos config set mode=ui` plus a restart, or a dedicated `aos mode set ui` that does the check, writes the config and restarts in one step? The latter is friendlier and is what Aman originally described.
 6. **Switching to `ui` with no user account yet** — hands off to *The authentication screens and account lifecycle*.
+
+## Constraint from *The systemd unit and the `aos service` lifecycle* (resolved 2026-09-17)
+
+The drain guard covers `aos daemon restart` too, not only a Mode switch. Note also that `Manager.recover` already denies every pending Approval on start (`internal/task/manager.go:140`) and interrupts awaiting-user Tasks — so any restart, attended or not, has a user-visible cost. The command spelling settled there: `aos daemon start|stop|restart|logs` plus `aos status`; `aos service <name>` stays the Services group.

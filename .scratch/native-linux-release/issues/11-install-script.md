@@ -2,7 +2,7 @@
 
 Type: prototype
 Status: open
-Blocked by: 09, 10, 17
+Blocked by: 09, 17
 
 ## Question
 
@@ -23,3 +23,11 @@ The prototype should make these concrete and reviewable:
 9. `aos uninstall`, keeping `/home/aos`, `/var/lib/aos` and the config unless `--purge`, printing exactly what it will delete.
 
 Link the prototype from this ticket. It is throwaway — the real script is written during M6 implementation, not here.
+
+## Constraint from *The systemd unit and the `aos service` lifecycle* (resolved 2026-09-17)
+
+- Write the new binary to a temp path and `rename()` it into place. Writing over a running executable gets `ETXTBSY`.
+- `systemctl daemon-reload` after writing `/etc/systemd/system/aos.service`; `systemctl enable --now aos` on install.
+- Refuse cleanly when `/run/systemd/system` is absent, naming Docker Compose as the supported alternative. No PID-file fallback.
+- The unit is `Type=notify`, so `systemctl start` returns only once the listener is up — the URL the script prints is safe to print immediately.
+- The port scanned on first start is written back into `config.yml`, so the script reads the port from there rather than assuming 7700.

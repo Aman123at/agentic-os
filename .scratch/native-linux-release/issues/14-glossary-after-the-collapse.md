@@ -19,3 +19,7 @@ Work to do:
 5. Sweep `docs/PLAN.md` §15 "Cross-Host support" and §12 "Services and port forwarding" for language that no longer holds, and list what M6 must correct.
 
 `CONTEXT.md` is a glossary and nothing else — no implementation detail belongs in it.
+
+## Input from *The systemd unit and the `aos service` lifecycle* (resolved 2026-09-17)
+
+`aos daemon` (Agentic OS itself, one systemd unit) versus `aos service <name>` (a **Service**: a user's supervised program) is exactly the distinction the glossary must make unmissable, now that Machine and Host have collapsed and a real systemd exists on the box. `CONTEXT.md` currently lists "systemd unit" under _Avoid_ (`CONTEXT.md:23`), and `internal/agent/instructions.go:38` tells Agents "There is no systemd" — both need revisiting.
