@@ -1,0 +1,6 @@
+{"prompt": "ui-browser: search the local shop", "turns": [
+  {"calls": [{"name": "browser_open", "arguments": {"url": "localhost:8765/shop.html"}}]},
+  {"calls": [{"name": "browser_type", "arguments": {"ref": 2, "text": "hello", "submit": null}}]},
+  {"calls": [{"name": "browser_click", "arguments": {"ref": 3}}]},
+  {"text": "Searched the shop for hello."}
+]}

@@ -96,6 +96,8 @@ type Env struct {
 	SetCheckpoint func(id string)
 	// Desktop shows notifications and opens things in the Desktop; nil in cli Mode.
 	Desktop *Desktop
+	// Browser is the Desktop's Browser page; nil unless the Machine includes it.
+	Browser *Browser
 }
 
 func (e *Env) stat(path string) (exists, dir bool) {
