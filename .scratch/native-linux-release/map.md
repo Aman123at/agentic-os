@@ -65,6 +65,8 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 
 - [Naming: module path, repo, binary and Docker Hub namespace](issues/17-naming.md): one name, `agentic-os`, everywhere. The repo is `Aman123at/agentic-os` (private, pushed). Release assets are `agentic-os-linux-<arch>.tar.gz`, version-less so `/releases/latest/download/` resolves. Docker Hub is `aman123at/agentic-os`. Binaries stay `aos` and `aosd`; the product stays "Agentic OS". One loose end raised for Aman: the module path's owner segment and the stated install URL path (`/agent-os/`) both still say something else.
 
+- [Reach, bind and the two Host checks](issues/01-reach-bind-and-host-checks.md): both Host checks are deleted; the Origin check already handles arbitrary hosts and is the real CSRF defence, so nothing is lost. `/port/<n>/` becomes the documented forwarding form because `<port>.localhost` cannot resolve from a remote browser. **Two constraints flow out of it:** tokens must live in headers and never in cookies, or DNS rebinding comes back; and the first-run window is closed by initial credentials in `config.yml` plus a mandatory password change on first login, with the pre-reset token restricted to that one call.
+
 ## Not yet specified
 
 - **Data migration for existing Compose users.** Someone running the Compose image today has a home volume, a SQLite database and an Install Ledger. Whether the native install can adopt that state, and how, is unclear until the native layout is fixed.
@@ -75,6 +77,7 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Whether `/etc` Checkpoints still earn their place** once Replay is off and the box is persistent.
 - **Whether the milestone-derived version scheme survives.** `version_linux_test.go` ties `Version` to the newest `### M<n>` heading in the plan, which fights tag-derived release versions. Reconciling them is now unblocked — naming and release engineering are both settled.
 - **When the module path gets renamed.** `github.com/amantiwari/agentic-os` should be `github.com/Aman123at/agentic-os`. Mechanical but tree-wide, and it wants its own commit before the first tag, not folded into M6's work.
+- **What a scanner finds on port 7700 before nginx.** The sign-in page is public by default now. Whether it should carry any fingerprinting resistance — a generic title, no version string — is unasked.
 - **Observability of a long-running VPS service** — log rotation, journal size, what `aos service status` shows about uptime and restarts.
 
 ## Out of scope
