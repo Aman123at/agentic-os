@@ -54,3 +54,7 @@ Settled 2026-09-17 with Aman over one grilling round ("go ahead with all your re
 
 - `internal/config`'s `FromEnv` becomes `FromFile` plus an env-seeding path used once, on a Compose first start. `Config.Set` (which names the variables the environment set) and `settings.Source`/`Setting.Fallback` all simplify: there is no longer an environment layer to attribute a value to.
 - `SettingsService` keeps its shape but its backing store changes from SQLite to the file.
+
+## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
+
+`include_browser` stays startup-only, but it is no longer only hand-written: **`aos browser install` writes it `true` on success and `aos browser remove` writes it back to `false`**, through the same write-back path as any other runtime change. Its documented meaning changes with it — "the browser is installed and on", not "fetch the browser at the next start". Nothing about the key's validation changes; `INCLUDE_BROWSER` disappears as a build argument, surviving only as a Compose seed like the other keys.

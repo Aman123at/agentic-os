@@ -43,3 +43,7 @@ Also: prerelease-skipping in `install.sh` needs no code — `/releases/latest` e
 **Signing**: `SHA256SUMS` mandatory (coreutils is everywhere, so it costs the user nothing); GitHub artifact attestations as optional hardening (`gh attestation verify`, ~6 workflow lines, no key custody); cosign redundant; minisign and GPG skipped. `install.sh` must require none of them or it breaks the "only curl and tar" promise. Note `sha256sum --ignore-missing -c` is the wrong form — it can succeed vacuously; the research file gives a grep-then-verify replacement.
 
 **Blocked on a decision, not on more research**: the project's names disagree — `go.mod` says `github.com/amantiwari/agentic-os`, the target repo is `Aman123at/agent-os`, the binary is `aos`. The workflow hardcodes all of them. Correctly not guessed; charted as *Naming: module path, repo, binary and Docker Hub namespace*.
+
+## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
+
+`tools/ci` loses the `ui+browser` image entirely (`main.go:26,38`) and the browser-presence check at `main.go:372` flips from "only the `INCLUDE_BROWSER` image has it" to "no image has it". Two stages replace it: a **pin-drift check** comparing the Chrome version pinned in Go source against `playwright-core/browsers.json`'s `chromium-headless-shell.browserVersion` — cheap, every run — and a **browser install rehearsal** inside a container, which downloads about 120 MB and therefore runs on demand rather than on every PR. The release tarball is unaffected: it never carried Chromium.

@@ -31,3 +31,7 @@ Link the scaffold from this ticket.
 - **`sudo aos user passwd` is the only password recovery that exists.** No email, no reset link. It needs a page of its own, not a footnote — a user who loses the password and cannot find this has lost the Machine.
 - **Port forwarding is now reached from the Desktop, not typed.** `/port/<n>/` carries a ticket, so a hand-typed URL will refuse. The forwarding page has to say that and show where in the Desktop the link comes from.
 - The sign-in page states the **12-character minimum** and the forced first change; the docs should not contradict it.
+
+## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
+
+The Browser page stops describing a build flag and describes a command: `sudo aos browser install`, which downloads about 120 MB and needs about 1 GB free. It must state the supported distributions Chrome for Testing actually publishes for — ubuntu22.04, ubuntu24.04, ubuntu26.04, debian12, debian13; **not** ubuntu18.04 or ubuntu20.04 — and that the same command is how Compose users get the browser, because the published image no longer carries it.

@@ -51,3 +51,13 @@ Two more sub-tasks:
 - **The Agent prompt's Machine paragraph**, rewritten whole rather than line by line. Three sentences are false natively: "running in Docker on <host>" (`internal/agent/instructions.go:31`), "There is no systemd" (line 38), and "The Machine restarts with a fresh system: only the home folder … survive" — the last is behaviour-shaping, since it is what makes Agents cram everything into home and distrust the filesystem M6 opens to them.
 
 Sizing note for the single-binary sub-task: deleting the `desktop` build tag needs `Assets()` to return nil when `dist/index.html` is absent, because the `go-test-run` stage never builds the Desktop and so cannot carry a hard build-time requirement.
+
+## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
+
+Five sub-tasks, one of them order-critical:
+
+- **Narrow the browser's Landlock ruleset** (`internal/daemon/browser_linux.go:69` stops using `d.agentPolicy()`). This must land **before or with the filesystem widening**, for the same reason the forwarder fix must land with the bind change: in between there is a commit where an unsandboxed Chromium, which Agents can point at any page, can write to `/`.
+- **`aos browser install` / `remove`** — a pinned Chrome-for-Testing download with a sha256 we pin ourselves (Playwright verifies nothing), a `debug/elf` `DT_NEEDED` check against `ldconfig -p`, a 1 GB free-space refusal, download-to-`.tmp`-then-`rename`, and a write-back of `include_browser: true` on success.
+- **The Dockerfile collapses to one runtime stage**, deleting `browser-dist`, `ui-browser-true`, `ui-browser-false`, `INCLUDE_BROWSER` and `PLAYWRIGHT_VERSION`. Together with *Mode switching*'s target collapse, this is the whole of the file's build-time forking. `compose.yaml` gains a named volume for `/opt/aos-browser`.
+- **The `--no-sandbox` comment at `internal/browser/browser.go:31,36`** is rewritten (already booked here via *Which decisions become ADRs*); `LibDir` and its `LD_LIBRARY_PATH` are deleted with it, since `libgbm1` becomes an ordinary package once nothing is being kept out of an image.
+- **`tools/ci` loses the `ui+browser` image** and gains a cheap pin-drift check against `playwright-core/browsers.json` plus an on-demand browser-install rehearsal that downloads 120 MB.

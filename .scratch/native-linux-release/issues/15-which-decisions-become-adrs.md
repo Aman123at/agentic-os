@@ -106,3 +106,17 @@ Found on the way and worth a sentence in the same section: **the forwarder is co
 ## Input from *Mode switching and the single binary* (resolved 2026-09-17)
 
 The no-list entry stands: Mode as a runtime setting and the collapsing Dockerfile targets are PLAN §6.1 material, not a decision record. **One sentence is owed to ADR-0007's M6 section**: in `cli` Mode the API has no TCP surface at all — the listener is not started — which strengthens the ADR's thesis rather than qualifying it, and closes the gap where an unauthenticated forwarder would otherwise sit in the one Mode that has no account.
+
+## Input from *Installing Chromium lazily, and Compose parity* (resolved 2026-09-17)
+
+**ADR-0008's amendment now has its content, and two of this ticket's own findings need correcting.**
+
+The amendment says: `--no-sandbox` stays, the reason changes, and the boundary that replaces the container is the browser's **own** Landlock ruleset — an allow-list (profile plus `~/Downloads` writable, `/opt/aos-browser` and the font and library paths readable) rather than the Agent ruleset it borrows today. Three rejections are recorded with it: relaxing `kernel.apparmor_restrict_unprivileged_userns`, shipping an AppArmor profile granting `userns create`, and switching to the full Chrome build for its `chrome_sandbox`.
+
+Corrections to the finding this ticket recorded:
+
+- **The sudoers framing is wrong.** "An unsandboxed browser as a uid that sits in `NOPASSWD:ALL` sudoers" overstates it: the browser is launched through `sandbox.Command`, and `internal/sandbox/landlock_linux.go:55` sets `PR_SET_NO_NEW_PRIVS` on every thread precisely to neutralise setuid binaries. sudo is not reachable from a compromised renderer. The exposure is the filesystem, and it is real for a different reason — the browser inherits the *Agent* ruleset, which M6 widens to `/`.
+- **The setuid helper is unavailable twice over**, so the ADR must close it rather than leave it open: the headless-shell zip contains no `chrome_sandbox` (only the full Chrome build does), and `no_new_privs` would make one inert anyway.
+- **The impossibility is version-dependent and the ADR should say so**: Ubuntu 22.04 allows unprivileged user namespaces, 24.04+ refuses them by AppArmor. The flag stays because the product must run on both, not because no kernel would accept the sandbox.
+
+**ADR-0003 gains one sentence** on what the Install Ledger is *not* for: `aos browser install` runs apt as root and stays out of the Ledger, because Restore would otherwise remove those libraries out from under a browser the config still says is enabled. The Ledger records what Agents change with root authority, not what the administrator installs at the console.
