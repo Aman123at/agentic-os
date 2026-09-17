@@ -22,3 +22,9 @@ Settle:
 ## Constraint from *The systemd unit and the `aos service` lifecycle* (resolved 2026-09-17)
 
 The drain guard covers `aos daemon restart` too, not only a Mode switch. Note also that `Manager.recover` already denies every pending Approval on start (`internal/task/manager.go:140`) and interrupts awaiting-user Tasks — so any restart, attended or not, has a user-visible cost. The command spelling settled there: `aos daemon start|stop|restart|logs` plus `aos status`; `aos service <name>` stays the Services group.
+
+## Input from *The authentication screens and account lifecycle* (resolved 2026-09-17)
+
+**Question 6 is answered: the Mode switch is the account-creation moment, and it happens in the CLI.** Entering `ui` Mode requires `username` and `password` in `config.yml`; if `password` is unset the switch generates one, writes it back and prints it — the same rule *Reach, bind and the two Host checks* set for first start, so there is one behaviour and not two. `aosd` hashes it into `users` when it starts in `ui` Mode with no user row, and the browser never has an unclaimed state for anyone to race for. Nothing about the account is decided in the browser.
+
+Consequence for question 5's spelling: whichever verb wins, the "write a generated password and print it" step belongs to it, alongside the drain guard.

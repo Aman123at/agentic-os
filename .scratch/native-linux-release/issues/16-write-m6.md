@@ -36,3 +36,9 @@ Two M6 code sub-tasks fall out of the review and belong in the sub-task list: `i
 **Ordering is now fixed for two sub-tasks that were flagged as colliding:** the Shared Folder removal lands *before* the filesystem widening, because it shrinks `Layout` and `Policy()` and lets the widening rewrite one smaller function instead of rewriting the widened one twice.
 
 **The Trash generalisation belongs to the Shared Folder sub-task**, not the widening: Trash selection becomes an `st_dev` comparison rather than a path prefix, the item ID becomes a validated absolute path instead of a two-value enum, and `ListTrash` enumerates mounts from `/proc/self/mountinfo`. Sizing note: this also means `PrepareHome` needs a migration step to remove the root-owned `~/Shared` symlink, which no existing install can delete for itself.
+
+## Input from *The authentication screens and account lifecycle* (resolved 2026-09-17)
+
+**One sub-task exists that no ticket had booked: moving forwarded Services inside the session.** `internal/daemon/daemon_linux.go:198` composes the forwarder *outside* the authenticator, so `/port/<n>/` is unauthenticated and was safe only behind a loopback publish. It touches `internal/proxy`, `internal/api/auth.go`, the Desktop's Services surface and `tools/e2e/m2_test.go`, and it must land in the **same sub-task as deleting the two Host checks** — separately, there is a commit in between where every Agent-started port is on the public internet.
+
+Ordering note: the Desktop auth work (three boot phases, the interceptor, the Account pane) depends on the server side of the ticket mechanism existing, so the API sub-task precedes the Desktop one.

@@ -25,3 +25,9 @@ Link the scaffold from this ticket.
 - A page must state plainly that **the Desktop password is root on this server** — the `aos` user holds `NOPASSWD:ALL` and `bind: 0.0.0.0` puts the sign-in screen on the internet.
 - The documented path is **`/agentic-os/`**, not `/agent-os/`. The canonical script URL is `raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh`; the domain redirects to it, so a docs deploy can never break installs.
 - The commented `config.yml` template is the first documentation surface a user meets. Keep it and the docs saying the same thing about write-back, the generated password and the forced reset.
+
+## Input from *The authentication screens and account lifecycle* (resolved 2026-09-17)
+
+- **`sudo aos user passwd` is the only password recovery that exists.** No email, no reset link. It needs a page of its own, not a footnote — a user who loses the password and cannot find this has lost the Machine.
+- **Port forwarding is now reached from the Desktop, not typed.** `/port/<n>/` carries a ticket, so a hand-typed URL will refuse. The forwarding page has to say that and show where in the Desktop the link comes from.
+- The sign-in page states the **12-character minimum** and the forced first change; the docs should not contradict it.

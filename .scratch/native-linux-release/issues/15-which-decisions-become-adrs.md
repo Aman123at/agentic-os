@@ -93,3 +93,12 @@ Recorded so it is not re-litigated. All PLAN-section material, each for the same
 ## Input from *Removing the Shared Folder* (resolved 2026-09-17)
 
 The first of 0004's two blockers is cleared. Its home-layout list loses the `~/Shared` root-owned symlink and the sentence explaining why the Shared Folder is mounted outside home (M0 finding F2). The M6 amendment now waits only on *Installing Chromium lazily* (12), which owes ADR-0008 its text.
+
+## Input from *The authentication screens and account lifecycle* (resolved 2026-09-17)
+
+ADR-0007's `## M6: passwords, JWT and a public bind` section gains two things the earlier list did not have:
+
+- **The path-scoped forwarding cookie.** Forwarded Service traffic is authenticated by the same single-use ticket, exchanged for a cookie scoped to `Path=/port/<n>/`, because a third-party page cannot attach an `Authorization` header to its own sub-resources. The section must carry the argument for why this does not reopen what ticket 01 closed: the rule is that the *API* carries no automatic credential, and this cookie reaches one forwarded Service and no API endpoint. `internal/proxy/proxy.go:1` already cites ADR-0007, so it belongs there and nowhere else.
+- **Family revocation closes live connections.** Revoking a refresh family closes the event streams and session WebSockets it authorised. Without it a held stream outlives the token that authorised it and "sign out" means nothing.
+
+Found on the way and worth a sentence in the same section: **the forwarder is composed outside the authenticator** (`internal/daemon/daemon_linux.go:198`), so `/port/<n>/` is unauthenticated today and was reachable only from loopback. Deleting the Host guard without fixing this would have published every Agent-started port.
