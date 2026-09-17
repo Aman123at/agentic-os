@@ -17,3 +17,8 @@ Settle:
 3. **What replaces it for Compose users**, who now have no way to move files in or out except the Desktop's upload/download buttons. Is that acceptable, or does Compose keep a bind mount by another name?
 4. **Order of work** — whether this lands before or after the filesystem widening, since both touch `Layout` and the Protected list, and doing them in the wrong order means writing the same code twice.
 5. **The glossary entry** in `CONTEXT.md` — deleted, or kept with a note that it is gone (coordinate with *The glossary after Machine and Host collapse*).
+
+
+## Constraint from *Widening the filesystem to the whole VPS* (2026-09-17)
+
+**Do not delete the Shared Folder's Trash code — move it.** `internal/files/ops.go:26` implements the freedesktop `.Trash-<uid>`-at-the-mount-root rule for the Shared Folder, and that is exactly the mechanism a whole-filesystem Finder needs for deleting outside `/home/aos`. It generalises to "the mount point of the path being deleted". Removing the Shared Folder must carry that code across rather than take it with it.

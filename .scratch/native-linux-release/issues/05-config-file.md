@@ -18,3 +18,10 @@ Specify it:
 6. **The API key.** `aos config set api_key=sk-…` leaves the key in shell history and in `ps`. Warn, refuse, or accept silently? Does the key sit in `config.yml` in plaintext or get moved to `/var/lib/aos/keys/openai` (which is already `Hidden` from Agents)?
 7. **A YAML dependency.** The repo has none today; `go.mod` would gain one. Or the file could be a format the stdlib already parses.
 8. **Compose parity.** Does the Compose path read the same file, or keep environment variables? Two configuration systems would double the documentation.
+
+
+## Constraint from *Widening the filesystem to the whole VPS* (2026-09-17)
+
+Question 6 of this ticket is **partly settled already**: the OpenAI key does **not** go in `config.yml`. `/etc/aos` is Hidden from Agents because `config.yml` holds the initial password, and the key belongs with the other secret state in `/var/lib/aos/keys/openai`, which is already Hidden by `internal/sandbox/policy.go`. What remains open here is the `aos config set api_key=…` ergonomics — shell history and `ps` — not the storage location.
+
+Also settled there: `/etc/aos` being Hidden makes `/etc` a split directory for the Landlock ruleset, so every package install re-plans. Accepted, to be measured on the VPS.
