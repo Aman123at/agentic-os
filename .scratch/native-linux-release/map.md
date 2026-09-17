@@ -67,6 +67,8 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 
 - [Reach, bind and the two Host checks](issues/01-reach-bind-and-host-checks.md): both Host checks are deleted; the Origin check already handles arbitrary hosts and is the real CSRF defence, so nothing is lost. `/port/<n>/` becomes the documented forwarding form because `<port>.localhost` cannot resolve from a remote browser. **Two constraints flow out of it:** tokens must live in headers and never in cookies, or DNS rebinding comes back; and the first-run window is closed by initial credentials in `config.yml` plus a mandatory password change on first login, with the pre-reset token restricted to that one call.
 
+- [The authentication model: JWT, refresh, and the WebSockets](issues/02-authentication-model.md): one **single-use 30-second ticket** authenticates every browser-initiated load — both WebSockets, `<img>`/`<video>` on `/files/raw`, the PDF ranges and the download anchor — because removing cookies removes what served all four. Refresh in `localStorage` (XSS-readable, stated plainly), access in memory, 15 min / 30 days, rotated on use with family revocation on replay. `users` and `refresh_tokens` in `0005_m6.sql`; signing key in `/var/lib/aos/`, not in `config.yml`. `AOS_ACCESS_TOKEN` and `aos desktop-url` are deleted outright. Found on the way: **`http://IP:7700` is not a secure context**, so Service Workers, `crypto.subtle` and the async clipboard API are all unavailable.
+
 ## Not yet specified
 
 - **Data migration for existing Compose users.** Someone running the Compose image today has a home volume, a SQLite database and an Install Ledger. Whether the native install can adopt that state, and how, is unclear until the native layout is fixed.
@@ -78,6 +80,7 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Whether the milestone-derived version scheme survives.** `version_linux_test.go` ties `Version` to the newest `### M<n>` heading in the plan, which fights tag-derived release versions. Reconciling them is now unblocked — naming and release engineering are both settled.
 - **When the module path gets renamed.** `github.com/amantiwari/agentic-os` should be `github.com/Aman123at/agentic-os`. Mechanical but tree-wide, and it wants its own commit before the first tag, not folded into M6's work.
 - **What a scanner finds on port 7700 before nginx.** The sign-in page is public by default now. Whether it should carry any fingerprinting resistance — a generic title, no version string — is unasked.
+- **What else assumed a secure context.** Service Workers, `crypto.subtle` and the async clipboard API are gone on a plain-http VPS. Auth no longer needs them, but nothing has swept the rest of the Desktop for the assumption.
 - **Observability of a long-running VPS service** — log rotation, journal size, what `aos service status` shows about uptime and restarts.
 
 ## Out of scope
