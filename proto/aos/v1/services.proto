@@ -10,21 +10,39 @@ option go_package = "github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1";
 // ---------------------------------------------------------------- Auth (ADR-0007)
 
 service AuthService {
-  // Exchanges a one-time code from `aos desktop-url` for the session cookie.
-  rpc ExchangeLoginCode(ExchangeLoginCodeRequest) returns (ExchangeLoginCodeResponse);
-  // Creates a one-time code. Only callers on the Unix socket may do this.
-  rpc CreateLoginCode(CreateLoginCodeRequest) returns (CreateLoginCodeResponse);
+  // Signs the one user in with a username and password. The access token is
+  // held in memory and the refresh token in localStorage (ADR-0007); both
+  // travel in headers, never cookies.
+  rpc SignIn(SignInRequest) returns (SignInResponse);
+  // Rotates a refresh token: the old one is spent and a new pair returned.
+  // Replaying a spent token revokes the whole family.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  // Mints a single-use, 30-second ticket for a browser load that cannot send a
+  // header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
+  // must already be authenticated.
+  rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
 }
 
-message ExchangeLoginCodeRequest {
-  string code = 1;
+message SignInRequest {
+  string username = 1;
+  string password = 2;
 }
-message ExchangeLoginCodeResponse {}
+message SignInResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
 
-message CreateLoginCodeRequest {}
-message CreateLoginCodeResponse {
-  string code = 1;
-  google.protobuf.Timestamp expires_at = 2;
+message RefreshRequest {
+  string refresh_token = 1;
+}
+message RefreshResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message CreateTicketRequest {}
+message CreateTicketResponse {
+  string ticket = 1;
 }
 
 // ---------------------------------------------------------------- Tasks

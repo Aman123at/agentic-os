@@ -1,25 +1,76 @@
 package api
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Aman123at/agentic-os/internal/auth"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
-const testToken = "tok-test-dummy-0123456789abcdef"
+const (
+	testUser     = "aman"
+	testPassword = "a-strong-password"
+)
+
+// The whole api package's tests share one signing key and clock, so testToken —
+// a valid access token minted once — verifies against every Auth newAuth hands
+// out (VerifyAccess checks only the signature and expiry, not the database).
+var (
+	testKey   = []byte("a-fixed-api-test-signing-key")
+	testClock = time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	testToken = mintTestToken()
+)
+
+func mintTestToken() string {
+	dir, err := os.MkdirTemp("", "aos-api-auth-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(dir)
+	db, err := store.Open(filepath.Join(dir, "aos.db"))
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	m := &auth.Model{DB: db, Key: testKey, Now: func() time.Time { return testClock }}
+	if err := m.SetPassword(context.Background(), testUser, testPassword); err != nil {
+		panic(err)
+	}
+	access, _, err := m.SignIn(context.Background(), testUser, testPassword)
+	if err != nil {
+		panic(err)
+	}
+	return access
+}
 
 // whoami echoes the authenticated actor.
 var whoami = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, ActorFrom(r.Context()))
 })
 
+// newAuth returns an Auth backed by a fresh database with the one user set, and
+// the pointer to its clock so a test can move time forward.
 func newAuth(t *testing.T) (*Auth, *time.Time) {
 	t.Helper()
-	clock := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
-	return &Auth{Token: testToken, Now: func() time.Time { return clock }}, &clock
+	db, err := store.Open(filepath.Join(t.TempDir(), "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	clock := testClock
+	m := &auth.Model{DB: db, Key: testKey, Now: func() time.Time { return clock }}
+	if err := m.SetPassword(context.Background(), testUser, testPassword); err != nil {
+		t.Fatal(err)
+	}
+	return &Auth{Model: m}, &clock
 }
 
 func do(t *testing.T, h http.Handler, method, target string, header map[string]string) *httptest.ResponseRecorder {
@@ -38,94 +89,83 @@ func do(t *testing.T, h http.Handler, method, target string, header map[string]s
 	return rec
 }
 
-func TestTheAPIRequiresTheAccessToken(t *testing.T) {
-	auth, _ := newAuth(t)
-	h := auth.TCP(whoami)
+func TestTheAPIRequiresAnAccessToken(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
 	for name, header := range map[string]map[string]string{
-		"no credentials":  nil,
-		"wrong token":     {"Authorization": "Bearer nope"},
-		"token as cookie": {"Cookie": "aos_session=" + testToken},
+		"no credentials": {"Origin": "http://localhost:7700"},
+		"wrong token":    {"Authorization": "Bearer nope", "Origin": "http://localhost:7700"},
 	} {
 		if rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks", header); rec.Code != http.StatusUnauthorized {
 			t.Errorf("%s: status %d, want 401", name, rec.Code)
 		}
 	}
-	rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks", map[string]string{"Authorization": "Bearer " + testToken})
-	if rec.Code != http.StatusOK || rec.Body.String() != "user:token" {
+	rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks", map[string]string{"Authorization": "Bearer " + testToken, "Origin": "http://localhost:7700"})
+	if rec.Code != http.StatusOK || rec.Body.String() != "user:desktop" {
 		t.Errorf("with the token: %d %q", rec.Code, rec.Body.String())
 	}
 }
 
-func TestAOneTimeCodeBecomesAStrictHttpOnlySessionCookie(t *testing.T) {
-	auth, clock := newAuth(t)
-	h := auth.TCP(whoami)
-
-	code, expires := auth.NewLoginCode()
-	if len(code) < 20 || !expires.Equal(clock.Add(5*time.Minute)) {
-		t.Fatalf("code %q expires %v", code, expires)
-	}
-	cookie, err := auth.Exchange(code)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cookie.Name != SessionCookie || !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Path != "/" || strings.Contains(cookie.Value, testToken) {
-		t.Errorf("cookie %+v", cookie)
-	}
-	if _, err := auth.Exchange(code); err == nil {
-		t.Error("a login code worked twice")
-	}
-	rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks", map[string]string{"Cookie": cookie.String(), "Origin": "http://localhost:7700"})
-	if rec.Code != http.StatusOK || rec.Body.String() != "user:desktop" {
-		t.Errorf("request with the cookie: %d %q", rec.Code, rec.Body.String())
-	}
-
-	stale, _ := auth.NewLoginCode()
-	*clock = clock.Add(6 * time.Minute)
-	if _, err := auth.Exchange(stale); err == nil {
-		t.Error("an expired login code worked")
-	}
-	// A new access token signs every Desktop out.
-	auth.Token = "tok-test-dummy-rotated-000000000"
-	if rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks", map[string]string{"Cookie": cookie.String(), "Origin": "http://localhost:7700"}); rec.Code != http.StatusUnauthorized {
-		t.Errorf("cookie after rotating the token: %d", rec.Code)
+func TestSignInAndRefreshAreOpenButSameOrigin(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
+	for _, path := range []string{"/aos.v1.AuthService/SignIn", "/aos.v1.AuthService/Refresh"} {
+		if rec := do(t, h, "POST", path, map[string]string{"Origin": "http://localhost:7700"}); rec.Code != http.StatusOK {
+			t.Errorf("%s same-origin: %d, want 200", path, rec.Code)
+		}
+		if rec := do(t, h, "POST", path, nil); rec.Code != http.StatusForbidden {
+			t.Errorf("%s without an Origin: %d, want 403", path, rec.Code)
+		}
+		if rec := do(t, h, "POST", path, map[string]string{"Origin": "https://evil.example"}); rec.Code != http.StatusForbidden {
+			t.Errorf("%s cross-origin: %d, want 403", path, rec.Code)
+		}
 	}
 }
 
-func TestOnlyTheDesktopsOwnPageReadsFilesWithoutAnOrigin(t *testing.T) {
-	auth, _ := newAuth(t)
-	h := auth.TCP(whoami)
-	code, _ := auth.NewLoginCode()
-	cookie, err := auth.Exchange(code)
-	if err != nil {
-		t.Fatal(err)
+func TestATicketAuthorisesOneBrowserLoad(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
+	m := a.Model
+
+	// An <img>/<video>/download reads /files/raw with a ticket and no Origin.
+	tkt := m.Ticket()
+	if rec := do(t, h, "GET", "/files/raw?path=~/a.mp4&ticket="+tkt, nil); rec.Code != http.StatusOK || rec.Body.String() != "user:desktop" {
+		t.Errorf("a ticketed media load: %d %q", rec.Code, rec.Body.String())
 	}
-	for name, tc := range map[string]struct {
-		method, path, site string
-		want               int
-	}{
-		"the Desktop's own <video>":  {"GET", "/files/raw?path=~/a.mp4", "same-origin", http.StatusOK},
-		"a page on a forwarded port": {"GET", "/files/raw?path=~/a.mp4", "same-site", http.StatusForbidden},
-		"another site":               {"GET", "/files/raw?path=~/a.mp4", "cross-site", http.StatusForbidden},
-		"a typed-in address":         {"GET", "/files/raw?path=~/a.mp4", "none", http.StatusForbidden},
-		"no Sec-Fetch-Site":          {"GET", "/files/raw?path=~/a.mp4", "", http.StatusForbidden},
-		"an upload":                  {"POST", "/upload?path=~/a.txt", "same-origin", http.StatusForbidden},
-		"an RPC":                     {"POST", "/aos.v1.TaskService/ListTasks", "same-origin", http.StatusForbidden},
-	} {
-		header := map[string]string{"Cookie": cookie.String()}
-		if tc.site != "" {
-			header["Sec-Fetch-Site"] = tc.site
-		}
-		if rec := do(t, h, tc.method, tc.path, header); rec.Code != tc.want {
-			t.Errorf("%s without an Origin: %d, want %d", name, rec.Code, tc.want)
-		}
+	// The ticket is single-use.
+	if rec := do(t, h, "GET", "/files/raw?path=~/a.mp4&ticket="+tkt, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a reused ticket: %d, want 401", rec.Code)
+	}
+	// A WebSocket upgrade rides a ticket in the query too.
+	ws := m.Ticket()
+	if rec := do(t, h, "GET", "/ws/session/t_1?ticket="+ws, map[string]string{"Origin": "http://localhost:7700", "Upgrade": "websocket", "Connection": "Upgrade"}); rec.Code != http.StatusOK {
+		t.Errorf("a ticketed WebSocket: %d, want 200", rec.Code)
+	}
+	// Without a ticket or a token, a browser load is refused.
+	if rec := do(t, h, "GET", "/files/raw?path=~/a.mp4", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("an unticketed media load: %d, want 401", rec.Code)
+	}
+	// A ticket does not authorise an RPC — only the token does.
+	if rec := do(t, h, "POST", "/aos.v1.TaskService/ListTasks?ticket="+m.Ticket(), map[string]string{"Origin": "http://localhost:7700"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("a ticket on an RPC: %d, want 401", rec.Code)
+	}
+}
+
+func TestCreatingATicketNeedsTheToken(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
+	create := "/aos.v1.AuthService/CreateTicket"
+	if rec := do(t, h, "POST", create, map[string]string{"Origin": "http://localhost:7700"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("CreateTicket without the token: %d, want 401", rec.Code)
+	}
+	if rec := do(t, h, "POST", create, map[string]string{"Authorization": "Bearer " + testToken, "Origin": "http://localhost:7700"}); rec.Code != http.StatusOK {
+		t.Errorf("CreateTicket with the token: %d, want 200", rec.Code)
 	}
 }
 
 func TestHostAndOriginChecks(t *testing.T) {
-	auth, _ := newAuth(t)
-	code, _ := auth.NewLoginCode()
-	cookie, _ := auth.Exchange(code)
-	h := auth.TCP(whoami)
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
 	rpc := "/aos.v1.TaskService/CreateTask"
 	token := "Bearer " + testToken
 
@@ -138,16 +178,13 @@ func TestHostAndOriginChecks(t *testing.T) {
 	}{
 		{"DNS rebinding: another Host, even with the token", "POST", rpc, map[string]string{"Host": "evil.example:7700", "Authorization": token}, http.StatusMisdirectedRequest},
 		{"127.0.0.1 is a local Host", "POST", rpc, map[string]string{"Host": "127.0.0.1:7700", "Authorization": token}, http.StatusOK},
-		{"cross-site RPC with the cookie", "POST", rpc, map[string]string{"Cookie": cookie.String(), "Origin": "https://evil.example"}, http.StatusForbidden},
-		{"same-origin RPC with the cookie", "POST", rpc, map[string]string{"Cookie": cookie.String(), "Origin": "http://localhost:7700"}, http.StatusOK},
-		{"a Service page on another port", "POST", rpc, map[string]string{"Cookie": cookie.String(), "Origin": "http://localhost:3000"}, http.StatusForbidden},
-		{"a sandboxed page (opaque origin)", "POST", rpc, map[string]string{"Cookie": cookie.String(), "Origin": "null"}, http.StatusForbidden},
-		{"cookie without an Origin", "POST", rpc, map[string]string{"Cookie": cookie.String()}, http.StatusForbidden},
-		{"cross-site WebSocket upgrade", "GET", "/ws/session/t_1", map[string]string{"Cookie": cookie.String(), "Origin": "https://evil.example", "Upgrade": "websocket", "Connection": "Upgrade"}, http.StatusForbidden},
-		{"a browser with a Bearer token from another origin", "POST", rpc, map[string]string{"Authorization": token, "Origin": "https://evil.example"}, http.StatusForbidden},
-		{"sign-in needs no credentials", "POST", "/aos.v1.AuthService/ExchangeLoginCode", map[string]string{"Origin": "http://localhost:7700"}, http.StatusOK},
-		{"cross-site sign-in", "POST", "/aos.v1.AuthService/ExchangeLoginCode", map[string]string{"Origin": "https://evil.example"}, http.StatusForbidden},
-		{"creating login codes is for the Unix socket only", "POST", "/aos.v1.AuthService/CreateLoginCode", map[string]string{"Authorization": token}, http.StatusForbidden},
+		{"same-origin RPC with the token", "POST", rpc, map[string]string{"Authorization": token, "Origin": "http://localhost:7700"}, http.StatusOK},
+		{"a browser with the token from another origin", "POST", rpc, map[string]string{"Authorization": token, "Origin": "https://evil.example"}, http.StatusForbidden},
+		{"a Service page on another port", "POST", rpc, map[string]string{"Authorization": token, "Origin": "http://localhost:3000"}, http.StatusForbidden},
+		{"a sandboxed page (opaque origin)", "POST", rpc, map[string]string{"Authorization": token, "Origin": "null"}, http.StatusForbidden},
+		{"cross-site WebSocket upgrade", "GET", "/ws/session/t_1", map[string]string{"Authorization": token, "Origin": "https://evil.example", "Upgrade": "websocket", "Connection": "Upgrade"}, http.StatusForbidden},
+		{"sign-in needs no credentials", "POST", "/aos.v1.AuthService/SignIn", map[string]string{"Origin": "http://localhost:7700"}, http.StatusOK},
+		{"cross-site sign-in", "POST", "/aos.v1.AuthService/SignIn", map[string]string{"Origin": "https://evil.example"}, http.StatusForbidden},
 		{"the Desktop page loads without credentials", "GET", "/", nil, http.StatusOK},
 		{"health check", "GET", "/healthz", nil, http.StatusOK},
 	} {

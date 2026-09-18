@@ -53,12 +53,13 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
-	// AuthServiceExchangeLoginCodeProcedure is the fully-qualified name of the AuthService's
-	// ExchangeLoginCode RPC.
-	AuthServiceExchangeLoginCodeProcedure = "/aos.v1.AuthService/ExchangeLoginCode"
-	// AuthServiceCreateLoginCodeProcedure is the fully-qualified name of the AuthService's
-	// CreateLoginCode RPC.
-	AuthServiceCreateLoginCodeProcedure = "/aos.v1.AuthService/CreateLoginCode"
+	// AuthServiceSignInProcedure is the fully-qualified name of the AuthService's SignIn RPC.
+	AuthServiceSignInProcedure = "/aos.v1.AuthService/SignIn"
+	// AuthServiceRefreshProcedure is the fully-qualified name of the AuthService's Refresh RPC.
+	AuthServiceRefreshProcedure = "/aos.v1.AuthService/Refresh"
+	// AuthServiceCreateTicketProcedure is the fully-qualified name of the AuthService's CreateTicket
+	// RPC.
+	AuthServiceCreateTicketProcedure = "/aos.v1.AuthService/CreateTicket"
 	// TaskServiceCreateTaskProcedure is the fully-qualified name of the TaskService's CreateTask RPC.
 	TaskServiceCreateTaskProcedure = "/aos.v1.TaskService/CreateTask"
 	// TaskServiceListTasksProcedure is the fully-qualified name of the TaskService's ListTasks RPC.
@@ -205,10 +206,17 @@ const (
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
 type AuthServiceClient interface {
-	// Exchanges a one-time code from `aos desktop-url` for the session cookie.
-	ExchangeLoginCode(context.Context, *connect.Request[v1.ExchangeLoginCodeRequest]) (*connect.Response[v1.ExchangeLoginCodeResponse], error)
-	// Creates a one-time code. Only callers on the Unix socket may do this.
-	CreateLoginCode(context.Context, *connect.Request[v1.CreateLoginCodeRequest]) (*connect.Response[v1.CreateLoginCodeResponse], error)
+	// Signs the one user in with a username and password. The access token is
+	// held in memory and the refresh token in localStorage (ADR-0007); both
+	// travel in headers, never cookies.
+	SignIn(context.Context, *connect.Request[v1.SignInRequest]) (*connect.Response[v1.SignInResponse], error)
+	// Rotates a refresh token: the old one is spent and a new pair returned.
+	// Replaying a spent token revokes the whole family.
+	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
+	// Mints a single-use, 30-second ticket for a browser load that cannot send a
+	// header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
+	// must already be authenticated.
+	CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the aos.v1.AuthService service. By default, it uses
@@ -222,16 +230,22 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	authServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("AuthService").Methods()
 	return &authServiceClient{
-		exchangeLoginCode: connect.NewClient[v1.ExchangeLoginCodeRequest, v1.ExchangeLoginCodeResponse](
+		signIn: connect.NewClient[v1.SignInRequest, v1.SignInResponse](
 			httpClient,
-			baseURL+AuthServiceExchangeLoginCodeProcedure,
-			connect.WithSchema(authServiceMethods.ByName("ExchangeLoginCode")),
+			baseURL+AuthServiceSignInProcedure,
+			connect.WithSchema(authServiceMethods.ByName("SignIn")),
 			connect.WithClientOptions(opts...),
 		),
-		createLoginCode: connect.NewClient[v1.CreateLoginCodeRequest, v1.CreateLoginCodeResponse](
+		refresh: connect.NewClient[v1.RefreshRequest, v1.RefreshResponse](
 			httpClient,
-			baseURL+AuthServiceCreateLoginCodeProcedure,
-			connect.WithSchema(authServiceMethods.ByName("CreateLoginCode")),
+			baseURL+AuthServiceRefreshProcedure,
+			connect.WithSchema(authServiceMethods.ByName("Refresh")),
+			connect.WithClientOptions(opts...),
+		),
+		createTicket: connect.NewClient[v1.CreateTicketRequest, v1.CreateTicketResponse](
+			httpClient,
+			baseURL+AuthServiceCreateTicketProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CreateTicket")),
 			connect.WithClientOptions(opts...),
 		),
 	}
@@ -239,26 +253,39 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	exchangeLoginCode *connect.Client[v1.ExchangeLoginCodeRequest, v1.ExchangeLoginCodeResponse]
-	createLoginCode   *connect.Client[v1.CreateLoginCodeRequest, v1.CreateLoginCodeResponse]
+	signIn       *connect.Client[v1.SignInRequest, v1.SignInResponse]
+	refresh      *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
+	createTicket *connect.Client[v1.CreateTicketRequest, v1.CreateTicketResponse]
 }
 
-// ExchangeLoginCode calls aos.v1.AuthService.ExchangeLoginCode.
-func (c *authServiceClient) ExchangeLoginCode(ctx context.Context, req *connect.Request[v1.ExchangeLoginCodeRequest]) (*connect.Response[v1.ExchangeLoginCodeResponse], error) {
-	return c.exchangeLoginCode.CallUnary(ctx, req)
+// SignIn calls aos.v1.AuthService.SignIn.
+func (c *authServiceClient) SignIn(ctx context.Context, req *connect.Request[v1.SignInRequest]) (*connect.Response[v1.SignInResponse], error) {
+	return c.signIn.CallUnary(ctx, req)
 }
 
-// CreateLoginCode calls aos.v1.AuthService.CreateLoginCode.
-func (c *authServiceClient) CreateLoginCode(ctx context.Context, req *connect.Request[v1.CreateLoginCodeRequest]) (*connect.Response[v1.CreateLoginCodeResponse], error) {
-	return c.createLoginCode.CallUnary(ctx, req)
+// Refresh calls aos.v1.AuthService.Refresh.
+func (c *authServiceClient) Refresh(ctx context.Context, req *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
+	return c.refresh.CallUnary(ctx, req)
+}
+
+// CreateTicket calls aos.v1.AuthService.CreateTicket.
+func (c *authServiceClient) CreateTicket(ctx context.Context, req *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error) {
+	return c.createTicket.CallUnary(ctx, req)
 }
 
 // AuthServiceHandler is an implementation of the aos.v1.AuthService service.
 type AuthServiceHandler interface {
-	// Exchanges a one-time code from `aos desktop-url` for the session cookie.
-	ExchangeLoginCode(context.Context, *connect.Request[v1.ExchangeLoginCodeRequest]) (*connect.Response[v1.ExchangeLoginCodeResponse], error)
-	// Creates a one-time code. Only callers on the Unix socket may do this.
-	CreateLoginCode(context.Context, *connect.Request[v1.CreateLoginCodeRequest]) (*connect.Response[v1.CreateLoginCodeResponse], error)
+	// Signs the one user in with a username and password. The access token is
+	// held in memory and the refresh token in localStorage (ADR-0007); both
+	// travel in headers, never cookies.
+	SignIn(context.Context, *connect.Request[v1.SignInRequest]) (*connect.Response[v1.SignInResponse], error)
+	// Rotates a refresh token: the old one is spent and a new pair returned.
+	// Replaying a spent token revokes the whole family.
+	Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error)
+	// Mints a single-use, 30-second ticket for a browser load that cannot send a
+	// header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
+	// must already be authenticated.
+	CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -268,24 +295,32 @@ type AuthServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	authServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("AuthService").Methods()
-	authServiceExchangeLoginCodeHandler := connect.NewUnaryHandler(
-		AuthServiceExchangeLoginCodeProcedure,
-		svc.ExchangeLoginCode,
-		connect.WithSchema(authServiceMethods.ByName("ExchangeLoginCode")),
+	authServiceSignInHandler := connect.NewUnaryHandler(
+		AuthServiceSignInProcedure,
+		svc.SignIn,
+		connect.WithSchema(authServiceMethods.ByName("SignIn")),
 		connect.WithHandlerOptions(opts...),
 	)
-	authServiceCreateLoginCodeHandler := connect.NewUnaryHandler(
-		AuthServiceCreateLoginCodeProcedure,
-		svc.CreateLoginCode,
-		connect.WithSchema(authServiceMethods.ByName("CreateLoginCode")),
+	authServiceRefreshHandler := connect.NewUnaryHandler(
+		AuthServiceRefreshProcedure,
+		svc.Refresh,
+		connect.WithSchema(authServiceMethods.ByName("Refresh")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceCreateTicketHandler := connect.NewUnaryHandler(
+		AuthServiceCreateTicketProcedure,
+		svc.CreateTicket,
+		connect.WithSchema(authServiceMethods.ByName("CreateTicket")),
 		connect.WithHandlerOptions(opts...),
 	)
 	return "/aos.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case AuthServiceExchangeLoginCodeProcedure:
-			authServiceExchangeLoginCodeHandler.ServeHTTP(w, r)
-		case AuthServiceCreateLoginCodeProcedure:
-			authServiceCreateLoginCodeHandler.ServeHTTP(w, r)
+		case AuthServiceSignInProcedure:
+			authServiceSignInHandler.ServeHTTP(w, r)
+		case AuthServiceRefreshProcedure:
+			authServiceRefreshHandler.ServeHTTP(w, r)
+		case AuthServiceCreateTicketProcedure:
+			authServiceCreateTicketHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -295,12 +330,16 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 // UnimplementedAuthServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAuthServiceHandler struct{}
 
-func (UnimplementedAuthServiceHandler) ExchangeLoginCode(context.Context, *connect.Request[v1.ExchangeLoginCodeRequest]) (*connect.Response[v1.ExchangeLoginCodeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.ExchangeLoginCode is not implemented"))
+func (UnimplementedAuthServiceHandler) SignIn(context.Context, *connect.Request[v1.SignInRequest]) (*connect.Response[v1.SignInResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.SignIn is not implemented"))
 }
 
-func (UnimplementedAuthServiceHandler) CreateLoginCode(context.Context, *connect.Request[v1.CreateLoginCodeRequest]) (*connect.Response[v1.CreateLoginCodeResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.CreateLoginCode is not implemented"))
+func (UnimplementedAuthServiceHandler) Refresh(context.Context, *connect.Request[v1.RefreshRequest]) (*connect.Response[v1.RefreshResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.Refresh is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.CreateTicket is not implemented"))
 }
 
 // TaskServiceClient is a client for the aos.v1.TaskService service.

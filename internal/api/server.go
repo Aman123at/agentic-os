@@ -17,6 +17,7 @@ import (
 	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 	"github.com/Aman123at/agentic-os/gen/go/aos/v1/aosv1connect"
 	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
@@ -168,22 +169,46 @@ func connectError(err error) error {
 
 type authService struct{ s *Server }
 
-func (a authService) ExchangeLoginCode(ctx context.Context, req *connect.Request[aosv1.ExchangeLoginCodeRequest]) (*connect.Response[aosv1.ExchangeLoginCodeResponse], error) {
-	cookie, err := a.s.Auth.Exchange(req.Msg.Code)
+// model is the authentication model, or an error when this Server has none.
+func (a authService) model() (*auth.Model, error) {
+	if a.s.Auth == nil || a.s.Auth.Model == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("authentication is not available"))
+	}
+	return a.s.Auth.Model, nil
+}
+
+func (a authService) SignIn(ctx context.Context, req *connect.Request[aosv1.SignInRequest]) (*connect.Response[aosv1.SignInResponse], error) {
+	m, err := a.model()
+	if err != nil {
+		return nil, err
+	}
+	access, refresh, err := m.SignIn(ctx, req.Msg.Username, req.Msg.Password)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	resp := connect.NewResponse(&aosv1.ExchangeLoginCodeResponse{})
-	resp.Header().Add("Set-Cookie", cookie.String())
-	return resp, nil
+	return connect.NewResponse(&aosv1.SignInResponse{AccessToken: access, RefreshToken: refresh}), nil
 }
 
-func (a authService) CreateLoginCode(ctx context.Context, _ *connect.Request[aosv1.CreateLoginCodeRequest]) (*connect.Response[aosv1.CreateLoginCodeResponse], error) {
-	if ActorFrom(ctx) != "user:cli" {
-		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("only `aos desktop-url` inside the Machine can create login codes"))
+func (a authService) Refresh(ctx context.Context, req *connect.Request[aosv1.RefreshRequest]) (*connect.Response[aosv1.RefreshResponse], error) {
+	m, err := a.model()
+	if err != nil {
+		return nil, err
 	}
-	code, expires := a.s.Auth.NewLoginCode()
-	return connect.NewResponse(&aosv1.CreateLoginCodeResponse{Code: code, ExpiresAt: timestamppb.New(expires)}), nil
+	access, refresh, err := m.Refresh(ctx, req.Msg.RefreshToken)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeUnauthenticated, err)
+	}
+	return connect.NewResponse(&aosv1.RefreshResponse{AccessToken: access, RefreshToken: refresh}), nil
+}
+
+// CreateTicket mints a single-use ticket for a browser load. The middleware has
+// already checked the caller's access token, so no further guard is needed.
+func (a authService) CreateTicket(_ context.Context, _ *connect.Request[aosv1.CreateTicketRequest]) (*connect.Response[aosv1.CreateTicketResponse], error) {
+	m, err := a.model()
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&aosv1.CreateTicketResponse{Ticket: m.Ticket()}), nil
 }
 
 // ---------------------------------------------------------------- Tasks

@@ -338,7 +338,7 @@ func ids(as []*aosv1.Approval) string {
 	return strings.Join(out, ", ")
 }
 
-// ---------------------------------------------------------------- trash, protect, desktop-url
+// ---------------------------------------------------------------- trash, protect
 
 func trashCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "trash", Short: "List, restore or empty the Trash"}
@@ -435,18 +435,6 @@ func absPath(p string) (string, error) {
 		return "", err
 	}
 	return cwd + "/" + p, nil
-}
-
-func desktopURLCmd() *cobra.Command {
-	return &cobra.Command{Use: "desktop-url", Short: "Print a one-time sign-in link for the Desktop", Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			resp, err := newClient().auth.CreateLoginCode(cmd.Context(), connect.NewRequest(&aosv1.CreateLoginCodeRequest{}))
-			if err != nil {
-				return explain(err)
-			}
-			fmt.Printf("http://localhost:%s/#code=%s\n(valid until %s)\n", envOr("AOS_PORT", "7700"), resp.Msg.Code, resp.Msg.ExpiresAt.AsTime().Local().Format("15:04:05"))
-			return nil
-		}}
 }
 
 func execRealRm(args []string) int {

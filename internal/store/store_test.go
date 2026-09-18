@@ -21,7 +21,7 @@ func TestMigrationsApplyOnceAndTheLedgerIsAppendOnly(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 4 {
+	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
 		t.Fatalf("user_version %d, %v", version, err)
 	}
 
@@ -48,5 +48,43 @@ func TestMigrationsApplyOnceAndTheLedgerIsAppendOnly(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "append-only") {
 			t.Errorf("%s: %v", stmt, err)
 		}
+	}
+}
+
+// TestM6AuthTablesCascade checks 0005_m6.sql: the auth tables exist and a
+// refresh token is tied to its user, so removing the user removes its tokens.
+func TestM6AuthTablesCascade(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	err = db.Write(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`INSERT INTO users (username, pw_hash, created_at, updated_at) VALUES ('aman', 'pbkdf2-sha256$1$AA$AA', 1, 1)`); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT INTO refresh_tokens (id, family, username, created_at, expires_at) VALUES ('id1', 'fam1', 'aman', 1, 2)`)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A token for a user who does not exist is refused by the foreign key.
+	err = db.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO refresh_tokens (id, family, username, created_at, expires_at) VALUES ('id2', 'fam2', 'ghost', 1, 2)`)
+		return err
+	})
+	if err == nil {
+		t.Error("a refresh token referencing an unknown user was allowed")
+	}
+	// Deleting the user cascades to its tokens.
+	if err := db.Write(ctx, func(tx *sql.Tx) error { _, err := tx.Exec(`DELETE FROM users WHERE username = 'aman'`); return err }); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := db.Read().QueryRow(`SELECT count(*) FROM refresh_tokens`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("refresh_tokens after deleting the user: %d rows (%v), want 0", n, err)
 	}
 }

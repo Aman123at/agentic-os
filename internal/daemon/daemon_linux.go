@@ -29,6 +29,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/agent"
 	"github.com/Aman123at/agentic-os/internal/api"
 	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/config"
 	"github.com/Aman123at/agentic-os/internal/desktop"
@@ -64,16 +65,16 @@ const (
 	AgentBinDir = "/usr/local/lib/aos/agent-bin"
 	// Version is what the Desktop shows in Settings ▸ Status and About This
 	// Machine. Bump it with the milestone; version_test.go keeps it honest.
-	Version      = "0.1.0-m5"
-	keyFile      = StateDir + "/keys/openai"
-	tokenFile    = StateDir + "/token"
-	outputsDir   = StateDir + "/outputs"
-	databaseFile = StateDir + "/aos.db"
-	pricesFile   = StateDir + "/prices.yaml"
-	blobsDir     = StateDir + "/blobs"
-	servicesDir  = StateDir + "/services"
-	aptArchives  = "/var/cache/aos/apt/archives"
-	aptLists     = "/var/cache/aos/apt/lists"
+	Version        = "0.1.0-m5"
+	keyFile        = StateDir + "/keys/openai"
+	sessionKeyFile = StateDir + "/keys/session"
+	outputsDir     = StateDir + "/outputs"
+	databaseFile   = StateDir + "/aos.db"
+	pricesFile     = StateDir + "/prices.yaml"
+	blobsDir       = StateDir + "/blobs"
+	servicesDir    = StateDir + "/services"
+	aptArchives    = "/var/cache/aos/apt/archives"
+	aptLists       = "/var/cache/aos/apt/lists"
 )
 
 // Daemon is a running aosd.
@@ -243,8 +244,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 
 	log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d (on the Host: http://localhost:%s)", cfg.Mode, model, d.abi, Port, cfg.HostPort)
 	if cfg.Mode == "ui" {
-		code, _ := d.auth.NewLoginCode()
-		log.Printf("Open the Desktop: http://localhost:%s/#code=%s (valid 5 minutes; later: docker compose exec aos aos desktop-url)", cfg.HostPort, code)
+		log.Printf("Open the Desktop on the Host: http://localhost:%s/ and sign in", cfg.HostPort)
 	}
 
 	select {
@@ -301,17 +301,18 @@ func (d *Daemon) init() error {
 	if err := keys.copy(); err != nil {
 		log.Printf("API key: %v", err)
 	}
-	token, err := accessToken(d.cfg.AccessToken)
-	if err != nil {
-		return err
-	}
-	// The control socket only accepts the user aosd itself runs as — root, under
-	// systemd (M6.2). Its 0600 mode already keeps others out; the uid check is
-	// the belt to that braces.
-	d.auth = &api.Auth{Token: token, SocketUID: os.Getuid()}
 	if d.db, err = store.Open(databaseFile); err != nil {
 		return err
 	}
+	key, err := sessionKey()
+	if err != nil {
+		return err
+	}
+	// The API is always authenticated (ADR-0007): over TCP the auth Model checks
+	// access tokens and tickets; over the control socket the uid check accepts
+	// only the user aosd runs as — root, under systemd (M6.2) — which its 0600
+	// mode already enforces, the uid check being the belt to that braces.
+	d.auth = &api.Auth{Model: &auth.Model{DB: d.db, Key: key}, SocketUID: os.Getuid()}
 	// The user edits prices.yaml; it is only written when missing.
 	if f, err := os.OpenFile(pricesFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
 		_, _ = f.WriteString(usage.DefaultPrices)
@@ -328,20 +329,20 @@ func (d *Daemon) init() error {
 	return d.locks.load()
 }
 
-// accessToken returns AOS_ACCESS_TOKEN, or the stored token, generating it on first start.
-func accessToken(override string) (string, error) {
-	if override != "" {
-		return override, nil
+// sessionKey loads the key that signs access tokens, generating it on first
+// start. It lives in /var/lib/aos, never in config.yml (ADR-0007); deleting the
+// file or replacing the key signs every Desktop out.
+func sessionKey() ([]byte, error) {
+	if b, err := os.ReadFile(sessionKeyFile); err == nil {
+		if key, err := hex.DecodeString(strings.TrimSpace(string(b))); err == nil && len(key) >= 32 {
+			return key, nil
+		}
 	}
-	if b, err := os.ReadFile(tokenFile); err == nil && len(strings.TrimSpace(string(b))) >= 32 {
-		return strings.TrimSpace(string(b)), nil
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
 	}
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	token := hex.EncodeToString(buf)
-	return token, os.WriteFile(tokenFile, []byte(token+"\n"), 0o600)
+	return key, os.WriteFile(sessionKeyFile, []byte(hex.EncodeToString(key)+"\n"), 0o600)
 }
 
 func (d *Daemon) provider() (llm.Provider, string, error) {

@@ -21,7 +21,6 @@ type Config struct {
 	ConfigPath      string
 	Bind            string
 	HostPort        string
-	AccessToken     string
 	Autonomy        policy.Autonomy
 	MaxTasks        int
 	MaxRetries      int
@@ -85,7 +84,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		BaseURL:         str("OPENAI_BASE_URL", ""),
 		Bind:            str("AOS_BIND", "127.0.0.1"),
 		HostPort:        str("AOS_PORT", "7700"),
-		AccessToken:     str("AOS_ACCESS_TOKEN", ""),
 		MaxTasks:        num("AOS_MAX_TASKS", 3),
 		MaxRetries:      num("AOS_MAX_RETRIES", 3),
 		UID:             num("AOS_UID", 1000),
