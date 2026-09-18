@@ -2253,7 +2253,7 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\x15SERVICE_STATE_STOPPED\x10\x01\x12\x19\n" +
 	"\x15SERVICE_STATE_RUNNING\x10\x02\x12\x1c\n" +
 	"\x18SERVICE_STATE_RESTARTING\x10\x03\x12\x18\n" +
-	"\x14SERVICE_STATE_FAILED\x10\x04B6Z4github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
+	"\x14SERVICE_STATE_FAILED\x10\x04B5Z3github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
 
 var (
 	file_aos_v1_types_proto_rawDescOnce sync.Once
