@@ -12,14 +12,12 @@ import (
 
 	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 	"github.com/Aman123at/agentic-os/internal/sandbox"
-	"github.com/Aman123at/agentic-os/tools/hostcheck"
 )
 
 func doctorCmd() *cobra.Command {
-	var hostCheck bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Show Mode, Landlock status and API key presence; --host-check runs the Host acceptance report",
+		Short: "Show Mode, Landlock status and API key presence",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			w := cmd.OutOrStdout()
@@ -62,24 +60,9 @@ func doctorCmd() *cobra.Command {
 			} else {
 				fmt.Fprintln(w, "Landlock:  unavailable (Agents are confined by policy checks only)")
 			}
-			if !hostCheck {
-				return nil
-			}
-			fmt.Fprintln(w, "\nHost check")
-			opts := hostcheck.DefaultOptions()
-			opts.RequireAosd = true
-			report, err := hostcheck.Run(cmd.Context(), opts)
-			if err != nil {
-				return err
-			}
-			report.Write(w)
-			if report.Failed() {
-				return exitError{1}
-			}
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&hostCheck, "host-check", false, "run the M0 prototype checks and print a pass/fail report")
 	return cmd
 }
 

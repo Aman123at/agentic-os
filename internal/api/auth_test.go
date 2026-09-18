@@ -70,7 +70,7 @@ func newAuth(t *testing.T) (*Auth, *time.Time) {
 	if err := m.SetPassword(context.Background(), testUser, testPassword); err != nil {
 		t.Fatal(err)
 	}
-	return &Auth{Model: m}, &clock
+	return &Auth{Model: m, SelfPort: 7700}, &clock
 }
 
 func do(t *testing.T, h http.Handler, method, target string, header map[string]string) *httptest.ResponseRecorder {
@@ -176,8 +176,11 @@ func TestHostAndOriginChecks(t *testing.T) {
 		header map[string]string
 		want   int
 	}{
-		{"DNS rebinding: another Host, even with the token", "POST", rpc, map[string]string{"Host": "evil.example:7700", "Authorization": token}, http.StatusMisdirectedRequest},
-		{"127.0.0.1 is a local Host", "POST", rpc, map[string]string{"Host": "127.0.0.1:7700", "Authorization": token}, http.StatusOK},
+		// The Host is no longer checked (M6.4): a token in a header is safe from DNS
+		// rebinding, so an arbitrary Host with the token and no cross-origin header
+		// is served. The Origin check below is what a browser attack runs into.
+		{"an arbitrary Host with the token, no Origin", "POST", rpc, map[string]string{"Host": "evil.example:7700", "Authorization": token}, http.StatusOK},
+		{"127.0.0.1 with the token", "POST", rpc, map[string]string{"Host": "127.0.0.1:7700", "Authorization": token}, http.StatusOK},
 		{"same-origin RPC with the token", "POST", rpc, map[string]string{"Authorization": token, "Origin": "http://localhost:7700"}, http.StatusOK},
 		{"a browser with the token from another origin", "POST", rpc, map[string]string{"Authorization": token, "Origin": "https://evil.example"}, http.StatusForbidden},
 		{"a Service page on another port", "POST", rpc, map[string]string{"Authorization": token, "Origin": "http://localhost:3000"}, http.StatusForbidden},
@@ -191,5 +194,76 @@ func TestHostAndOriginChecks(t *testing.T) {
 		if rec := do(t, h, tc.method, tc.path, tc.header); rec.Code != tc.want {
 			t.Errorf("%s: status %d, want %d (%s)", tc.name, rec.Code, tc.want, strings.TrimSpace(rec.Body.String()))
 		}
+	}
+}
+
+func TestForwardedServiceNeedsThePortCookie(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
+	m := a.Model
+
+	// A public bind reaches /port/<n>/ directly, so without the cookie or a ticket
+	// the forwarder refuses it — nothing Agent-started is open (M6.4).
+	if rec := do(t, h, "GET", "/port/8000/index.html", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated service load: %d, want 401", rec.Code)
+	}
+	// The Desktop opens the Service with a single-use ticket, which is exchanged
+	// for a path-scoped cookie and redirected away so the ticket does not linger.
+	rec := do(t, h, "GET", "/port/8000/index.html?ticket="+m.Ticket(), nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("ticket exchange: %d, want 303", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/port/8000/index.html" {
+		t.Errorf("redirect Location %q, want the URL without the ticket", loc)
+	}
+	var grant *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "aos_port_8000" {
+			grant = c
+		}
+	}
+	if grant == nil {
+		t.Fatal("the exchange set no aos_port_8000 cookie")
+	}
+	if grant.Path != "/port/8000/" || !grant.HttpOnly {
+		t.Errorf("cookie Path=%q HttpOnly=%v, want /port/8000/ and HttpOnly", grant.Path, grant.HttpOnly)
+	}
+	// The grant authorises the Service's loads, even from the sandbox's opaque
+	// origin (Origin: null), which the Desktop's Origin check would reject.
+	ok := map[string]string{"Cookie": grant.Name + "=" + grant.Value, "Origin": "null"}
+	if rec := do(t, h, "GET", "/port/8000/index.html", ok); rec.Code != http.StatusOK {
+		t.Errorf("service load with the grant: %d, want 200", rec.Code)
+	}
+	// A grant does not open a different Service, and a forged one is refused.
+	if rec := do(t, h, "GET", "/port/9000/index.html", ok); rec.Code != http.StatusUnauthorized {
+		t.Errorf("grant reused on another port: %d, want 401", rec.Code)
+	}
+	if rec := do(t, h, "GET", "/port/8000/index.html", map[string]string{"Cookie": "aos_port_8000=forged"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("forged grant: %d, want 401", rec.Code)
+	}
+}
+
+func TestTheLocalhostServiceFormAlsoNeedsATicket(t *testing.T) {
+	a, _ := newAuth(t)
+	h := a.TCP(whoami)
+	m := a.Model
+
+	// <n>.localhost is a local convenience, but a forged Host header could reach it
+	// over a public bind, so it is gated the same way — a cookie scoped to its host.
+	if rec := do(t, h, "GET", "/", map[string]string{"Host": "8000.localhost:7700"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated .localhost load: %d, want 401", rec.Code)
+	}
+	rec := do(t, h, "GET", "/?ticket="+m.Ticket(), map[string]string{"Host": "8000.localhost:7700"})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("ticket exchange: %d, want 303", rec.Code)
+	}
+	var grant *http.Cookie
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "aos_port_8000" {
+			grant = c
+		}
+	}
+	if grant == nil || grant.Path != "/" {
+		t.Fatalf("cookie for the .localhost form = %+v, want Path=/", grant)
 	}
 }

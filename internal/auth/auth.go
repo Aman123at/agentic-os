@@ -38,6 +38,11 @@ const (
 	// MinPasswordLength is enforced here, not only in the screen, so a weak
 	// password is never stored (PLAN.md §18 M6.5).
 	MinPasswordLength = 12
+	// PortGrantTTL bounds the cookie a redeemed ticket is exchanged for to reach a
+	// path-forwarded Service (M6.4). It outlives an access token because the
+	// sandboxed Service page has no way to refresh it, but it is scoped to one
+	// port's path, carries no Desktop authority, and dies when the key rotates.
+	PortGrantTTL = 12 * time.Hour
 )
 
 // pbkdf2 parameters (RFC 8018 with SHA-256). The iteration count follows OWASP's
@@ -200,6 +205,40 @@ func cutLast(s string, sep byte) (before, after string, found bool) {
 		return s, "", false
 	}
 	return s[:i], s[i+1:], true
+}
+
+// ---------------------------------------------------------------- port grants
+
+// PortGrant mints the value of the Path=/port/<n>/ cookie that authenticates a
+// forwarded Service's many sub-resource loads once its opening ticket has been
+// redeemed (ADR-0007, M6.4). It binds the port, so a grant minted for one
+// Service cannot open another, and expires after PortGrantTTL.
+func (m *Model) PortGrant(port int) string {
+	body := strconv.Itoa(port) + "|" + strconv.FormatInt(m.now().Add(PortGrantTTL).Unix(), 10)
+	enc := base64.RawURLEncoding.EncodeToString([]byte(body))
+	return enc + "." + m.sign(enc)
+}
+
+// VerifyPortGrant reports whether value is a grant this Model minted for port
+// and that has not expired.
+func (m *Model) VerifyPortGrant(port int, value string) bool {
+	enc, sig, ok := strings.Cut(value, ".")
+	if !ok || len(m.Key) == 0 || !hmac.Equal([]byte(sig), []byte(m.sign(enc))) {
+		return false
+	}
+	body, err := base64.RawURLEncoding.DecodeString(enc)
+	if err != nil {
+		return false
+	}
+	gotPort, exp, ok := strings.Cut(string(body), "|")
+	if !ok || gotPort != strconv.Itoa(port) {
+		return false
+	}
+	unix, err := strconv.ParseInt(exp, 10, 64)
+	if err != nil {
+		return false
+	}
+	return m.now().Unix() < unix
 }
 
 // ---------------------------------------------------------------- refresh tokens

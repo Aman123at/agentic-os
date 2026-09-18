@@ -745,7 +745,7 @@ A CI run that misses any deterministic target fails.
 2. **Agent-loop tests with the `fake` provider:**
    - Recorded model conversations ("cassettes") replay deterministically, at no cost.
    - A `-record` flag re-captures them with a real key.
-3. **Container integration tests** (the real image, started by Go tests that drive the Docker CLI: `docker run` for the host check, `docker compose` for milestone acceptance in `tools/e2e`; no testcontainers dependency):
+3. **Container integration tests** (the real image, started by Go tests that drive the Docker CLI: `docker compose` for milestone acceptance in `tools/e2e`; no testcontainers dependency):
    - Landlock guard: a Python script cannot delete `~/.ssh/id_ed25519`, and `sudo` fails in Agent Sessions.
    - Trash round-trip.
    - Replay yields identical versions offline.

@@ -182,3 +182,30 @@ func mustSetPassword(t *testing.T, m *Model, username, password string) {
 		t.Fatal(err)
 	}
 }
+
+func TestPortGrantsAreBoundToTheirPortAndExpire(t *testing.T) {
+	m, clock := newModel(t)
+
+	grant := m.PortGrant(8000)
+	if !m.VerifyPortGrant(8000, grant) {
+		t.Error("a fresh grant does not verify for its own port")
+	}
+	// A grant for one Service must not open another.
+	if m.VerifyPortGrant(9000, grant) {
+		t.Error("a grant minted for 8000 verified for 9000")
+	}
+	// A tampered value is refused.
+	if m.VerifyPortGrant(8000, grant+"x") || m.VerifyPortGrant(8000, "not-a-grant") {
+		t.Error("a forged grant verified")
+	}
+	// Another Model's key cannot mint a grant this one accepts.
+	other := &Model{DB: m.DB, Key: []byte("a-different-key"), Now: m.Now}
+	if m.VerifyPortGrant(8000, other.PortGrant(8000)) {
+		t.Error("a grant signed with another key verified")
+	}
+	// It expires after PortGrantTTL.
+	*clock = clock.Add(PortGrantTTL + time.Second)
+	if m.VerifyPortGrant(8000, grant) {
+		t.Error("an expired grant still verified")
+	}
+}

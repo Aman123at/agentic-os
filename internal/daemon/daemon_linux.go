@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -205,30 +204,24 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	handler := srv.Handler()
 
-	tcp := &http.Server{Handler: proxy.New(d.auth.TCP(handler), Port), ReadHeaderTimeout: 10 * time.Second}
-	// Bind the public listener before signalling readiness so that, under
-	// Type=notify, `systemctl start aos` (and install.sh above it) cannot return
-	// before the socket is accepting (M6.2).
-	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", Port))
+	// The forwarder runs inside the authenticator (M6.4): auth.TCP gates every
+	// request, including /port/<n>/ and <n>.localhost Service loads, before
+	// proxy.New forwards them, so a public bind exposes nothing unauthenticated.
+	tcp := &http.Server{Handler: d.auth.TCP(proxy.New(handler, Port)), ReadHeaderTimeout: 10 * time.Second}
+	// Bind before signalling readiness so that, under Type=notify, `systemctl start
+	// aos` (and install.sh above it) cannot return before the socket is accepting
+	// (M6.2). cli Mode has no Desktop, so it binds only the control socket (M6.4).
+	tcpLn, sock, err := bindListeners(cfg.Mode, fmt.Sprintf(":%d", Port), SocketPath)
 	if err != nil {
-		return err
-	}
-	_ = os.Remove(SocketPath)
-	sock, err := net.Listen("unix", SocketPath)
-	if err != nil {
-		return err
-	}
-	// The control socket is a local root API on a VPS, so it is 0600 and its
-	// guard also checks the caller's uid (api.Auth.SocketUID); it used to be 0666
-	// and unauthenticated, harmless only inside a one-user container (M6.2).
-	if err := os.Chmod(SocketPath, 0o600); err != nil {
 		return err
 	}
 	unixSrv := &http.Server{Handler: d.auth.Socket(handler, d.refused), ConnContext: api.SocketConnContext, ReadHeaderTimeout: 10 * time.Second}
 
 	errc := make(chan error, 2)
 	go func() { errc <- unixSrv.Serve(sock) }()
-	go func() { errc <- tcp.Serve(tcpLn) }()
+	if tcpLn != nil {
+		go func() { errc <- tcp.Serve(tcpLn) }()
+	}
 	sdNotify("READY=1")
 	go d.expireTrash(ctx, userFiles)
 	go d.services.Watch(ctx)
@@ -242,9 +235,11 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		}
 	}()
 
-	log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d (on the Host: http://localhost:%s)", cfg.Mode, model, d.abi, Port, cfg.HostPort)
-	if cfg.Mode == "ui" {
-		log.Printf("Open the Desktop on the Host: http://localhost:%s/ and sign in", cfg.HostPort)
+	if tcpLn != nil {
+		log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d", cfg.Mode, model, d.abi, Port)
+		log.Printf("Open the Desktop at http://<this-host>:%d/ and sign in", Port)
+	} else {
+		log.Printf("%s Mode, model %s, Landlock ABI %d; control socket only, no TCP port", cfg.Mode, model, d.abi)
 	}
 
 	select {
@@ -259,7 +254,11 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	// under way so it holds off on SIGKILL for the full TimeoutStopSec.
 	sdNotify("STOPPING=1")
 	gracefulShutdown(
-		func(sctx context.Context) { _ = tcp.Shutdown(sctx) },
+		func(sctx context.Context) {
+			if tcpLn != nil {
+				_ = tcp.Shutdown(sctx)
+			}
+		},
 		func(context.Context) { d.tasks.Close() },
 		func(sctx context.Context) { _ = unixSrv.Shutdown(sctx) },
 	)
@@ -312,7 +311,7 @@ func (d *Daemon) init() error {
 	// access tokens and tickets; over the control socket the uid check accepts
 	// only the user aosd runs as — root, under systemd (M6.2) — which its 0600
 	// mode already enforces, the uid check being the belt to that braces.
-	d.auth = &api.Auth{Model: &auth.Model{DB: d.db, Key: key}, SocketUID: os.Getuid()}
+	d.auth = &api.Auth{Model: &auth.Model{DB: d.db, Key: key}, SocketUID: os.Getuid(), SelfPort: Port}
 	// The user edits prices.yaml; it is only written when missing.
 	if f, err := os.OpenFile(pricesFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
 		_, _ = f.WriteString(usage.DefaultPrices)

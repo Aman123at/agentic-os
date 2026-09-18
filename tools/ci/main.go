@@ -1,7 +1,7 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, unit-linux, ui, image, integration, e2e, playwright. With
+// Stages: lint, unit, unit-linux, ui, image, e2e, playwright. With
 // no arguments, all run in order. `live` (the real-model suite, §16 M4.7) is
 // optional: it spends the key, so it runs only when named — `go run ./tools/ci live`.
 package main
@@ -55,7 +55,6 @@ var stages = []struct {
 	{"unit-linux", unitLinux, false},
 	{"ui", ui, false},
 	{"image", image, false},
-	{"integration", integration, false},
 	{"e2e", e2e, false},
 	{"playwright", playwright, false},
 	// `live` spends the real key, so it is never part of the default sweep.
@@ -398,37 +397,6 @@ func image() error {
 		}
 	}
 	return nil
-}
-
-// integration cross-compiles the host check test and runs it as root inside the
-// cli image, with a scratch Shared Folder and a dummy secret (never a real key).
-func integration() error {
-	arch, err := output("docker", "version", "--format", "{{.Server.Arch}}")
-	if err != nil {
-		return err
-	}
-	dir, err := os.MkdirTemp("", "aos-ci-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	for _, d := range []string{"bin", "shared", "secrets"} {
-		if err := os.MkdirAll(filepath.Join(dir, d), 0o755); err != nil {
-			return err
-		}
-	}
-	if err := os.WriteFile(filepath.Join(dir, "secrets", "openai_api_key"), []byte("sk-test-dummy-ci-not-a-real-key"), 0o644); err != nil {
-		return err
-	}
-	env := []string{"GOOS=linux", "GOARCH=" + strings.TrimSpace(arch), "CGO_ENABLED=0"}
-	if err := runEnv(env, "go", "test", "-c", "-o", filepath.Join(dir, "bin", "hostcheck.test"), "./tools/hostcheck"); err != nil {
-		return err
-	}
-	return run("docker", "run", "--rm", "-e", "AOS_INTEGRATION=1",
-		"-v", filepath.Join(dir, "bin")+":/t:ro",
-		"-v", filepath.Join(dir, "shared")+":/shared",
-		"-v", filepath.Join(dir, "secrets")+":/run/secrets:ro",
-		"--entrypoint", "/t/hostcheck.test", "agentic-os:cli", "-test.run", "TestHostCheck", "-test.v")
 }
 
 // e2e runs the milestones' acceptance tests (tools/e2e): the cli Machine under
