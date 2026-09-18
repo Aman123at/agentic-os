@@ -41,9 +41,48 @@ func (d *Daemon) newBrowser() *browser.Manager {
 	return &browser.Manager{
 		Start:     d.startBrowser,
 		Policy:    browser.Policy{AosdPort: Port},
-		Downloads: filepath.Join(d.layout.Home, "Downloads"),
+		Downloads: d.browserDownloads(),
 		Logf:      log.Printf,
 	}
+}
+
+// browserProfile is the one writable place for everything Chromium keeps: the
+// user-data-dir plus the XDG folders redirected into it, since ~/.config is a
+// Protected dotfile.
+func (d *Daemon) browserProfile() string {
+	return filepath.Join(d.layout.Home, ".local", "share", "aos-browser")
+}
+
+// browserDownloads is where the Browser saves downloads.
+func (d *Daemon) browserDownloads() string {
+	return filepath.Join(d.layout.Home, "Downloads")
+}
+
+// browserPolicy confines the streamed Browser more tightly than an Agent
+// (ADR-0008, M6.7). It reads the Machine like an Agent, but may write only its
+// own profile and ~/Downloads (plus the runtime scratch every process needs), so
+// M6.8's widening of the Agent policy to all of `/` never hands an unsandboxed
+// Chromium write access to the server.
+func (d *Daemon) browserPolicy() sandbox.Policy {
+	p := d.agentPolicy()
+	p.Writable = []string{d.browserProfile(), d.browserDownloads(), "/tmp", "/var/tmp", "/dev"}
+	return p
+}
+
+// ensureBrowserDirs creates the Browser's profile and Downloads folders, owned by
+// aos, before planning: browserPolicy grants write only to paths that already
+// exist (Plan skips missing Writable roots), and a confined Chromium cannot
+// create them itself.
+func (d *Daemon) ensureBrowserDirs() error {
+	for _, dir := range []string{d.browserProfile(), d.browserDownloads()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := os.Chown(dir, int(d.uid), int(d.gid)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // agentBrowser gives a Task's Agent the Browser's page (PLAN.md M5.3); the
@@ -63,16 +102,20 @@ func (d *Daemon) agentBrowser(taskID string) *tool.Browser {
 	}
 }
 
-// startBrowser launches the headless shell as aos, confined like an Agent, so
-// Protected Paths stay out of its reach. DevTools runs over fds 3 and 4.
+// startBrowser launches the headless shell as aos, confined by its own narrow
+// ruleset (browserPolicy) so it may write only its profile and ~/Downloads.
+// DevTools runs over fds 3 and 4.
 func (d *Daemon) startBrowser() (*browser.Process, error) {
-	rs, err := d.plan(d.agentPolicy())
+	if err := d.ensureBrowserDirs(); err != nil {
+		return nil, err
+	}
+	rs, err := d.plan(d.browserPolicy())
 	if err != nil {
 		return nil, err
 	}
 	// ~/.config is a Protected dotfile, so the profile and everything Chromium
 	// would put under XDG folders lives in one writable place.
-	profile := filepath.Join(d.layout.Home, ".local", "share", "aos-browser")
+	profile := d.browserProfile()
 	env := append(d.userEnv(), "XDG_CONFIG_HOME="+profile+"/config", "XDG_CACHE_HOME="+profile+"/cache",
 		"LD_LIBRARY_PATH="+browser.LibDir)
 	argv := append([]string{browser.Binary, "--user-data-dir=" + profile}, browser.Flags...)
