@@ -109,7 +109,7 @@ Reached when: M6 is written, every decision below is settled, and Aman has appro
 - **Whether `/etc` Checkpoints still earn their place** once Replay is off and the box is persistent.
 - **The cost of a re-plan on a real VPS.** Bounded by construction, but the number — and how often `/run` churning triggers it — can only be measured on Ubuntu. The one open question this ticket could not close from a Mac.
 - **Whether the milestone-derived version scheme survives.** `version_linux_test.go` ties `Version` to the newest `### M<n>` heading in the plan, which fights tag-derived release versions. Reconciling them is now unblocked — naming and release engineering are both settled.
-- **When the module path gets renamed.** `github.com/amantiwari/agentic-os` should be `github.com/Aman123at/agentic-os`. Mechanical but tree-wide, and it wants its own commit before the first tag, not folded into M6's work.
+- **The module path rename — done (2026-09-18, `e9d7a5b`).** `github.com/amantiwari/agentic-os` → `github.com/Aman123at/agentic-os`, its own commit ahead of the first tag as planned; 240 import references across 96 files, `go build`/`go vet` green.
 - **What a scanner finds on port 7700 before nginx.** The sign-in page is public by default now. Whether it should carry any fingerprinting resistance — a generic title, no version string — is unasked.
 - **Whether a signed-in user should be able to publish a Service deliberately.** M6 keeps today's rule — any Service is reachable to the signed-in user, now through a ticket — but a per-Service "publish" with its own long-lived link is the obvious next ask from anyone running something they want a colleague to see. Deliberately not designed.
 

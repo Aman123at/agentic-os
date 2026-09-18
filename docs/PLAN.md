@@ -1407,11 +1407,12 @@ installer's `DRY_RUN` rehearsal, the reference-drift check). VPS-only measuremen
 M0's findings were decided on 2026-09-14: Option B home layout; the new size
 targets; approved Protected Path calls run with a ruleset widened for that one
 call; pattern-based Protected Paths enforced by policy only, narrowly. (The
-"Shared Folder at `/shared`" decision is retired by M6.6.)
+"Shared Folder at `/shared`" decision is retired by M6.6.) The module-path owner rename
+(`github.com/amantiwari/agentic-os` → `github.com/Aman123at/agentic-os`) was
+done on 2026-09-18 as its own commit (`e9d7a5b`), ahead of the first tag.
 
 **Open for Aman, before or within M6:**
 - **Which Ubuntu the VPS runs.** It decides whether Chromium's own sandbox *could* work (22.04 allows unprivileged user namespaces; 24.04+ refuses them via AppArmor). M6 keeps `--no-sandbox` either way; ADR-0008/0009 state the dependence rather than a flat impossibility.
-- **The module-path rename.** `github.com/amantiwari/agentic-os` → `github.com/Aman123at/agentic-os`, mechanical but tree-wide, wants its own commit before the first tag — not folded into M6.
 - **Repository public at the first tag** (M6.20): confirmation this is acceptable.
 - **~2 live API calls** to close the Model Catalogue's reasoning-effort gaps (M6.16), which spend the key.
 - **VPS-only measurements** Aman reports back: `cat /proc/sys/net/ipv4/ip_unprivileged_port_start` (§12), the re-plan cost and `/run` churn (M6.8), and the §16 targets on a 1-vCPU box.
