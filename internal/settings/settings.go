@@ -132,7 +132,7 @@ var startupFields = []startupField{
 			if s == "" {
 				return nil
 			}
-			if len(s) > 2048 || !(strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")) {
+			if len(s) > 2048 || (!strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://")) {
 				return errors.New("the base URL is an http(s) URL, or empty for OpenAI's own")
 			}
 			return nil

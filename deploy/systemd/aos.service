@@ -1,0 +1,36 @@
+# Agentic OS daemon (aosd), run by systemd on a native Linux install (ADR-0009).
+#
+# There are deliberately NO systemd hardening directives here — no
+# ProtectSystem, NoNewPrivileges, PrivateTmp, ProtectHome, capability bounding
+# or SystemCallFilter. systemd would confine aosd and every Agent it launches
+# indiscriminately, but Agents are confined precisely, per process, by Landlock
+# plus uid separation (ADR-0004), and aosd itself must keep the privilege to
+# create the aos user's Sessions, build their rulesets and supervise Services.
+# Hardening here would duplicate and coarsen that model and break each Agent's
+# own boundary. Do not "harden" this unit; the confinement lives in aosd.
+
+[Unit]
+Description=Agentic OS daemon (aosd)
+Documentation=https://github.com/Aman123at/agentic-os
+After=network-online.target
+Wants=network-online.target
+# A bad config exits non-zero on every start, so cap restarts: after 5 failures
+# in 60s the unit fails and stays failed instead of looping forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=notify
+ExecStart=/usr/local/bin/aosd
+# AOS_MODE moves into /etc/aos/config.yml in M6.10; until then the native
+# install runs the Desktop, reached over the network behind a password.
+Environment=AOS_MODE=ui
+Restart=always
+RestartSec=2
+# SIGTERM to aosd, which drains Tasks and then closes the control socket;
+# SIGKILL to any straggler left in the cgroup once the timeout passes.
+KillMode=mixed
+TimeoutStopSec=60s
+
+[Install]
+WantedBy=multi-user.target

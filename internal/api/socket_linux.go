@@ -65,8 +65,10 @@ func noNewPrivs(pid int) (bool, error) {
 }
 
 // Socket wraps the handler served on /run/aos/aosd.sock (PLAN.md §7.5): the
-// in-container CLI needs no token, but Agent-confined processes are refused, so
-// an Agent can never approve its own Approvals. refused is told about each refusal.
+// local CLI needs no token, but Agent-confined processes are refused, so an
+// Agent can never approve its own Approvals, and — since the socket is a local
+// root API on a VPS (M6.2) — so is any caller not running as aosd's own uid.
+// refused is told about each refusal.
 func (a *Auth) Socket(next http.Handler, refused func(r *http.Request, pid int, reason string)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p, ok := r.Context().Value(peerKey{}).(peer)
@@ -76,6 +78,8 @@ func (a *Auth) Socket(next http.Handler, refused func(r *http.Request, pid int, 
 			reason = "could not identify the calling process"
 		case p.noNewPrivs:
 			reason = "the caller is an Agent-confined process"
+		case p.uid != a.SocketUID:
+			reason = "the caller does not run as the Machine's owner"
 		}
 		if reason != "" {
 			if refused != nil {

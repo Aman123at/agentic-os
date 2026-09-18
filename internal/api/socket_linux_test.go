@@ -63,7 +63,7 @@ func TestTheSocketRefusesAgentConfinedCallers(t *testing.T) {
 	refusedPid, reason := 0, ""
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	srv := &http.Server{
-		Handler: (&Auth{}).Socket(next, func(_ *http.Request, pid int, why string) {
+		Handler: (&Auth{SocketUID: os.Getuid()}).Socket(next, func(_ *http.Request, pid int, why string) {
 			mu.Lock()
 			defer mu.Unlock()
 			refusedPid, reason = pid, why
@@ -101,5 +101,39 @@ func TestTheSocketRefusesAgentConfinedCallers(t *testing.T) {
 	defer mu.Unlock()
 	if refusedPid != cmd.Process.Pid || !strings.Contains(reason, "Agent-confined") {
 		t.Errorf("refusal reported pid %d (%q), want the helper's pid %d", refusedPid, reason, cmd.Process.Pid)
+	}
+}
+
+// The socket is 0600 root-only, and its guard checks the caller's uid too: a
+// caller running as anyone but aosd's own user is refused (M6.2).
+func TestTheSocketRefusesOtherUsers(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "aosd.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	reason := ""
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
+	// aosd runs as a different uid than this test process, so this process is not
+	// the owner and must be turned away.
+	srv := &http.Server{
+		Handler: (&Auth{SocketUID: os.Getuid() + 1}).Socket(next, func(_ *http.Request, _ int, why string) {
+			mu.Lock()
+			defer mu.Unlock()
+			reason = why
+		}),
+		ConnContext: SocketConnContext,
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	if code, err := getOverSocket(sock); err != nil || code != http.StatusForbidden {
+		t.Fatalf("a call from a non-owner uid: %d %v, want %d", code, err, http.StatusForbidden)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !strings.Contains(reason, "owner") {
+		t.Errorf("refusal reason %q, want it to mention the owner", reason)
 	}
 }

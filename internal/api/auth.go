@@ -32,7 +32,11 @@ const (
 type Auth struct {
 	// Token is the access token, generated on first start or AOS_ACCESS_TOKEN.
 	Token string
-	Now   func() time.Time
+	// SocketUID is the uid the control socket accepts — the user aosd runs as,
+	// root on a native install (M6.2, ADR-0009). The zero value is root, so an
+	// unset Auth is root-only; the Daemon sets it to its own uid explicitly.
+	SocketUID int
+	Now       func() time.Time
 
 	mu    sync.Mutex
 	codes map[string]time.Time

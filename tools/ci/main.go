@@ -19,6 +19,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Aman123at/agentic-os/internal/daemon"
 )
 
 // Image size targets (PLAN.md §16): unpacked MB per target, compressed MB for any.
@@ -92,6 +94,9 @@ func lint() error {
 	if strings.TrimSpace(out) != "" {
 		return fmt.Errorf("gofmt needed:\n%s", out)
 	}
+	if err := unitGolden(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -103,6 +108,20 @@ func lint() error {
 		if err := runEnv(env, "golangci-lint", "run", "./..."); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// unitGolden keeps the committed systemd unit in sync with its source. The unit
+// install.sh ships (deploy/systemd/aos.service) must match daemon.Unit(), so a
+// hand edit to either without the other fails the build (M6.2).
+func unitGolden() error {
+	golden, err := os.ReadFile(filepath.Join("deploy", "systemd", "aos.service"))
+	if err != nil {
+		return fmt.Errorf("reading the systemd unit golden: %w", err)
+	}
+	if got := daemon.Unit(); got != string(golden) {
+		return fmt.Errorf("deploy/systemd/aos.service is out of date with daemon.Unit(); regenerate it")
 	}
 	return nil
 }

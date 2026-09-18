@@ -64,7 +64,7 @@ const (
 	AgentBinDir = "/usr/local/lib/aos/agent-bin"
 	// Version is what the Desktop shows in Settings ▸ Status and About This
 	// Machine. Bump it with the milestone; version_test.go keeps it honest.
-	Version      = "0.1.0-m4"
+	Version      = "0.1.0-m5"
 	keyFile      = StateDir + "/keys/openai"
 	tokenFile    = StateDir + "/token"
 	outputsDir   = StateDir + "/outputs"
@@ -204,20 +204,31 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	handler := srv.Handler()
 
-	tcp := &http.Server{Addr: fmt.Sprintf(":%d", Port), Handler: proxy.New(d.auth.TCP(handler), Port), ReadHeaderTimeout: 10 * time.Second}
+	tcp := &http.Server{Handler: proxy.New(d.auth.TCP(handler), Port), ReadHeaderTimeout: 10 * time.Second}
+	// Bind the public listener before signalling readiness so that, under
+	// Type=notify, `systemctl start aos` (and install.sh above it) cannot return
+	// before the socket is accepting (M6.2).
+	tcpLn, err := net.Listen("tcp", fmt.Sprintf(":%d", Port))
+	if err != nil {
+		return err
+	}
 	_ = os.Remove(SocketPath)
 	sock, err := net.Listen("unix", SocketPath)
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(SocketPath, 0o666); err != nil {
+	// The control socket is a local root API on a VPS, so it is 0600 and its
+	// guard also checks the caller's uid (api.Auth.SocketUID); it used to be 0666
+	// and unauthenticated, harmless only inside a one-user container (M6.2).
+	if err := os.Chmod(SocketPath, 0o600); err != nil {
 		return err
 	}
 	unixSrv := &http.Server{Handler: d.auth.Socket(handler, d.refused), ConnContext: api.SocketConnContext, ReadHeaderTimeout: 10 * time.Second}
 
 	errc := make(chan error, 2)
 	go func() { errc <- unixSrv.Serve(sock) }()
-	go func() { errc <- tcp.ListenAndServe() }()
+	go func() { errc <- tcp.Serve(tcpLn) }()
+	sdNotify("READY=1")
 	go d.expireTrash(ctx, userFiles)
 	go d.services.Watch(ctx)
 	// Replay first, then the Services, which may need its software (PLAN.md §11–12).
@@ -243,10 +254,15 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 			return err
 		}
 	}
-	shutdown, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	_ = tcp.Shutdown(shutdown)
-	_ = unixSrv.Shutdown(shutdown)
+	// Drain in order: stop the public front door, let running Tasks settle, then
+	// close the control socket last (M6.2). sdNotify tells systemd the stop is
+	// under way so it holds off on SIGKILL for the full TimeoutStopSec.
+	sdNotify("STOPPING=1")
+	gracefulShutdown(
+		func(sctx context.Context) { _ = tcp.Shutdown(sctx) },
+		func(context.Context) { d.tasks.Close() },
+		func(sctx context.Context) { _ = unixSrv.Shutdown(sctx) },
+	)
 	return nil
 }
 
@@ -289,7 +305,10 @@ func (d *Daemon) init() error {
 	if err != nil {
 		return err
 	}
-	d.auth = &api.Auth{Token: token}
+	// The control socket only accepts the user aosd itself runs as — root, under
+	// systemd (M6.2). Its 0600 mode already keeps others out; the uid check is
+	// the belt to that braces.
+	d.auth = &api.Auth{Token: token, SocketUID: os.Getuid()}
 	if d.db, err = store.Open(databaseFile); err != nil {
 		return err
 	}
