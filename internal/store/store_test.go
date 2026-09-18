@@ -21,7 +21,7 @@ func TestMigrationsApplyOnceAndTheLedgerIsAppendOnly(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 5 {
+	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
 		t.Fatalf("user_version %d, %v", version, err)
 	}
 

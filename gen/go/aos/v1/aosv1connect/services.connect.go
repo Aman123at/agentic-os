@@ -60,6 +60,14 @@ const (
 	// AuthServiceCreateTicketProcedure is the fully-qualified name of the AuthService's CreateTicket
 	// RPC.
 	AuthServiceCreateTicketProcedure = "/aos.v1.AuthService/CreateTicket"
+	// AuthServiceChangePasswordProcedure is the fully-qualified name of the AuthService's
+	// ChangePassword RPC.
+	AuthServiceChangePasswordProcedure = "/aos.v1.AuthService/ChangePassword"
+	// AuthServiceSignOutProcedure is the fully-qualified name of the AuthService's SignOut RPC.
+	AuthServiceSignOutProcedure = "/aos.v1.AuthService/SignOut"
+	// AuthServiceCreateInitialUserProcedure is the fully-qualified name of the AuthService's
+	// CreateInitialUser RPC.
+	AuthServiceCreateInitialUserProcedure = "/aos.v1.AuthService/CreateInitialUser"
 	// TaskServiceCreateTaskProcedure is the fully-qualified name of the TaskService's CreateTask RPC.
 	TaskServiceCreateTaskProcedure = "/aos.v1.TaskService/CreateTask"
 	// TaskServiceListTasksProcedure is the fully-qualified name of the TaskService's ListTasks RPC.
@@ -217,6 +225,20 @@ type AuthServiceClient interface {
 	// header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
 	// must already be authenticated.
 	CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error)
+	// Replaces the signed-in user's password with one they chose (the forced
+	// first change, or a later one). Twelve-character minimum. It signs every
+	// other session out and returns the caller a fresh pair, so the session it was
+	// called from stays alive without a re-login (ADR-0007, M6.5).
+	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
+	// Ends the caller's refresh family, so this sign-in and any it rotated into
+	// stop working. The Desktop also closes the streams and WebSockets the
+	// session authorised (M6.5).
+	SignOut(context.Context, *connect.Request[v1.SignOutRequest]) (*connect.Response[v1.SignOutResponse], error)
+	// Creates the one account with a system-generated password that must be
+	// changed on first sign-in. It is the account-creation moment `aos mode ui`
+	// runs, so it is refused over the network (public bind) and served only over
+	// the local control socket, and it refuses once an account exists (M6.5).
+	CreateInitialUser(context.Context, *connect.Request[v1.CreateInitialUserRequest]) (*connect.Response[v1.CreateInitialUserResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the aos.v1.AuthService service. By default, it uses
@@ -248,14 +270,35 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("CreateTicket")),
 			connect.WithClientOptions(opts...),
 		),
+		changePassword: connect.NewClient[v1.ChangePasswordRequest, v1.ChangePasswordResponse](
+			httpClient,
+			baseURL+AuthServiceChangePasswordProcedure,
+			connect.WithSchema(authServiceMethods.ByName("ChangePassword")),
+			connect.WithClientOptions(opts...),
+		),
+		signOut: connect.NewClient[v1.SignOutRequest, v1.SignOutResponse](
+			httpClient,
+			baseURL+AuthServiceSignOutProcedure,
+			connect.WithSchema(authServiceMethods.ByName("SignOut")),
+			connect.WithClientOptions(opts...),
+		),
+		createInitialUser: connect.NewClient[v1.CreateInitialUserRequest, v1.CreateInitialUserResponse](
+			httpClient,
+			baseURL+AuthServiceCreateInitialUserProcedure,
+			connect.WithSchema(authServiceMethods.ByName("CreateInitialUser")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	signIn       *connect.Client[v1.SignInRequest, v1.SignInResponse]
-	refresh      *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
-	createTicket *connect.Client[v1.CreateTicketRequest, v1.CreateTicketResponse]
+	signIn            *connect.Client[v1.SignInRequest, v1.SignInResponse]
+	refresh           *connect.Client[v1.RefreshRequest, v1.RefreshResponse]
+	createTicket      *connect.Client[v1.CreateTicketRequest, v1.CreateTicketResponse]
+	changePassword    *connect.Client[v1.ChangePasswordRequest, v1.ChangePasswordResponse]
+	signOut           *connect.Client[v1.SignOutRequest, v1.SignOutResponse]
+	createInitialUser *connect.Client[v1.CreateInitialUserRequest, v1.CreateInitialUserResponse]
 }
 
 // SignIn calls aos.v1.AuthService.SignIn.
@@ -273,6 +316,21 @@ func (c *authServiceClient) CreateTicket(ctx context.Context, req *connect.Reque
 	return c.createTicket.CallUnary(ctx, req)
 }
 
+// ChangePassword calls aos.v1.AuthService.ChangePassword.
+func (c *authServiceClient) ChangePassword(ctx context.Context, req *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error) {
+	return c.changePassword.CallUnary(ctx, req)
+}
+
+// SignOut calls aos.v1.AuthService.SignOut.
+func (c *authServiceClient) SignOut(ctx context.Context, req *connect.Request[v1.SignOutRequest]) (*connect.Response[v1.SignOutResponse], error) {
+	return c.signOut.CallUnary(ctx, req)
+}
+
+// CreateInitialUser calls aos.v1.AuthService.CreateInitialUser.
+func (c *authServiceClient) CreateInitialUser(ctx context.Context, req *connect.Request[v1.CreateInitialUserRequest]) (*connect.Response[v1.CreateInitialUserResponse], error) {
+	return c.createInitialUser.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the aos.v1.AuthService service.
 type AuthServiceHandler interface {
 	// Signs the one user in with a username and password. The access token is
@@ -286,6 +344,20 @@ type AuthServiceHandler interface {
 	// header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
 	// must already be authenticated.
 	CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error)
+	// Replaces the signed-in user's password with one they chose (the forced
+	// first change, or a later one). Twelve-character minimum. It signs every
+	// other session out and returns the caller a fresh pair, so the session it was
+	// called from stays alive without a re-login (ADR-0007, M6.5).
+	ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error)
+	// Ends the caller's refresh family, so this sign-in and any it rotated into
+	// stop working. The Desktop also closes the streams and WebSockets the
+	// session authorised (M6.5).
+	SignOut(context.Context, *connect.Request[v1.SignOutRequest]) (*connect.Response[v1.SignOutResponse], error)
+	// Creates the one account with a system-generated password that must be
+	// changed on first sign-in. It is the account-creation moment `aos mode ui`
+	// runs, so it is refused over the network (public bind) and served only over
+	// the local control socket, and it refuses once an account exists (M6.5).
+	CreateInitialUser(context.Context, *connect.Request[v1.CreateInitialUserRequest]) (*connect.Response[v1.CreateInitialUserResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -313,6 +385,24 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("CreateTicket")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceChangePasswordHandler := connect.NewUnaryHandler(
+		AuthServiceChangePasswordProcedure,
+		svc.ChangePassword,
+		connect.WithSchema(authServiceMethods.ByName("ChangePassword")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceSignOutHandler := connect.NewUnaryHandler(
+		AuthServiceSignOutProcedure,
+		svc.SignOut,
+		connect.WithSchema(authServiceMethods.ByName("SignOut")),
+		connect.WithHandlerOptions(opts...),
+	)
+	authServiceCreateInitialUserHandler := connect.NewUnaryHandler(
+		AuthServiceCreateInitialUserProcedure,
+		svc.CreateInitialUser,
+		connect.WithSchema(authServiceMethods.ByName("CreateInitialUser")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case AuthServiceSignInProcedure:
@@ -321,6 +411,12 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 			authServiceRefreshHandler.ServeHTTP(w, r)
 		case AuthServiceCreateTicketProcedure:
 			authServiceCreateTicketHandler.ServeHTTP(w, r)
+		case AuthServiceChangePasswordProcedure:
+			authServiceChangePasswordHandler.ServeHTTP(w, r)
+		case AuthServiceSignOutProcedure:
+			authServiceSignOutHandler.ServeHTTP(w, r)
+		case AuthServiceCreateInitialUserProcedure:
+			authServiceCreateInitialUserHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -340,6 +436,18 @@ func (UnimplementedAuthServiceHandler) Refresh(context.Context, *connect.Request
 
 func (UnimplementedAuthServiceHandler) CreateTicket(context.Context, *connect.Request[v1.CreateTicketRequest]) (*connect.Response[v1.CreateTicketResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.CreateTicket is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) ChangePassword(context.Context, *connect.Request[v1.ChangePasswordRequest]) (*connect.Response[v1.ChangePasswordResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.ChangePassword is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) SignOut(context.Context, *connect.Request[v1.SignOutRequest]) (*connect.Response[v1.SignOutResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.SignOut is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) CreateInitialUser(context.Context, *connect.Request[v1.CreateInitialUserRequest]) (*connect.Response[v1.CreateInitialUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.AuthService.CreateInitialUser is not implemented"))
 }
 
 // TaskServiceClient is a client for the aos.v1.TaskService service.

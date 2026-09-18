@@ -1,7 +1,7 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, unit-linux, ui, image, e2e, playwright. With
+// Stages: lint, unit, unit-linux, ui, auth-ui, image, e2e, playwright. With
 // no arguments, all run in order. `live` (the real-model suite, §16 M4.7) is
 // optional: it spends the key, so it runs only when named — `go run ./tools/ci live`.
 package main
@@ -54,6 +54,7 @@ var stages = []struct {
 	{"unit", unit, false},
 	{"unit-linux", unitLinux, false},
 	{"ui", ui, false},
+	{"auth-ui", authUI, false},
 	{"image", image, false},
 	{"e2e", e2e, false},
 	{"playwright", playwright, false},
@@ -235,6 +236,24 @@ func ui() error {
 		return fmt.Errorf("the Desktop's initial bundle is over its %d KB budget", bundleBudgetKB)
 	}
 	return nil
+}
+
+// authUI runs the Desktop's authentication-screen suite (PLAN.md §18 M6.5). It
+// needs no Docker and no aosd: a Vite dev server serves the Desktop and the
+// specs fake aosd's auth RPCs (desktop/e2e-auth), so the three boot phases, the
+// expiry modal and logout run on any machine. Chromium is cached like playwright.
+func authUI() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "e2e-auth")); os.IsNotExist(err) {
+		fmt.Println("    no auth specs")
+		return nil
+	}
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "exec", "--", "playwright", "install", "chromium"); err != nil {
+		return err
+	}
+	return run("npm", "--prefix", desktopDir, "run", "e2e:auth")
 }
 
 // playwright runs the Desktop's browser e2e and performance suite (§16, §17).

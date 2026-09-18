@@ -21,6 +21,20 @@ service AuthService {
   // header (a WebSocket, an <img>/<video>, a PDF range, a download). The caller
   // must already be authenticated.
   rpc CreateTicket(CreateTicketRequest) returns (CreateTicketResponse);
+  // Replaces the signed-in user's password with one they chose (the forced
+  // first change, or a later one). Twelve-character minimum. It signs every
+  // other session out and returns the caller a fresh pair, so the session it was
+  // called from stays alive without a re-login (ADR-0007, M6.5).
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  // Ends the caller's refresh family, so this sign-in and any it rotated into
+  // stop working. The Desktop also closes the streams and WebSockets the
+  // session authorised (M6.5).
+  rpc SignOut(SignOutRequest) returns (SignOutResponse);
+  // Creates the one account with a system-generated password that must be
+  // changed on first sign-in. It is the account-creation moment `aos mode ui`
+  // runs, so it is refused over the network (public bind) and served only over
+  // the local control socket, and it refuses once an account exists (M6.5).
+  rpc CreateInitialUser(CreateInitialUserRequest) returns (CreateInitialUserResponse);
 }
 
 message SignInRequest {
@@ -30,6 +44,9 @@ message SignInRequest {
 message SignInResponse {
   string access_token = 1;
   string refresh_token = 2;
+  // The account still holds a system-generated password: the Desktop forces a
+  // change before the shell loads.
+  bool must_change_password = 3;
 }
 
 message RefreshRequest {
@@ -38,12 +55,34 @@ message RefreshRequest {
 message RefreshResponse {
   string access_token = 1;
   string refresh_token = 2;
+  // Carried so a reload during the forced first change returns to it instead of
+  // slipping into the shell.
+  bool must_change_password = 3;
 }
 
 message CreateTicketRequest {}
 message CreateTicketResponse {
   string ticket = 1;
 }
+
+message ChangePasswordRequest {
+  string new_password = 1;
+}
+message ChangePasswordResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message SignOutRequest {
+  string refresh_token = 1;
+}
+message SignOutResponse {}
+
+message CreateInitialUserRequest {
+  string username = 1;
+  string password = 2;
+}
+message CreateInitialUserResponse {}
 
 // ---------------------------------------------------------------- Tasks
 

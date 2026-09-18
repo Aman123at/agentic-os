@@ -182,11 +182,11 @@ func (a authService) SignIn(ctx context.Context, req *connect.Request[aosv1.Sign
 	if err != nil {
 		return nil, err
 	}
-	access, refresh, err := m.SignIn(ctx, req.Msg.Username, req.Msg.Password)
+	access, refresh, mustChange, err := m.SignIn(ctx, req.Msg.Username, req.Msg.Password)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	return connect.NewResponse(&aosv1.SignInResponse{AccessToken: access, RefreshToken: refresh}), nil
+	return connect.NewResponse(&aosv1.SignInResponse{AccessToken: access, RefreshToken: refresh, MustChangePassword: mustChange}), nil
 }
 
 func (a authService) Refresh(ctx context.Context, req *connect.Request[aosv1.RefreshRequest]) (*connect.Response[aosv1.RefreshResponse], error) {
@@ -198,7 +198,68 @@ func (a authService) Refresh(ctx context.Context, req *connect.Request[aosv1.Ref
 	if err != nil {
 		return nil, connect.NewError(connect.CodeUnauthenticated, err)
 	}
-	return connect.NewResponse(&aosv1.RefreshResponse{AccessToken: access, RefreshToken: refresh}), nil
+	// A reload during the forced first change refreshes before it shows a screen;
+	// carry the flag so it returns to the change, not the shell.
+	mustChange, err := m.MustChange(ctx)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.RefreshResponse{AccessToken: access, RefreshToken: refresh, MustChangePassword: mustChange}), nil
+}
+
+// ChangePassword replaces the signed-in user's password. The middleware has
+// already verified the caller's access token, so a forced first change works
+// even though the account is still on its generated password.
+func (a authService) ChangePassword(ctx context.Context, req *connect.Request[aosv1.ChangePasswordRequest]) (*connect.Response[aosv1.ChangePasswordResponse], error) {
+	m, err := a.model()
+	if err != nil {
+		return nil, err
+	}
+	access, refresh, err := m.ChangePassword(ctx, req.Msg.NewPassword)
+	if err != nil {
+		if errors.Is(err, auth.ErrWeakPassword) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ChangePasswordResponse{AccessToken: access, RefreshToken: refresh}), nil
+}
+
+// SignOut ends the caller's refresh family. It takes the refresh token in the
+// body rather than the family from context because the access token names only
+// the user, and one user may have several sessions to end independently.
+func (a authService) SignOut(ctx context.Context, req *connect.Request[aosv1.SignOutRequest]) (*connect.Response[aosv1.SignOutResponse], error) {
+	m, err := a.model()
+	if err != nil {
+		return nil, err
+	}
+	if err := m.Revoke(ctx, req.Msg.RefreshToken); err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.SignOutResponse{}), nil
+}
+
+// CreateInitialUser creates the one account. It is the account-creation moment
+// `aos mode ui` runs, so it is served only over the local control socket: on the
+// public bind a stranger reaching a Machine that has no account yet must not be
+// able to seize it. It refuses once an account exists.
+func (a authService) CreateInitialUser(ctx context.Context, req *connect.Request[aosv1.CreateInitialUserRequest]) (*connect.Response[aosv1.CreateInitialUserResponse], error) {
+	if ActorFrom(ctx) != "user:cli" {
+		return nil, connect.NewError(connect.CodePermissionDenied, errors.New("the account is created locally, by `aos mode ui`"))
+	}
+	m, err := a.model()
+	if err != nil {
+		return nil, err
+	}
+	switch err := m.CreateInitialUser(ctx, req.Msg.Username, req.Msg.Password); {
+	case errors.Is(err, auth.ErrUserExists):
+		return nil, connect.NewError(connect.CodeAlreadyExists, err)
+	case errors.Is(err, auth.ErrWeakPassword):
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	case err != nil:
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.CreateInitialUserResponse{}), nil
 }
 
 // CreateTicket mints a single-use ticket for a browser load. The middleware has

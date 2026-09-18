@@ -5,6 +5,8 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import type { Timestamp } from "@bufbuild/protobuf/wkt";
 
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
+import { ticket } from "../../api/auth";
+import { authFetch } from "../../api/session";
 
 // A Place is a sidebar shortcut. `path` is the folder it opens; the Trash place
 // is special (path "") and browses TrashService instead of FileService.
@@ -109,19 +111,30 @@ export function isImageExt(ext: string): boolean {
   return IMAGE_EXTS.includes(ext);
 }
 
-// rawUrl is where aosd serves a file's bytes (PLAN.md §13): Range requests for
-// media, inline for types that cannot run script, and a download otherwise.
-export function rawUrl(path: string, download = false): string {
+// rawUrl is the /files/raw endpoint for a path, without a credential. A caller
+// that fetches it (a text peek's Range read) sends the access token in a header
+// through authFetch; a header-less element load uses ticketedRawUrl instead.
+export function rawUrl(path: string): string {
+  return `/files/raw?${new URLSearchParams({ path })}`;
+}
+
+// ticketedRawUrl is where aosd serves a file's bytes (PLAN.md §13): Range
+// requests for media, inline for types that cannot run script, and a download
+// otherwise. The browser loads these header-less (an <img>, a <video>, a
+// download anchor), so a fresh single-use ticket in the query authenticates the
+// load in place of the Authorization header (ADR-0007, M6.5).
+export async function ticketedRawUrl(path: string, download = false): Promise<string> {
   const q = new URLSearchParams({ path });
   if (download) q.set("download", "1");
+  q.set("ticket", await ticket());
   return `/files/raw?${q}`;
 }
 
-// downloadToHost saves a file to the user's own computer. The browser streams
-// it from /files/raw, so its size is no concern.
-export function downloadToHost(path: string, name: string): void {
+// downloadToHost saves a file to the user's own computer. The browser streams it
+// from /files/raw, so its size is no concern.
+export async function downloadToHost(path: string, name: string): Promise<void> {
   const a = document.createElement("a");
-  a.href = rawUrl(path, true);
+  a.href = await ticketedRawUrl(path, true);
   a.download = name;
   document.body.appendChild(a);
   a.click();
@@ -142,7 +155,7 @@ export class UploadError extends Error {
 export async function uploadFile(path: string, file: Blob, overwrite: boolean): Promise<void> {
   const q = new URLSearchParams({ path });
   if (overwrite) q.set("overwrite", "1");
-  const resp = await fetch(`/upload?${q}`, { method: "POST", body: file, credentials: "same-origin" });
+  const resp = await authFetch(`/upload?${q}`, { method: "POST", body: file });
   if (!resp.ok) throw new UploadError((await resp.text()).trim() || resp.statusText, resp.status);
 }
 

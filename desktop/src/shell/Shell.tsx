@@ -4,6 +4,7 @@ import { wallpapers } from "../assets";
 import { useDesktop } from "../store";
 import { ContextMenu, MenuItem } from "../ui/ContextMenu";
 import Approvals from "./Approvals";
+import { SignInForm } from "./AuthScreens";
 import Dock from "./Dock";
 import MenuBar from "./MenuBar";
 import NotificationCenter from "./NotificationCenter";
@@ -21,6 +22,11 @@ export default function Shell() {
   const wallpaper = useDesktop((s) => s.wallpaper);
   const glass = useDesktop((s) => s.glass);
   const openApp = useDesktop((s) => s.openApp);
+  // The expiry modal: shown over the desktop when a live session lapsed, so the
+  // windows are kept and re-auth resumes in place (PLAN.md §18 M6.5).
+  const expired = useDesktop((s) => s.expired);
+  const authError = useDesktop((s) => s.authError);
+  const resumeSession = useDesktop((s) => s.resumeSession);
   // The remap in force; re-installing when it changes keeps every tab current.
   const shortcuts = useDesktop((s) => s.shortcuts);
   // The desktop's own right-click menu, and the wallpaper picker it opens.
@@ -129,6 +135,15 @@ export default function Shell() {
         </ContextMenu>
       )}
       {picking && <WallpaperPicker onClose={() => setPicking(false)} />}
+      {expired && (
+        <div className="auth__overlay" role="dialog" aria-modal="true" aria-label="Session expired">
+          <div className="boot__card auth__card">
+            <p className="auth__title">Your session expired</p>
+            <p className="boot__muted auth__hint">Sign in again to pick up where you left off. Your windows are still here.</p>
+            <SignInForm onSubmit={resumeSession} error={authError} card={false} submitLabel="Resume" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

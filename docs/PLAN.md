@@ -1159,6 +1159,15 @@ are load-bearing rather than tidy:
    `auth.spec.ts` against the fake provider — the three boot phases, the expiry
    modal, proactive refresh, logout closing a stream; `aos mode ui` unit-tested for
    the guard and password generation.
+   > **Built (M6.5).** The Desktop half is done: token-in-header transport,
+   > in-memory access + `localStorage` refresh, proactive refresh, the login /
+   > forced-change screens, the expiry modal and logout, and the ticket rewiring
+   > of every browser load (`/files/raw`, the WebSockets, `/port/<n>/?ticket=`).
+   > `auth.spec.ts` runs Docker-free against a faked aosd (`desktop/e2e-auth`, the
+   > `auth-ui` CI stage). `aos mode ui` does the **account-creation moment only** —
+   > guard, generate + print the password, `CreateInitialUser` (socket-only) — and
+   > the runtime **`mode: ui` write + restart lands in M6.10** with the runtime
+   > Mode key, since the Daemon reads Mode from `AOS_MODE` (env) until then.
 
 #### The filesystem
 
@@ -1220,6 +1229,10 @@ are load-bearing rather than tidy:
     *Acceptance:* one tarball serves both Modes; `aos mode` switches without a
     rebuild. *Tests:* `assets_test.go` — nil without `dist`; a build test that the
     single image carries the Desktop.
+    > **Carried from M6.5.** `aos mode ui` already creates the account
+    > (`CreateInitialUser`, socket-only); this sub-task adds the runtime Mode key
+    > and so completes the switch — writing `mode:` to `config.yml` and restarting
+    > — which M6.5 deferred here because the Daemon still reads `AOS_MODE` (env).
 
 11. **Lazy browser install (ADR-0008).** `sudo aos browser install` fetches
     Chrome-for-Testing (a 120 MB zip from Google's bucket, keyed by Chrome version)

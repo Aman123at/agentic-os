@@ -235,7 +235,7 @@ function BrowserWindow() {
           {status === "closed" && (
             <div className="browser__overlay" role="status">
               <p>The browser stopped.</p>
-              <button className="browser__again" onClick={() => view.current?.connect()}>
+              <button className="browser__again" onClick={() => void view.current?.connect()}>
                 Start it again
               </button>
             </div>

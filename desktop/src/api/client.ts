@@ -1,6 +1,8 @@
 // Typed Connect-RPC clients over aosd's HTTP API (PLAN.md §13). The Desktop is
-// served from aosd's own origin, so the transport talks to the same host; the
-// session cookie rides along automatically once sign-in has run.
+// served from aosd's own origin. Every request carries the in-memory access
+// token in an Authorization header (ADR-0007, M6.5) — never a cookie, so DNS
+// rebinding gains nothing. A 401 despite the proactive refresh means the session
+// is truly dead, so the transport raises the expiry modal.
 import { createClient, type Client } from "@connectrpc/connect";
 import { createConnectTransport } from "@connectrpc/connect-web";
 
@@ -17,11 +19,21 @@ import {
   TaskService,
   TrashService,
 } from "../gen/aos/v1/services_pb";
+import { getAccessToken, sessionExpired } from "./session";
 
 const transport = createConnectTransport({
   baseUrl: window.location.origin,
-  // Browsers attach the HttpOnly session cookie on same-origin requests.
-  fetch: (input, init) => fetch(input, { ...init, credentials: "same-origin" }),
+  fetch: async (input, init) => {
+    const headers = new Headers(init?.headers);
+    const token = getAccessToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const resp = await fetch(input, { ...init, headers });
+    // Refresh runs proactively on a timer, so a 401 here is a session that could
+    // not be kept alive: drop it and let the store show the modal. Sign-in and
+    // refresh are open, so a 401 on them is a bad password, not an expiry.
+    if (resp.status === 401 && token) sessionExpired();
+    return resp;
+  },
 });
 
 export function client<T extends Parameters<typeof createClient>[0]>(service: T): Client<T> {

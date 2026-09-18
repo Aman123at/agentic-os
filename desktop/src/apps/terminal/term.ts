@@ -7,6 +7,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 
+import { ticket } from "../../api/auth";
+
 // Two palettes, keyed off the Desktop theme; the ANSI colours match macOS's
 // Terminal "Basic" scheme closely enough to feel at home.
 const DARK = {
@@ -30,9 +32,9 @@ const LIGHT = {
   brightBlue: "#0a63c9", brightMagenta: "#a333a3", brightCyan: "#0b8794", brightWhite: "#1e1e22",
 } as const;
 
-function socketURL(id: string): string {
+function socketURL(id: string, ticket: string): string {
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${window.location.host}/ws/session/${encodeURIComponent(id)}`;
+  return `${scheme}://${window.location.host}/ws/session/${encodeURIComponent(id)}?ticket=${encodeURIComponent(ticket)}`;
 }
 
 const encoder = new TextEncoder();
@@ -105,11 +107,21 @@ export class TermController {
     this.ro = new ResizeObserver(() => this.safeFit());
     this.ro.observe(el);
 
-    this.connect();
+    void this.connect();
   }
 
-  private connect(): void {
-    const ws = new WebSocket(socketURL(this.opts.id));
+  private async connect(): Promise<void> {
+    // A WebSocket upgrade cannot carry the Authorization header, so it rides a
+    // single-use ticket in the query (ADR-0007, M6.5).
+    let url: string;
+    try {
+      url = socketURL(this.opts.id, await ticket());
+    } catch {
+      if (!this.closed) this.opts.onClose();
+      return;
+    }
+    if (this.closed) return;
+    const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
     ws.onopen = () => {

@@ -11,6 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
+
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/store"
 )
@@ -44,11 +47,46 @@ func mintTestToken() string {
 	if err := m.SetPassword(context.Background(), testUser, testPassword); err != nil {
 		panic(err)
 	}
-	access, _, err := m.SignIn(context.Background(), testUser, testPassword)
+	access, _, _, err := m.SignIn(context.Background(), testUser, testPassword)
 	if err != nil {
 		panic(err)
 	}
 	return access
+}
+
+// TestCreateInitialUserIsSocketOnly checks the account-creation moment (M6.5):
+// it is refused over the network (the public bind) and served only over the
+// local control socket, seeds a must-change account, and refuses a second run.
+func TestCreateInitialUserIsSocketOnly(t *testing.T) {
+	db, err := store.Open(filepath.Join(t.TempDir(), "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	m := &auth.Model{DB: db, Key: testKey, Now: func() time.Time { return testClock }}
+	svc := authService{s: &Server{Auth: &Auth{Model: m}}}
+	req := func() *connect.Request[aosv1.CreateInitialUserRequest] {
+		return connect.NewRequest(&aosv1.CreateInitialUserRequest{Username: "admin", Password: "generated-secret-123"})
+	}
+	cli := context.WithValue(context.Background(), actorKey{}, "user:cli")
+	desktop := context.WithValue(context.Background(), actorKey{}, "user:desktop")
+
+	// A Desktop (over TCP) cannot create the account, even on a Machine with none.
+	if _, err := svc.CreateInitialUser(desktop, req()); connect.CodeOf(err) != connect.CodePermissionDenied {
+		t.Fatalf("over the network: %v, want PermissionDenied", err)
+	}
+	// The local CLI (over the socket) can.
+	if _, err := svc.CreateInitialUser(cli, req()); err != nil {
+		t.Fatalf("over the socket: %v", err)
+	}
+	// The account it made is on a system password, so sign-in forces a change.
+	if _, _, mustChange, err := m.SignIn(context.Background(), "admin", "generated-secret-123"); err != nil || !mustChange {
+		t.Fatalf("sign-in mustChange=%v err=%v, want true/nil", mustChange, err)
+	}
+	// A second run is refused rather than resetting a live password.
+	if _, err := svc.CreateInitialUser(cli, req()); connect.CodeOf(err) != connect.CodeAlreadyExists {
+		t.Fatalf("second create: %v, want AlreadyExists", err)
+	}
 }
 
 // whoami echoes the authenticated actor.

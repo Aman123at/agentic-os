@@ -20,6 +20,7 @@ var socketPath = envOr("AOS_SOCKET", "/run/aos/aosd.sock")
 // client talks to aosd over its Unix socket.
 type client struct {
 	http       *http.Client
+	auth       aosv1connect.AuthServiceClient
 	tasks      aosv1connect.TaskServiceClient
 	approvals  aosv1connect.ApprovalServiceClient
 	events     aosv1connect.EventServiceClient
@@ -43,6 +44,7 @@ func newClient() *client {
 	}}
 	return &client{
 		http:       hc,
+		auth:       aosv1connect.NewAuthServiceClient(hc, baseURL),
 		tasks:      aosv1connect.NewTaskServiceClient(hc, baseURL),
 		approvals:  aosv1connect.NewApprovalServiceClient(hc, baseURL),
 		events:     aosv1connect.NewEventServiceClient(hc, baseURL),

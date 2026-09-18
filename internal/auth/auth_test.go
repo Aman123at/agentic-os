@@ -40,13 +40,13 @@ func TestPasswordsAreHashedAndVerifiedThroughSignIn(t *testing.T) {
 		t.Errorf("stored hash %q is not a pbkdf2 string", hash)
 	}
 
-	if _, _, err := m.SignIn(ctx, "aman", "wrong-password"); err != ErrBadCredentials {
+	if _, _, _, err := m.SignIn(ctx, "aman", "wrong-password"); err != ErrBadCredentials {
 		t.Errorf("wrong password: %v, want ErrBadCredentials", err)
 	}
-	if _, _, err := m.SignIn(ctx, "nobody", "a-strong-password"); err != ErrBadCredentials {
+	if _, _, _, err := m.SignIn(ctx, "nobody", "a-strong-password"); err != ErrBadCredentials {
 		t.Errorf("unknown user: %v, want ErrBadCredentials", err)
 	}
-	access, refresh, err := m.SignIn(ctx, "aman", "a-strong-password")
+	access, refresh, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestRefreshRotatesTheToken(t *testing.T) {
 	ctx := context.Background()
 	mustSetPassword(t, m, "aman", "a-strong-password")
 
-	_, r0, err := m.SignIn(ctx, "aman", "a-strong-password")
+	_, r0, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestReplayingASpentTokenRevokesTheFamily(t *testing.T) {
 	ctx := context.Background()
 	mustSetPassword(t, m, "aman", "a-strong-password")
 
-	_, r0, err := m.SignIn(ctx, "aman", "a-strong-password")
+	_, r0, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestChangingThePasswordSignsOtherSessionsOut(t *testing.T) {
 	m, _ := newModel(t)
 	ctx := context.Background()
 	mustSetPassword(t, m, "aman", "a-strong-password")
-	_, r0, err := m.SignIn(ctx, "aman", "a-strong-password")
+	_, r0, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestAccessTokensExpire(t *testing.T) {
 	m, clock := newModel(t)
 	ctx := context.Background()
 	mustSetPassword(t, m, "aman", "a-strong-password")
-	access, _, err := m.SignIn(ctx, "aman", "a-strong-password")
+	access, _, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestExpiredRefreshTokensAreRefused(t *testing.T) {
 	m, clock := newModel(t)
 	ctx := context.Background()
 	mustSetPassword(t, m, "aman", "a-strong-password")
-	_, r0, err := m.SignIn(ctx, "aman", "a-strong-password")
+	_, r0, _, err := m.SignIn(ctx, "aman", "a-strong-password")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,6 +173,78 @@ func TestTicketsAreSingleUseAndExpire(t *testing.T) {
 	*clock = clock.Add(TicketTTL + time.Second)
 	if m.RedeemTicket(expiring) {
 		t.Error("an expired ticket was redeemed")
+	}
+}
+
+func TestInitialAccountForcesAPasswordChange(t *testing.T) {
+	m, _ := newModel(t)
+	ctx := context.Background()
+
+	if err := m.CreateInitialUser(ctx, "aman", "generated-secret-123"); err != nil {
+		t.Fatal(err)
+	}
+	// CreateInitialUser is the account-creation moment: a second call refuses
+	// rather than silently reset a password already in use.
+	if err := m.CreateInitialUser(ctx, "aman", "another-secret-456"); err != ErrUserExists {
+		t.Errorf("creating a second account: %v, want ErrUserExists", err)
+	}
+
+	// Signing in with the generated password works but flags the forced change.
+	access, refresh, mustChange, err := m.SignIn(ctx, "aman", "generated-secret-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mustChange {
+		t.Error("a system-generated account did not ask for a password change")
+	}
+	if !m.VerifyAccess(access) {
+		t.Error("the access token from the first sign-in does not verify")
+	}
+
+	// The forced change replaces the password, returns a live pair, and clears
+	// the flag so the next sign-in is a normal one.
+	access2, refresh2, err := m.ChangePassword(ctx, "a-password-of-my-own")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.VerifyAccess(access2) {
+		t.Error("the access token from ChangePassword does not verify")
+	}
+	// Changing the password signs every other session out: the refresh token the
+	// forced-change session started from no longer works.
+	if _, _, err := m.Refresh(ctx, refresh); err != ErrBadToken {
+		t.Errorf("the pre-change session survived: %v, want ErrBadToken", err)
+	}
+	// The pair ChangePassword issued keeps the caller signed in.
+	if _, _, err := m.Refresh(ctx, refresh2); err != nil {
+		t.Errorf("the post-change session does not work: %v", err)
+	}
+	_, _, mustChange, err = m.SignIn(ctx, "aman", "a-password-of-my-own")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mustChange {
+		t.Error("the change was not cleared: sign-in still forces a change")
+	}
+}
+
+func TestSignOutRevokesTheFamily(t *testing.T) {
+	m, _ := newModel(t)
+	ctx := context.Background()
+	mustSetPassword(t, m, "aman", "a-strong-password")
+	_, r0, _, err := m.SignIn(ctx, "aman", "a-strong-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Revoke(ctx, r0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.Refresh(ctx, r0); err != ErrBadToken {
+		t.Errorf("a signed-out token still refreshes: %v, want ErrBadToken", err)
+	}
+	// Signing out an unknown or already-revoked token is harmless.
+	if err := m.Revoke(ctx, "never-issued"); err != nil {
+		t.Errorf("revoking an unknown token: %v, want nil", err)
 	}
 }
 

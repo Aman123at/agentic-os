@@ -59,6 +59,7 @@ var (
 	ErrBadCredentials = errors.New("the username or password is incorrect")
 	ErrBadToken       = errors.New("this session has expired; sign in again")
 	ErrWeakPassword   = fmt.Errorf("the password must be at least %d characters", MinPasswordLength)
+	ErrUserExists     = errors.New("an account already exists")
 )
 
 // Model is the authentication model. It is safe for concurrent use.
@@ -85,7 +86,8 @@ func (m *Model) now() time.Time {
 // ---------------------------------------------------------------- passwords
 
 // SetPassword creates or replaces the one user's password. Changing it revokes
-// every existing refresh family, so other signed-in sessions are signed out
+// every existing refresh family, so other signed-in sessions are signed out, and
+// clears the must-change flag: this is the user choosing a password of their own
 // (PLAN.md §18 M6.5).
 func (m *Model) SetPassword(ctx context.Context, username, password string) error {
 	if len(password) < MinPasswordLength {
@@ -97,12 +99,98 @@ func (m *Model) SetPassword(ctx context.Context, username, password string) erro
 	}
 	now := store.Millis(m.now())
 	return m.DB.Write(ctx, func(tx *sql.Tx) error {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO users (username, pw_hash, created_at, updated_at) VALUES (?, ?, ?, ?)
-			ON CONFLICT (username) DO UPDATE SET pw_hash = excluded.pw_hash, updated_at = excluded.updated_at`,
+		if _, err := tx.ExecContext(ctx, `INSERT INTO users (username, pw_hash, created_at, updated_at, must_change) VALUES (?, ?, ?, ?, 0)
+			ON CONFLICT (username) DO UPDATE SET pw_hash = excluded.pw_hash, updated_at = excluded.updated_at, must_change = 0`,
 			username, hash, now, now); err != nil {
 			return err
 		}
 		_, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1 WHERE username = ?`, username)
+		return err
+	})
+}
+
+// CreateInitialUser writes the one account with a system-generated password that
+// must be replaced on first sign-in (`aos mode ui`, install.sh). It refuses if a
+// user already exists, so it is the account-creation moment and cannot silently
+// reset a password already in use (PLAN.md §18 M6.5).
+func (m *Model) CreateInitialUser(ctx context.Context, username, password string) error {
+	if len(password) < MinPasswordLength {
+		return ErrWeakPassword
+	}
+	hash, err := hashPassword(password)
+	if err != nil {
+		return err
+	}
+	now := store.Millis(m.now())
+	return m.DB.Write(ctx, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM users)`).Scan(&exists); err != nil {
+			return err
+		}
+		if exists != 0 {
+			return ErrUserExists
+		}
+		_, err := tx.ExecContext(ctx, `INSERT INTO users (username, pw_hash, created_at, updated_at, must_change) VALUES (?, ?, ?, ?, 1)`,
+			username, hash, now, now)
+		return err
+	})
+}
+
+// ChangePassword replaces the one user's password with one they chose, from a
+// signed-in session (the forced first change, or an ordinary later one). It
+// clears the must-change flag, revokes every existing family — so every other
+// session is signed out (PLAN.md §18 M6.5) — and issues the caller a fresh pair
+// so the session they changed it from stays alive without a re-login.
+func (m *Model) ChangePassword(ctx context.Context, newPassword string) (access, refresh string, err error) {
+	if len(newPassword) < MinPasswordLength {
+		return "", "", ErrWeakPassword
+	}
+	hash, err := hashPassword(newPassword)
+	if err != nil {
+		return "", "", err
+	}
+	var username string
+	family := randomHex(16)
+	expires := m.now().Add(RefreshTTL)
+	now := store.Millis(m.now())
+	if err := m.DB.Write(ctx, func(tx *sql.Tx) error {
+		// Single user: there is exactly one row, and it is the caller's — the
+		// middleware verified their access token before this handler ran.
+		if err := tx.QueryRowContext(ctx, `SELECT username FROM users LIMIT 1`).Scan(&username); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrBadCredentials
+			}
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET pw_hash = ?, updated_at = ?, must_change = 0 WHERE username = ?`, hash, now, username); err != nil {
+			return err
+		}
+		// Revoke every family first, then start a fresh one for the caller, so the
+		// new token is not caught by the same sweep.
+		if _, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1 WHERE username = ?`, username); err != nil {
+			return err
+		}
+		refresh, err = m.issue(ctx, tx, username, family, expires)
+		return err
+	}); err != nil {
+		return "", "", err
+	}
+	if access, err = m.mintAccess(username); err != nil {
+		return "", "", err
+	}
+	return access, refresh, nil
+}
+
+// Revoke ends the family of the given refresh token, signing that session (and
+// any it rotated into) out. Sign-out calls it. An unknown or empty token is a
+// no-op, so signing out twice is harmless.
+func (m *Model) Revoke(ctx context.Context, token string) error {
+	if token == "" {
+		return nil
+	}
+	return m.DB.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `UPDATE refresh_tokens SET revoked = 1
+			WHERE family = (SELECT family FROM refresh_tokens WHERE id = ?)`, tokenID(token))
 		return err
 	})
 }
@@ -244,20 +332,25 @@ func (m *Model) VerifyPortGrant(port int, value string) bool {
 // ---------------------------------------------------------------- refresh tokens
 
 // SignIn verifies the password and starts a new refresh family, returning a
-// fresh access/refresh pair.
-func (m *Model) SignIn(ctx context.Context, username, password string) (access, refresh string, err error) {
-	var hash string
-	switch err := m.DB.Read().QueryRowContext(ctx, `SELECT pw_hash FROM users WHERE username = ?`, username).Scan(&hash); {
+// fresh access/refresh pair. mustChange is true when the account still holds a
+// system-generated password: the Desktop then forces a change before the shell
+// loads (PLAN.md §18 M6.5).
+func (m *Model) SignIn(ctx context.Context, username, password string) (access, refresh string, mustChange bool, err error) {
+	var (
+		hash     string
+		mustCode int
+	)
+	switch err := m.DB.Read().QueryRowContext(ctx, `SELECT pw_hash, must_change FROM users WHERE username = ?`, username).Scan(&hash, &mustCode); {
 	case errors.Is(err, sql.ErrNoRows):
 		// Run a verify against a throwaway hash anyway, so a missing user and a
 		// wrong password take the same time.
 		verifyPassword("pbkdf2-sha256$1$AA$AA", password)
-		return "", "", ErrBadCredentials
+		return "", "", false, ErrBadCredentials
 	case err != nil:
-		return "", "", err
+		return "", "", false, err
 	}
 	if !verifyPassword(hash, password) {
-		return "", "", ErrBadCredentials
+		return "", "", false, ErrBadCredentials
 	}
 	family := randomHex(16)
 	expires := m.now().Add(RefreshTTL)
@@ -265,12 +358,27 @@ func (m *Model) SignIn(ctx context.Context, username, password string) (access, 
 		refresh, err = m.issue(ctx, tx, username, family, expires)
 		return err
 	}); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
 	if access, err = m.mintAccess(username); err != nil {
-		return "", "", err
+		return "", "", false, err
 	}
-	return access, refresh, nil
+	return access, refresh, mustCode != 0, nil
+}
+
+// MustChange reports whether the one account still holds a system-generated
+// password. The Refresh handler reads it so a reload during the forced first
+// change lands back on the change screen rather than slipping past it into the
+// shell (PLAN.md §18 M6.5). With no account yet it is false.
+func (m *Model) MustChange(ctx context.Context) (bool, error) {
+	var must int
+	switch err := m.DB.Read().QueryRowContext(ctx, `SELECT must_change FROM users LIMIT 1`).Scan(&must); {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return must != 0, nil
 }
 
 // Refresh rotates a refresh token: the presented token is spent and a new one in

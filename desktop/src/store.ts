@@ -11,8 +11,10 @@ import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/
 import { NotificationSchema } from "./gen/aos/v1/services_pb";
 import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, Autonomy, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
-import { approvals as approvalApi, auth, settings, system, tasks as taskApi, trash as trashApi } from "./api/client";
+import * as authSession from "./api/auth";
+import { approvals as approvalApi, settings, system, tasks as taskApi, trash as trashApi } from "./api/client";
 import { friendlyError } from "./api/error";
+import * as session from "./api/session";
 import { subscribe, type ConnState } from "./api/events";
 import { appForFile } from "./apps/filetypes";
 import { APPS, preloadApps, type AppId } from "./apps/registry";
@@ -20,7 +22,11 @@ import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
 import { type WallpaperDesignId } from "./shell/wallpaper";
 import { applyGlass, applyTheme, type ThemePref } from "./theme";
 
-export type Phase = "loading" | "needs-signin" | "ready" | "error";
+export type Phase = "loading" | "needs-signin" | "needs-password" | "ready" | "error";
+
+// The Desktop refuses a password shorter than this, matching auth.MinPasswordLength
+// on the server (ADR-0007). Refused, not warned (PLAN.md §18 M6.5).
+export const MIN_PASSWORD_LENGTH = 12;
 
 // The Desktop wallpaper: the drawn Aurora art, none (the plain gradient base),
 // or one of the generated designs tuned by a hue and a saturation. The string
@@ -64,6 +70,12 @@ interface Persisted {
 interface DesktopState {
   phase: Phase;
   error: string;
+  // The message shown on the sign-in and change-password screens: a wrong
+  // password, a weak one, a Machine that is unreachable.
+  authError: string;
+  // The expiry modal is over the desktop: the session lapsed, the windows are
+  // kept, and signing in again resumes without a reload (PLAN.md §18 M6.5).
+  expired: boolean;
   info?: InfoResponse;
   conn: ConnState;
   theme: ThemePref;
@@ -111,6 +123,14 @@ interface DesktopState {
   watchSession: string;
 
   boot: () => Promise<void>;
+  /** Signs in from the login screen; on success loads the shell, or shows the forced change. */
+  signIn: (username: string, password: string) => Promise<void>;
+  /** Sets a new password from the forced-change screen, then loads the shell. */
+  submitPassword: (newPassword: string) => Promise<void>;
+  /** Signs in again from the expiry modal and resumes the running desktop, no reload. */
+  resumeSession: (username: string, password: string) => Promise<void>;
+  /** Signs out: revokes the session, closes its streams, and returns to the login screen. */
+  logout: () => Promise<void>;
   setTheme: (pref: ThemePref) => void;
   setWallpaper: (pref: WallpaperPref) => void;
   /** Turns Liquid Glass on or off; shared with every tab through the saved layout. */
@@ -174,19 +194,42 @@ function topmost(windows: Win[]): Win | undefined {
   return windows.filter((w) => !w.minimized).reduce<Win | undefined>((best, w) => (!best || w.z > best.z ? w : best), undefined);
 }
 
-// signIn exchanges a one-time code from the URL hash (#code=…) for the session
-// cookie, then removes it from the address bar (PLAN.md §7.6).
-async function signIn(): Promise<void> {
-  const hash = new URLSearchParams(window.location.hash.slice(1));
-  const code = hash.get("code");
-  if (!code) return;
-  await auth.exchangeLoginCode({ code });
-  history.replaceState(null, "", window.location.pathname + window.location.search);
+// loadShell brings up the Desktop once the session is good: Info, the saved
+// layout, the Agent surface already in flight, then the event stream. Shared by
+// the first boot, a fresh sign-in and the forced first change, so all three end
+// in the same ready shell.
+async function loadShell(set: SetState, get: () => DesktopState): Promise<void> {
+  const info = await system.info({});
+  // A reload restores this tab's own layout; a new tab starts from the one last
+  // saved on the server.
+  let layout = readLocal();
+  if (!layout) layout = (await settings.getDesktopState({}).catch(() => ({ state: "" }))).state;
+  restore(layout, set);
+  if (layout) writeLocal(layout);
+  window.addEventListener("pagehide", () => flushSave(get));
+  // Seed the Agent surface: Tasks already running and Approvals already waiting
+  // when the Desktop loads (a later tab, or a reload).
+  const [taskList, pending, kept] = await Promise.all([
+    taskApi.listTasks({ limit: 50 }).catch(() => ({ tasks: [] })),
+    approvalApi.listPending({}).catch(() => ({ approvals: [] })),
+    system.listNotifications({}).catch(() => ({ notifications: [] })),
+  ]);
+  set({
+    tasks: Object.fromEntries(taskList.tasks.map((t) => [t.id, t])),
+    approvals: Object.fromEntries(pending.approvals.map((a) => [a.id, a])),
+    notifications: kept.notifications.slice(0, MAX_NOTIFICATIONS),
+  });
+  set({ phase: "ready", info, replay: info.replay, expired: false });
+  startStream(set);
+  preloadApps(info);
+  void get().refreshTrashCount();
 }
 
 export const useDesktop = create<DesktopState>((set, get) => ({
   phase: "loading",
   error: "",
+  authError: "",
+  expired: false,
   conn: "connecting",
   theme: "auto",
   wallpaper: "aurora",
@@ -209,39 +252,106 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   watchSession: "",
 
   boot: async () => {
+    // Raise the expiry modal instead of bouncing to the login screen whenever a
+    // live session lapses (PLAN.md §18 M6.5). Registered once, on first boot.
+    session.onExpired(() => {
+      if (get().phase !== "ready") return;
+      authSession.stopProactiveRefresh();
+      closeStream();
+      set({ expired: true, authError: "", conn: "offline" });
+    });
     try {
-      await signIn();
-      const info = await system.info({});
-      // A reload restores this tab's own layout; a new tab starts from the one
-      // last saved on the server.
-      let layout = readLocal();
-      if (!layout) layout = (await settings.getDesktopState({}).catch(() => ({ state: "" }))).state;
-      restore(layout, set);
-      if (layout) writeLocal(layout);
-      window.addEventListener("pagehide", () => flushSave(get));
-      // Seed the Agent surface: Tasks already running and Approvals already
-      // waiting when the Desktop loads (a later tab, or a reload).
-      const [taskList, pending, kept] = await Promise.all([
-        taskApi.listTasks({ limit: 50 }).catch(() => ({ tasks: [] })),
-        approvalApi.listPending({}).catch(() => ({ approvals: [] })),
-        system.listNotifications({}).catch(() => ({ notifications: [] })),
-      ]);
-      set({
-        tasks: Object.fromEntries(taskList.tasks.map((t) => [t.id, t])),
-        approvals: Object.fromEntries(pending.approvals.map((a) => [a.id, a])),
-        notifications: kept.notifications.slice(0, MAX_NOTIFICATIONS),
-      });
-      set({ phase: "ready", info, replay: info.replay });
-      startStream(set);
-      preloadApps(info);
-      void get().refreshTrashCount();
+      if (!session.hasSession()) {
+        set({ phase: "needs-signin" });
+        return;
+      }
+      // A returning tab rotates its stored refresh token rather than ask for the
+      // password again.
+      const { mustChange } = await authSession.resume();
+      authSession.startProactiveRefresh();
+      if (mustChange) {
+        set({ phase: "needs-password" });
+        return;
+      }
+      await loadShell(set, get);
     } catch (err) {
       if (err instanceof ConnectError && err.code === Code.Unauthenticated) {
+        // The stored token is dead: forget it and ask for the password.
+        session.clearTokens();
+        set({ phase: "needs-signin" });
+        return;
+      }
+      // No session at all reads as "sign in", not an error card.
+      if (!session.hasSession()) {
         set({ phase: "needs-signin" });
         return;
       }
       set({ phase: "error", error: friendlyError(err) });
     }
+  },
+
+  signIn: async (username, password) => {
+    set({ authError: "" });
+    try {
+      const { mustChange } = await authSession.signIn(username, password);
+      authSession.startProactiveRefresh();
+      if (mustChange) {
+        set({ phase: "needs-password" });
+        return;
+      }
+      await loadShell(set, get);
+    } catch (err) {
+      set({ authError: friendlyError(err) });
+    }
+  },
+
+  submitPassword: async (newPassword) => {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      set({ authError: `The password must be at least ${MIN_PASSWORD_LENGTH} characters.` });
+      return;
+    }
+    set({ authError: "" });
+    try {
+      await authSession.changePassword(newPassword);
+      await loadShell(set, get);
+    } catch (err) {
+      set({ authError: friendlyError(err) });
+    }
+  },
+
+  resumeSession: async (username, password) => {
+    set({ authError: "" });
+    try {
+      await authSession.signIn(username, password);
+      authSession.startProactiveRefresh();
+      // The windows are untouched, so re-auth resumes in place: reconnect the
+      // event stream and drop the modal without a reload.
+      startStream(set);
+      set({ expired: false });
+    } catch (err) {
+      set({ authError: friendlyError(err) });
+    }
+  },
+
+  logout: async () => {
+    authSession.stopProactiveRefresh();
+    closeStream();
+    await authSession.signOut();
+    // Leaving the shell unmounts the Terminal and Browser, closing their
+    // WebSockets; clear the surface so a later sign-in starts clean.
+    set({
+      phase: "needs-signin",
+      authError: "",
+      expired: false,
+      windows: [],
+      focused: "",
+      tasks: {},
+      approvals: {},
+      steps: [],
+      downloads: {},
+      openTask: "",
+      conn: "connecting",
+    });
   },
 
   setTheme: (pref) => {
@@ -523,9 +633,19 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
 // ---------------------------------------------------------------- event stream
 
+// The live event stream's unsubscribe, kept so logout and an expiry can close it
+// (the WebSockets are closed by unmounting the shell). A new stream replaces it.
+let streamUnsub: (() => void) | undefined;
+
+function closeStream() {
+  streamUnsub?.();
+  streamUnsub = undefined;
+}
+
 // startStream applies aosd's events, batched to one store commit per animation
 // frame (PLAN.md §4.3 rule 4) so a burst never causes a render storm.
 function startStream(set: SetState) {
+  closeStream();
   let queue: Event[] = [];
   let scheduled = false;
   const flush = () => {
@@ -553,7 +673,7 @@ function startStream(set: SetState) {
       else useDesktop.getState().openFile(path);
     }
   };
-  subscribe({
+  streamUnsub = subscribe({
     onState: (conn) => set({ conn }),
     onEvent: (event) => {
       queue.push(event);

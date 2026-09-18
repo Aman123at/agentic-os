@@ -4,6 +4,7 @@ import { APPS } from "../apps/registry";
 import { replayActive } from "../apps/software/replay";
 import { useDesktop } from "../store";
 import type { ThemePref } from "../theme";
+import { ContextMenu, MenuItem } from "../ui/ContextMenu";
 
 const nextTheme: Record<ThemePref, ThemePref> = { auto: "light", light: "dark", dark: "auto" };
 const themeLabel: Record<ThemePref, string> = { auto: "Auto", light: "Light", dark: "Dark" };
@@ -12,7 +13,26 @@ const themeLabel: Record<ThemePref, string> = { auto: "Auto", light: "Light", da
 // Center (connection, notifications, theme, clock) (PLAN.md §4.3).
 export default function MenuBar() {
   const { openApp, setTheme } = useDesktop();
+  const logout = useDesktop((s) => s.logout);
   const theme = useDesktop((s) => s.theme);
+  // The AOS menu (the ◆): About and Log Out, opened below the logo.
+  const [aosMenu, setAosMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!aosMenu) return;
+    const close = () => setAosMenu(null);
+    // Arm on the next tick, so the very click that opened the menu (which bubbles
+    // to window, past React's root where stopPropagation would reach) does not
+    // immediately close it again.
+    const armed = setTimeout(() => {
+      window.addEventListener("click", close);
+      window.addEventListener("blur", close);
+    }, 0);
+    return () => {
+      clearTimeout(armed);
+      window.removeEventListener("click", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [aosMenu]);
   const conn = useDesktop((s) => s.conn);
   const toggleNotifCenter = useDesktop((s) => s.toggleNotifCenter);
   // The bell badge counts what wants the user: pending Approvals first.
@@ -30,10 +50,27 @@ export default function MenuBar() {
   return (
     <div className="menubar">
       <div className="menubar__left">
-        <button className="menubar__logo" title="About This Machine" onClick={() => openApp("about")}>
+        <button
+          className="menubar__logo"
+          title="Agentic OS"
+          aria-label="Agentic OS menu"
+          onClick={(e) => {
+            const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            // A direct value, not a toggling updater: StrictMode double-invokes
+            // updater functions, which would cancel a toggle in dev.
+            setAosMenu(aosMenu ? null : { x: r.left, y: r.bottom + 2 });
+          }}
+        >
           ◆
         </button>
         <span className="menubar__app">{active ?? "Agentic OS"}</span>
+        {aosMenu && (
+          <ContextMenu x={aosMenu.x} y={aosMenu.y}>
+            <MenuItem label="About This Machine" onClick={() => { setAosMenu(null); openApp("about"); }} />
+            <div className="menu__sep" />
+            <MenuItem label="Log Out…" onClick={() => { setAosMenu(null); void logout(); }} />
+          </ContextMenu>
+        )}
       </div>
       <div className="menubar__right">
         {replayActive(replay) && (

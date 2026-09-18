@@ -3,6 +3,7 @@
 // wheel and keyboard sent back. Kept apart from React like the Terminal's
 // xterm (§4.3 rule 6): frames go straight onto the canvas, never through React
 // state. React hears only the toolbar state and notices, which change rarely.
+import { ticket } from "../../api/auth";
 
 export interface PageState {
   url: string;
@@ -45,9 +46,9 @@ const BUTTONS = ["left", "middle", "right", "back", "forward"];
 // browser's own paste event, which carries the Host clipboard's text.
 const EDIT: Record<string, string> = { a: "selectAll", c: "copy", x: "cut", z: "undo", y: "redo" };
 
-function socketURL(): string {
+function socketURL(ticket: string): string {
   const scheme = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${scheme}://${window.location.host}/ws/browser`;
+  return `${scheme}://${window.location.host}/ws/browser?ticket=${encodeURIComponent(ticket)}`;
 }
 
 export class PageView {
@@ -90,15 +91,24 @@ export class PageView {
     this.ro.observe(canvas);
     this.measure(true);
     this.listen();
-    this.connect();
+    void this.connect();
   }
 
-  connect(): void {
+  async connect(): Promise<void> {
     if (this.disposed) return;
     this.ws?.close();
     this.drawn = false;
     this.opts.onStatus("connecting");
-    const ws = new WebSocket(socketURL());
+    // The upgrade cannot carry a header, so it rides a single-use ticket (M6.5).
+    let url: string;
+    try {
+      url = socketURL(await ticket());
+    } catch {
+      if (!this.disposed) this.opts.onStatus("closed");
+      return;
+    }
+    if (this.disposed) return;
+    const ws = new WebSocket(url);
     ws.binaryType = "blob";
     this.ws = ws;
     ws.onopen = () => {
