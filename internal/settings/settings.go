@@ -149,6 +149,21 @@ var startupFields = []startupField{
 		},
 		apply:   func(c *config.Config, s string) error { c.RequireLandlock = s == "true"; return nil },
 		current: func(c config.Config) string { return strconv.FormatBool(c.RequireLandlock) }},
+	{key: "filesystem", env: "AOS_FILESYSTEM",
+		doc: "Where Agents may write: home (only /home/aos, the Compose default) or host (all of / minus the Protected list on a native install, ADR-0004).",
+		validate: func(s string) error {
+			if s == "home" || s == "host" {
+				return nil
+			}
+			return errors.New("filesystem is home or host")
+		},
+		apply: func(c *config.Config, s string) error { c.Filesystem = s; return nil },
+		current: func(c config.Config) string {
+			if c.Filesystem == "" {
+				return "home"
+			}
+			return c.Filesystem
+		}},
 }
 
 func intIn(lo, hi int, what string, put func(*Values, int)) func(*Values, string) error {

@@ -69,6 +69,11 @@ point:
   users' homes, and AOS's own binaries and systemd unit. `/var/lib/aos` and
   `/etc/aos` stay Hidden; `/dev` stays Writable. Other users' homes join the
   built-in Protected list.
+- **The widening is gated by one startup key.** `filesystem` in `config.yml`
+  (`AOS_FILESYSTEM`) is `home` by default — the Compose ruleset, unchanged — and
+  `install.sh` sets it to `host` on a native install, where `agentPolicy` swaps
+  `Writable` for the list above. Defaulting to `home` fails safe: a partial or
+  misconfigured install never hands Agents write access to the whole box.
 - **The walk is bounded by construction.** `carve` descends only into directories
   that contain an exclusion, so the cost is the size of the ancestor chains of the
   Protected paths, not the filesystem. This makes **"no exclusion may live under

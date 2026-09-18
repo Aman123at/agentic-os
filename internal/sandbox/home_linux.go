@@ -24,6 +24,15 @@ func PrepareHome(l Layout, uid, gid int) (notes []string, err error) {
 	if err := os.MkdirAll(l.Home, 0o755); err != nil {
 		return nil, err
 	}
+	// With the filesystem widened to the whole VPS (M6.8, ADR-0004), aosd must never
+	// relocate a real dotfile in a home it does not own — pointed at a live
+	// /home/ubuntu the adopt() below would move the ~/.ssh/authorized_keys that is
+	// the only way into the server. A Protected dotfile that is already AOS's own
+	// symlink is safe; a real file or a foreign symlink under one of those names is
+	// not, so refuse the whole home rather than touch it.
+	if link, ok := unownedDotfile(l); ok {
+		return nil, fmt.Errorf("refusing to prepare %s: %s is not one of AOS's own links, so this looks like a home AOS did not create; relocating it could move another user's ~/.ssh/authorized_keys", l.Home, link)
+	}
 	if err := os.MkdirAll(l.Protected, 0o755); err != nil {
 		return nil, err
 	}
@@ -60,6 +69,28 @@ func PrepareHome(l Layout, uid, gid int) (notes []string, err error) {
 		notes = append(notes, fmt.Sprintf("removed the retired Shared Folder link %s", shared))
 	}
 	return notes, setOwner(l.Home, 0, gid, 0o775|os.ModeSticky)
+}
+
+// unownedDotfile returns the first Protected dotfile in Home that exists but is
+// not already AOS's own symlink to its target: a real file or folder, or a symlink
+// pointing somewhere else. In a home AOS created these are all absent (a fresh
+// home) or its own links (an existing one); anything else means the home belongs
+// to another user, whose files must not be relocated (M6.8).
+func unownedDotfile(l Layout) (link string, unowned bool) {
+	for _, e := range ProtectedEntries {
+		link, target := l.link(e)
+		fi, err := os.Lstat(link)
+		if err != nil {
+			continue // absent: a fresh home, or a dotfile AOS will create
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			if dest, err := os.Readlink(link); err == nil && dest == target {
+				continue // already AOS's own link
+			}
+		}
+		return link, true
+	}
+	return "", false
 }
 
 // adopt moves a real (non-symlink) entry at link into target. A symlink at link

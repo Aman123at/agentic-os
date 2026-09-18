@@ -25,3 +25,5 @@ trash_max_gb: 5
 base_url: ""
 # Refuse to start when the kernel has no Landlock, rather than run Agents under policy checks only. (startup-only)
 require_landlock: false
+# Where Agents may write: home (only /home/aos, the Compose default) or host (all of / minus the Protected list on a native install, ADR-0004). (startup-only)
+filesystem: home

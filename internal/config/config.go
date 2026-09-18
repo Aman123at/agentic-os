@@ -16,6 +16,10 @@ type Config struct {
 	Mode, ImageMode        string
 	Model, ReasoningEffort string
 	BaseURL                string
+	// Filesystem is where Agents may write (ADR-0004, M6.8): "home" confines them
+	// to /home/aos (the Compose default), "host" widens the Writable set to all of
+	// `/` minus the Protected list on a native install.
+	Filesystem string
 	// ConfigPath is /etc/aos/config.yml, the single source of truth for every
 	// non-secret setting (ADR-0010). AOS_CONFIG overrides it (tests, dev).
 	ConfigPath      string
@@ -100,6 +104,10 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	c.Mode = str("AOS_MODE", c.ImageMode)
 	if c.Mode != "cli" && c.Mode != "ui" {
 		errs = append(errs, fmt.Sprintf("AOS_MODE=%q must be cli or ui", c.Mode))
+	}
+	c.Filesystem = str("AOS_FILESYSTEM", "home")
+	if c.Filesystem != "home" && c.Filesystem != "host" {
+		errs = append(errs, fmt.Sprintf("AOS_FILESYSTEM=%q must be home or host", c.Filesystem))
 	}
 	if c.MaxTasks == 0 {
 		c.MaxTasks = 1

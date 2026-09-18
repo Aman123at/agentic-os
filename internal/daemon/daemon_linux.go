@@ -62,6 +62,9 @@ const (
 	SessionsDir = "/run/aos/sessions"
 	SecretKey   = "/run/secrets/openai_api_key"
 	AgentBinDir = "/usr/local/lib/aos/agent-bin"
+	// unitPath is where systemd keeps aosd's unit; Protected when the filesystem
+	// widens so a widened Agent cannot rewrite aosd's own service (M6.8).
+	unitPath = "/etc/systemd/system/aos.service"
 	// Version is what the Desktop shows in Settings ▸ Status and About This
 	// Machine. Bump it with the milestone; version_test.go keeps it honest.
 	Version        = "0.1.0-m5"
@@ -104,6 +107,10 @@ type Daemon struct {
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
+
+	// homes lists the other users' home folders to keep Protected when the
+	// filesystem is widened to the host (M6.8); nil reads /home. A seam for tests.
+	homes func() []string
 }
 
 // Run starts aosd and serves until ctx ends.
@@ -361,10 +368,52 @@ func (d *Daemon) provider() (llm.Provider, string, error) {
 func (d *Daemon) agentPolicy() sandbox.Policy {
 	p := d.layout.Policy()
 	p.Hidden = append(p.Hidden, SessionsDir)
+	if d.cfg.Filesystem == "host" {
+		d.widenToHost(&p)
+	}
 	for _, l := range d.locks.paths() {
 		p.Protected = append(p.Protected, resolvePath(l))
 	}
 	return p
+}
+
+// widenToHost opens the Writable set from home to the whole VPS minus an explicit
+// Protected list (ADR-0004, M6.8), for a native install. Agents already read all
+// of `/`, so only writing widens. AOS's own files, the boot and pseudo
+// filesystems, root's home and other users' homes are excluded; the Browser keeps
+// its own narrow ruleset (browserPolicy), so this never reaches it.
+func (d *Daemon) widenToHost(p *sandbox.Policy) {
+	p.Writable = []string{"/"}
+	// The config file joins the key and secret stores as Hidden.
+	p.Hidden = append(p.Hidden, "/etc/aos")
+	// The boot loader and the pseudo filesystems, root's home, AOS's binaries and
+	// its systemd unit. Excluding /proc and /sys as whole directories (never a path
+	// beneath them) keeps carve from ever descending into a pseudo-filesystem — the
+	// "no exclusion under /proc or /sys" rule that bounds the walk.
+	p.Protected = append(p.Protected,
+		"/boot", "/proc", "/sys", "/snap", "/root",
+		d.exe, "/usr/local/bin/aos", "/usr/local/lib/aos", unitPath)
+	p.Protected = append(p.Protected, d.otherHomes()...)
+}
+
+// otherHomes are the home folders under /home that are not AOS's own, kept
+// Protected so a widened Agent cannot write another user's files.
+func (d *Daemon) otherHomes() []string {
+	if d.homes != nil {
+		return d.homes()
+	}
+	entries, err := os.ReadDir("/home")
+	if err != nil {
+		return nil
+	}
+	self := filepath.Base(d.layout.Home)
+	var out []string
+	for _, e := range entries {
+		if e.Name() != self {
+			out = append(out, filepath.Join("/home", e.Name()))
+		}
+	}
+	return out
 }
 
 func (d *Daemon) plan(p sandbox.Policy) (sandbox.Ruleset, error) {
