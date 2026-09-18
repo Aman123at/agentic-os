@@ -9,21 +9,24 @@ import (
 	"time"
 )
 
-// machine returns Ops for a home folder and a Shared Folder in a temp dir, with
-// a fixed clock. The Machine's scratch folder is inside the temp dir too: on
-// Linux the temp dir is under /tmp, which would otherwise count as scratch and
-// make every delete permanent.
-func machine(t *testing.T) (Ops, string, string) {
+// machine returns Ops for a home folder in a temp dir, with a fixed clock. The
+// Machine's scratch folder is inside the temp dir too: on Linux the temp dir is
+// under /tmp, which would otherwise count as scratch and make every delete
+// permanent. The whole temp dir is one filesystem, so every delete is a plain
+// rename into the home Trash unless a test injects a second device.
+func machine(t *testing.T) (Ops, string) {
 	t.Helper()
 	root := t.TempDir()
-	home, shared := filepath.Join(root, "home", "aos"), filepath.Join(root, "shared")
-	for _, d := range []string{home, shared} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	home := filepath.Join(root, "home", "aos")
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
 	}
 	now := time.Date(2026, 9, 14, 10, 30, 0, 0, time.Local)
-	return Ops{Home: home, Shared: shared, UID: 1000, Scratch: []string{filepath.Join(root, "tmp")}, Now: func() time.Time { return now }}, home, shared
+	// No injected mounts by default, so ListTrash sees only the home Trash and a
+	// real .Trash-<uid> on the test host cannot leak into a count assertion. Tests
+	// that need a second filesystem set dev and mounts themselves.
+	return Ops{Home: home, UID: 1000, Scratch: []string{filepath.Join(root, "tmp")},
+		Now: func() time.Time { return now }, mounts: func() []string { return nil }}, home
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -46,7 +49,7 @@ func readFile(t *testing.T, path string) string {
 }
 
 func TestDeleteMovesToTheTrashAndRestorePutsItBack(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	doc := filepath.Join(home, "Documents", "report 2026.txt")
 	writeFile(t, doc, "draft")
 
@@ -85,7 +88,7 @@ func TestDeleteMovesToTheTrashAndRestorePutsItBack(t *testing.T) {
 }
 
 func TestDeletingTheSameNameTwiceKeepsBoth(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	a, b := filepath.Join(home, "a", "notes.txt"), filepath.Join(home, "b", "notes.txt")
 	writeFile(t, a, "from a")
 	writeFile(t, b, "from b")
@@ -111,7 +114,7 @@ func TestDeletingTheSameNameTwiceKeepsBoth(t *testing.T) {
 }
 
 func TestRestoreRefusesToReplaceAFileAtTheOriginalPath(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	p := filepath.Join(home, "notes.txt")
 	writeFile(t, p, "old")
 	item, err := ops.Delete(p)
@@ -127,25 +130,94 @@ func TestRestoreRefusesToReplaceAFileAtTheOriginalPath(t *testing.T) {
 	}
 }
 
-func TestTheSharedFolderHasItsOwnTrash(t *testing.T) {
-	ops, _, shared := machine(t)
-	p := filepath.Join(shared, "photos", "cat.jpg")
+// TestFileOnAnotherFilesystemGoesToItsMountRootTrash exercises the st_dev
+// selection with an injected second device: a file on a different filesystem
+// than home is trashed into .Trash-<uid> at that filesystem's mount root, found
+// by walking up until the device changes.
+func TestFileOnAnotherFilesystemGoesToItsMountRootTrash(t *testing.T) {
+	ops, home := machine(t)
+	root := filepath.Dir(filepath.Dir(home))  // the temp dir
+	mnt := filepath.Join(root, "mnt", "data") // the second filesystem's mount root
+	// Home is device 0; everything at or under mnt is device 1.
+	ops.dev = func(path string) (uint64, error) {
+		if path == mnt || strings.HasPrefix(path, mnt+string(filepath.Separator)) {
+			return 1, nil
+		}
+		return 0, nil
+	}
+	ops.mounts = func() []string { return []string{mnt} }
+
+	p := filepath.Join(mnt, "photos", "cat.jpg")
 	writeFile(t, p, "jpg")
 	item, err := ops.Delete(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Same filesystem as the file, so deleting is a rename, and visible on the Host.
-	if readFile(t, filepath.Join(shared, ".Trash-1000", "files", "cat.jpg")) != "jpg" {
-		t.Error("not in the Shared Folder's Trash")
+	// Trashed at the mount root, not the home Trash: a rename within the filesystem.
+	dest := filepath.Join(mnt, ".Trash-1000", "files", "cat.jpg")
+	if item.ID != dest {
+		t.Errorf("item ID %q, want %q", item.ID, dest)
+	}
+	if readFile(t, dest) != "jpg" {
+		t.Error("not in the mount root's Trash")
+	}
+
+	items, err := ops.ListTrash()
+	if err != nil || len(items) != 1 || items[0].ID != item.ID {
+		t.Fatalf("ListTrash = %+v, %v", items, err)
 	}
 	if restored, err := ops.Restore(item.ID); err != nil || restored != p {
 		t.Fatalf("Restore = %q, %v", restored, err)
 	}
+	if readFile(t, p) != "jpg" {
+		t.Error("restored content lost")
+	}
+}
+
+// TestSameDeviceGoesToTheHomeTrash covers the one-filesystem VPS: a file outside
+// home but on home's device is a plain rename into the home Trash, and nothing is
+// created at its own location.
+func TestSameDeviceGoesToTheHomeTrash(t *testing.T) {
+	ops, home := machine(t)
+	root := filepath.Dir(filepath.Dir(home))
+	etc := filepath.Join(root, "etc", "nginx.conf") // outside home, same device
+	writeFile(t, etc, "server {}")
+	item, err := ops.Delete(etc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(home, ".local", "share", "Trash", "files", "nginx.conf")
+	if item.ID != dest {
+		t.Errorf("item ID %q, want the home Trash %q", item.ID, dest)
+	}
+	if _, err := os.Lstat(filepath.Join(root, "etc", ".Trash-1000")); !os.IsNotExist(err) {
+		t.Error("a .Trash-<uid> was created outside home on a one-filesystem Machine")
+	}
+	if restored, err := ops.Restore(item.ID); err != nil || restored != etc {
+		t.Fatalf("Restore = %q, %v", restored, err)
+	}
+}
+
+// TestRestoreRejectsMalformedIDs checks the path-ID validation.
+func TestRestoreRejectsMalformedIDs(t *testing.T) {
+	ops, home := machine(t)
+	for _, id := range []string{
+		"",
+		"home/notes.txt",                    // not absolute
+		"/etc/passwd",                       // not a <TrashDir>/files/<name> shape
+		home + "/.local/share/Trash/files/", // empty name
+		home + "/.local/share/Trash/info/notes.txt", // wrong subdir
+		home + "/.local/share/Trash/files/../../etc/passwd",
+		home + "/.local/share/Trash/files/a\x00b",
+	} {
+		if _, err := ops.Restore(id); err == nil {
+			t.Errorf("Restore(%q) accepted a malformed id", id)
+		}
+	}
 }
 
 func TestDisposableFilesAreDeletedPermanently(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	scratch := t.TempDir()
 	ops.Scratch = []string{scratch}
 	for _, p := range []string{
@@ -179,7 +251,7 @@ func TestDisposableFilesAreDeletedPermanently(t *testing.T) {
 }
 
 func TestExpireRemovesOldItemsThenOldestUntilUnderTheCap(t *testing.T) {
-	ops, home, shared := machine(t)
+	ops, home := machine(t)
 	clock := ops.Now()
 	ops.Now = func() time.Time { return clock }
 	del := func(path, content string, age time.Duration) {
@@ -191,7 +263,7 @@ func TestExpireRemovesOldItemsThenOldestUntilUnderTheCap(t *testing.T) {
 		}
 	}
 	del(filepath.Join(home, "ancient.txt"), "1234567890", 40*24*time.Hour)
-	del(filepath.Join(shared, "old.txt"), "1234567890", 20*24*time.Hour)
+	del(filepath.Join(home, "old.txt"), "1234567890", 20*24*time.Hour)
 	del(filepath.Join(home, "newer.txt"), "1234567890", 10*24*time.Hour)
 	del(filepath.Join(home, "newest.txt"), "1234567890", time.Hour)
 	clock = time.Date(2026, 9, 14, 10, 30, 0, 0, time.Local)

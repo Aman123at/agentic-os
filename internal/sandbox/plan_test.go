@@ -143,8 +143,6 @@ func TestPlanDefaultLayoutGivesAgentsAllOfHome(t *testing.T) {
 	fsys["home/.aos-protected/bashrc"] = &fstest.MapFile{}
 	fsys["home/aos/.ssh"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/home/.aos-protected/ssh")}
 	fsys["home/aos/.bashrc"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/home/.aos-protected/bashrc")}
-	fsys["home/aos/Shared"] = &fstest.MapFile{Mode: fs.ModeSymlink, Data: []byte("/shared")}
-	fsys["shared/report.pdf"] = &fstest.MapFile{}
 
 	rs, err := Plan(DefaultLayout().Policy(), fsys)
 	if err != nil {
@@ -154,7 +152,6 @@ func TestPlanDefaultLayoutGivesAgentsAllOfHome(t *testing.T) {
 		"/home/aos":            Write, // not split: new top-level folders are writable at once
 		"/home/aos/.ssh":       0,     // symlinks are never granted
 		"/home/.aos-protected": 0,
-		"/shared":              0,
 		"/tmp":                 Write,
 	} {
 		if got := accessOf(t, rs, path) &^ (Read | List); got != want {

@@ -10,12 +10,11 @@ import (
 type Layout struct {
 	Home      string // the home folder: root:aos 1775, fully writable for Agents
 	Protected string // where Protected dotfiles live, behind root-owned symlinks in Home
-	Shared    string // the Shared Folder mount; Home/Shared links to it
 }
 
 // DefaultLayout is the Machine image's layout.
 func DefaultLayout() Layout {
-	return Layout{Home: "/home/aos", Protected: "/home/.aos-protected", Shared: "/shared"}
+	return Layout{Home: "/home/aos", Protected: "/home/.aos-protected"}
 }
 
 // ProtectedEntry is a dotfile in Home that is a symlink to Target in Layout.Protected.
@@ -46,13 +45,13 @@ var ProtectedEntries = []ProtectedEntry{
 //
 // Nothing in Home needs a Protected entry: the Protected dotfiles are outside it,
 // and so are system folders, which are read-only because nothing grants write
-// there. Protected and Shared are listed anyway so that a layout placing them in
-// a Writable tree still protects them. Paths the user locks are appended by the
-// caller. "Any .env file" and dirty git working trees are enforced by policy only.
+// there. Protected is listed anyway so that a layout placing it in a Writable
+// tree still protects it. Paths the user locks are appended by the caller. "Any
+// .env file" and dirty git working trees are enforced by policy only.
 func (l Layout) Policy() Policy {
 	return Policy{
 		Hidden:    []string{"/run/secrets", "/var/lib/aos"},
-		Protected: []string{l.Protected, l.Shared},
+		Protected: []string{l.Protected},
 		// /dev holds /dev/null, /dev/tty and the Session's PTY.
 		Writable: []string{l.Home, "/tmp", "/var/tmp", "/dev"},
 	}

@@ -134,9 +134,6 @@ func (l *locks) IsProtected(path string) string {
 func (l *locks) List(context.Context) ([]*aosv1.ListProtectedResponse_Entry, error) {
 	var out []*aosv1.ListProtectedResponse_Entry
 	for _, p := range policy.DefaultPaths(l.home) {
-		if p == "/shared" {
-			p = "/shared (the Shared Folder)"
-		}
 		out = append(out, &aosv1.ListProtectedResponse_Entry{Path: p, Source: "default", Kernel: true})
 	}
 	for _, p := range l.paths() {

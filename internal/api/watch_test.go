@@ -38,7 +38,7 @@ func (bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 func TestWatchSendsAFolderAgainWhenItChanges(t *testing.T) {
 	home := t.TempDir()
 	auth, _ := newAuth(t)
-	ops := files.Ops{Home: home, Shared: filepath.Join(home, "shared"), UID: os.Getuid(), Scratch: []string{filepath.Join(home, "tmp")}}
+	ops := files.Ops{Home: home, UID: os.Getuid(), Scratch: []string{filepath.Join(home, "tmp")}}
 	s := &Server{Auth: auth, Home: home, UserFiles: files.InProcess{Ops: ops}, Protected: noLocks{}, WatchInterval: 20 * time.Millisecond}
 	srv := httptest.NewServer(auth.TCP(s.Handler()))
 	defer srv.Close()

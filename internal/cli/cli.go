@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Aman123at/agentic-os/internal/files"
-	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // exitError carries a process exit code out of a command.
@@ -63,7 +62,7 @@ func rmShim(args []string) int {
 	if err != nil {
 		cwd = home
 	}
-	ops := files.Ops{Home: home, Shared: sandbox.DefaultLayout().Shared, UID: os.Getuid()}
+	ops := files.Ops{Home: home, UID: os.Getuid()}
 	for _, a := range args {
 		if a == "--help" || a == "--version" {
 			// Unusual requests go to the real rm.

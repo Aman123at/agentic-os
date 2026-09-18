@@ -109,7 +109,7 @@ type Daemon struct {
 // Run starts aosd and serves until ctx ends.
 func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d := &Daemon{cfg: cfg, layout: sandbox.DefaultLayout(), abi: sandbox.ABI(), git: map[string]map[string]bool{}}
-	d.sampler = &sysinfo.Sampler{Disks: []string{d.layout.Home, d.layout.Shared, StateDir}}
+	d.sampler = &sysinfo.Sampler{Disks: []string{d.layout.Home, StateDir}}
 	if err := d.init(); err != nil {
 		return err
 	}
@@ -191,7 +191,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		defer d.browser.Close()
 	}
 
-	userOps := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
+	userOps := files.Ops{Home: d.layout.Home, UID: int(d.uid)}
 	userFiles := files.AsUser{Ops: userOps, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
@@ -387,7 +387,7 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 		// npm's global prefix is in the home folder (PLAN.md §11).
 		Env: []string{"NPM_CONFIG_PREFIX=" + d.layout.Home + "/.local"},
 	})
-	ops := files.Ops{Home: d.layout.Home, Shared: d.layout.Shared, UID: int(d.uid)}
+	ops := files.Ops{Home: d.layout.Home, UID: int(d.uid)}
 	env.Sessions = agentSession
 	env.Cwd = agentSession.Cwd
 	env.FileOps = ops

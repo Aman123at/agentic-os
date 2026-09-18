@@ -31,7 +31,6 @@ func TestProtectedPaths(t *testing.T) {
 		{Effect{"/var/lib/aos/aos.db", Delete}, true},
 		{Effect{"/home/aos/.ssh/config", Write}, true},
 		{Effect{"/home/.aos-protected/bashrc", Write}, true},
-		{Effect{"/shared/report.pdf", Delete}, true},
 		{Effect{"/home/aos/Documents/taxes/2025.pdf", Write}, true},
 		{Effect{"/home/aos/work/link/id_ed25519", Delete}, true},
 		{Effect{"/home/aos/Documents", Delete}, true},   // contains a locked path

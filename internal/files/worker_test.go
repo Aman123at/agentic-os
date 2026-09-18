@@ -27,7 +27,7 @@ func (p pipeRunner) Run(ctx context.Context, op string, args, result any, progre
 func TestAResponseLongerThanTheInitialBufferArrivesWhole(t *testing.T) {
 	// A 512 KiB Read travels as one base64 JSON line, far past the reader's
 	// starting buffer, which has to grow to hold it.
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	p := filepath.Join(home, "big.bin")
 	want := bytes.Repeat([]byte("0123456789abcdef"), MaxRead/32)
 	writeFile(t, p, string(want))
@@ -42,7 +42,7 @@ func TestAResponseLongerThanTheInitialBufferArrivesWhole(t *testing.T) {
 }
 
 func TestOperationsThroughTheWorkerProtocolKeepTheirErrors(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	r := pipeRunner{ops: ops}
 	p := filepath.Join(home, "a.txt")
 	if err := r.Run(context.Background(), OpWrite, WriteArgs{Path: p, Content: "hi"}, nil, nil); err != nil {

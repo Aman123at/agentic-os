@@ -15,7 +15,8 @@ import (
 //     symlink to it. A real file or folder found in Home is moved there first; if
 //     the target already exists, the one from Home is kept beside it with a
 //     ".from-home-<time>" suffix.
-//   - Home/Shared is a root-owned symlink to l.Shared.
+//   - Any Home/Shared left from the retired Shared Folder is removed (M6.6): a
+//     root-owned symlink in a sticky 1775 home strands otherwise.
 //   - Home is root:gid mode 1775, so only root can replace the symlinks.
 //
 // It returns a note for every entry it had to move aside.
@@ -48,19 +49,15 @@ func PrepareHome(l Layout, uid, gid int) (notes []string, err error) {
 		}
 	}
 
+	// The Shared Folder is retired (M6.6). Remove the root-owned ~/Shared symlink
+	// an older install left behind; it strands in a sticky 1775 home otherwise. A
+	// real folder a user made keeping the name is left untouched.
 	shared := filepath.Join(l.Home, "Shared")
-	if fi, err := os.Lstat(shared); err == nil && fi.Mode()&os.ModeSymlink == 0 {
-		// A folder left from the layout before M1, when the Shared Folder was mounted here.
-		if rmErr := os.Remove(shared); rmErr != nil {
-			aside := shared + ".from-home-" + stamp
-			if err := os.Rename(shared, aside); err != nil {
-				return notes, err
-			}
-			notes = append(notes, fmt.Sprintf("moved %s to %s", shared, aside))
+	if fi, err := os.Lstat(shared); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(shared); err != nil {
+			return notes, err
 		}
-	}
-	if err := ensureSymlink(shared, l.Shared); err != nil {
-		return notes, err
+		notes = append(notes, fmt.Sprintf("removed the retired Shared Folder link %s", shared))
 	}
 	return notes, setOwner(l.Home, 0, gid, 0o775|os.ModeSticky)
 }

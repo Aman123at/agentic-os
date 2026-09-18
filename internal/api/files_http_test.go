@@ -32,7 +32,7 @@ func fileServer(t *testing.T) (http.Handler, string, *audit.Log) {
 	}
 	t.Cleanup(func() { db.Close() })
 	log := &audit.Log{DB: db}
-	ops := files.Ops{Home: home, Shared: filepath.Join(dir, "shared"), UID: os.Getuid(), Scratch: []string{filepath.Join(dir, "tmp")}}
+	ops := files.Ops{Home: home, UID: os.Getuid(), Scratch: []string{filepath.Join(dir, "tmp")}}
 	auth, _ := newAuth(t)
 	s := &Server{Auth: auth, Audit: log, Home: home, UserFiles: files.InProcess{Ops: ops}}
 	return auth.TCP(s.Handler()), home, log

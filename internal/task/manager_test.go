@@ -49,7 +49,7 @@ func newHarness(t *testing.T, autonomy policy.Autonomy, turns ...fake.Turn) *har
 	}
 	t.Cleanup(func() { db.Close() })
 	h := &harness{home: home, model: fake.New(turns...), bus: events.New(), db: db}
-	ops := files.Ops{Home: home, Shared: filepath.Join(dir, "shared"), UID: os.Getuid()}
+	ops := files.Ops{Home: home, UID: os.Getuid()}
 	h.cfg = Config{
 		DB:         db,
 		Bus:        h.bus,

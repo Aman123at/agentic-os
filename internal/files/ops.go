@@ -22,13 +22,17 @@ import (
 
 // Ops performs file operations for one uid.
 type Ops struct {
-	Home   string `json:"home"`   // the home folder, whose Trash is ~/.local/share/Trash
-	Shared string `json:"shared"` // the Shared Folder, whose Trash is .Trash-<uid> in it
-	UID    int    `json:"uid"`
+	Home string `json:"home"` // the home folder, whose Trash is ~/.local/share/Trash
+	UID  int    `json:"uid"`
 	// Now is the clock for deletion dates; nil means time.Now.
 	Now func() time.Time `json:"-"`
 	// Scratch folders are deleted from permanently; nil means /tmp and /var/tmp.
 	Scratch []string `json:"scratch,omitempty"`
+	// dev returns the device id of the filesystem holding a path; nil uses Lstat.
+	// It is a test seam, so mount selection can be exercised off a Linux VPS.
+	dev func(path string) (uint64, error) `json:"-"`
+	// mounts lists the Machine's mount points; nil parses /proc/self/mountinfo.
+	mounts func() []string `json:"-"`
 }
 
 // ErrExists is returned when a destination exists and overwriting was not requested.

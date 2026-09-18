@@ -164,7 +164,7 @@ func (m *machine) cancel(t *testing.T) {
 type machine struct {
 	project, port string
 	root          string   // the repository
-	dir           string   // scratch folder: cassettes, Shared Folder, Compose files
+	dir           string   // scratch folder: cassettes, Compose files
 	env           []string // Compose variables, instead of the repository's .env
 	files         []string // Compose files after compose.yaml
 }
@@ -182,9 +182,6 @@ func startMachine(t *testing.T, project, port string) *machine {
 		t.Fatal(err)
 	}
 	m := &machine{project: project, port: port, root: root, dir: dir, files: []string{filepath.Join(dir, "compose.e2e.yaml")}}
-	if err := os.MkdirAll(filepath.Join(dir, "shared"), 0o755); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.MkdirAll(filepath.Join(dir, "cassettes"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +204,7 @@ func startMachine(t *testing.T, project, port string) *machine {
 	}
 	// An explicit env file replaces the repository's .env, so neither the
 	// user's API key nor their settings reach the test Machine.
-	m.env = []string{"AOS_MODE=cli", "AOS_PORT=" + m.port, "AOS_BIND=127.0.0.1", "AOS_SHARED_DIR=" + filepath.Join(dir, "shared"),
+	m.env = []string{"AOS_MODE=cli", "AOS_PORT=" + m.port, "AOS_BIND=127.0.0.1",
 		"AOS_AUTONOMY=confirm-risky", "OPENAI_API_KEY=sk-e2e-dummy-not-a-real-key"}
 	if err := os.WriteFile(filepath.Join(dir, "e2e.env"), []byte(strings.Join(m.env, "\n")+"\n"), 0o644); err != nil {
 		t.Fatal(err)

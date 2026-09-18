@@ -9,13 +9,15 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
 // TrashItem is one entry in a Trash.
 type TrashItem struct {
-	ID           string // "<trash>/<name>", see trashByID
+	ID           string // the trashed file's absolute path, "<TrashDir>/files/<name>"
 	OriginalPath string
 	DeletedAt    time.Time
 	Size         int64
@@ -26,19 +28,131 @@ const trashTime = "2006-01-02T15:04:05"
 
 // trash is one freedesktop.org Trash folder.
 type trash struct {
-	key string // "home" or "shared"
 	dir string
 }
 
 func (t trash) files() string { return filepath.Join(t.dir, "files") }
 func (t trash) info() string  { return filepath.Join(t.dir, "info") }
 
-func (o Ops) trashes() []trash {
-	ts := []trash{{key: "home", dir: filepath.Join(o.Home, ".local", "share", "Trash")}}
-	if o.Shared != "" {
-		ts = append(ts, trash{key: "shared", dir: filepath.Join(o.Shared, fmt.Sprintf(".Trash-%d", o.UID))})
+// homeTrash is the Trash on home's filesystem.
+func (o Ops) homeTrash() trash {
+	return trash{dir: filepath.Join(o.Home, ".local", "share", "Trash")}
+}
+
+// trashDirs lists every Trash to enumerate: the home Trash plus a .Trash-<uid> at
+// each mount root (PLAN.md §7.8). ListTrash reads whichever exist.
+func (o Ops) trashDirs() []string {
+	dirs := []string{o.homeTrash().dir}
+	seen := map[string]bool{dirs[0]: true}
+	for _, m := range o.mountPoints() {
+		d := filepath.Join(m, fmt.Sprintf(".Trash-%d", o.UID))
+		if !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
 	}
-	return ts
+	return dirs
+}
+
+// trashFor picks the Trash on path's filesystem: the home Trash when path shares
+// home's device (a plain rename), otherwise a .Trash-<uid> at path's mount root,
+// found by walking up until the device changes (an st_dev comparison, PLAN.md §7.8).
+func (o Ops) trashFor(path string) (trash, error) {
+	home := o.homeTrash()
+	hdev, err := o.deviceOf(o.Home)
+	if err != nil {
+		return home, nil // no device id: fall back to the home Trash
+	}
+	pdev, err := o.deviceOf(path)
+	if err != nil || pdev == hdev {
+		return home, nil
+	}
+	root, err := o.mountRoot(path)
+	if err != nil {
+		return trash{}, err
+	}
+	return trash{dir: filepath.Join(root, fmt.Sprintf(".Trash-%d", o.UID))}, nil
+}
+
+// deviceOf returns the device id of the filesystem holding path, without
+// following a final symlink.
+func (o Ops) deviceOf(path string) (uint64, error) {
+	if o.dev != nil {
+		return o.dev(path)
+	}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return 0, err
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, fmt.Errorf("no device id for %s", path)
+	}
+	return uint64(st.Dev), nil
+}
+
+// mountRoot returns the topmost directory still on path's device: its filesystem's
+// mount point, found by walking up until the parent's device differs.
+func (o Ops) mountRoot(path string) (string, error) {
+	dev, err := o.deviceOf(path)
+	if err != nil {
+		return "", err
+	}
+	for {
+		parent := filepath.Dir(path)
+		if parent == path {
+			return path, nil // reached "/"
+		}
+		pdev, err := o.deviceOf(parent)
+		if err != nil || pdev != dev {
+			return path, nil
+		}
+		path = parent
+	}
+}
+
+// mountPoints returns the Machine's mount points, from /proc/self/mountinfo. A
+// missing file (as off Linux) yields none, so only the home Trash is enumerated.
+func (o Ops) mountPoints() []string {
+	if o.mounts != nil {
+		return o.mounts()
+	}
+	f, err := os.Open("/proc/self/mountinfo")
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var points []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() {
+		// Field 5 (1-based) of a mountinfo line is the mount point.
+		fields := strings.Fields(sc.Text())
+		if len(fields) >= 5 {
+			points = append(points, unescapeMount(fields[4]))
+		}
+	}
+	return points
+}
+
+// unescapeMount decodes the octal escapes mountinfo uses for space, tab, newline
+// and backslash in a mount point (e.g. `\040` → space).
+func unescapeMount(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+3 < len(s) {
+			if v, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(v))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
 }
 
 // Delete moves path to the Trash on its filesystem.
@@ -51,9 +165,9 @@ func (o Ops) Delete(path string) (TrashItem, error) {
 	if o.disposable(path) {
 		return TrashItem{}, os.RemoveAll(path)
 	}
-	t := o.trashes()[0]
-	if o.Shared != "" && within(path, o.Shared) {
-		t = o.trashes()[1]
+	t, err := o.trashFor(path)
+	if err != nil {
+		return TrashItem{}, err
 	}
 	for _, d := range []string{t.files(), t.info()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
@@ -79,7 +193,8 @@ func (o Ops) Delete(path string) (TrashItem, error) {
 		os.Remove(info.Name())
 		return TrashItem{}, err
 	}
-	return TrashItem{ID: t.key + "/" + name, OriginalPath: path, DeletedAt: deleted, Size: size(fi, filepath.Join(t.files(), name)), Dir: fi.IsDir()}, nil
+	dest := filepath.Join(t.files(), name)
+	return TrashItem{ID: dest, OriginalPath: path, DeletedAt: deleted, Size: size(fi, dest), Dir: fi.IsDir()}, nil
 }
 
 // reserve creates the .trashinfo file for a free name, which claims the name.
@@ -110,7 +225,8 @@ func reserve(t trash, base string) (string, *os.File, error) {
 // ListTrash lists every Trash, newest first.
 func (o Ops) ListTrash() ([]TrashItem, error) {
 	var items []TrashItem
-	for _, t := range o.trashes() {
+	for _, dir := range o.trashDirs() {
+		t := trash{dir: dir}
 		entries, err := os.ReadDir(t.info())
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -140,7 +256,7 @@ func readItem(t trash, name string) (TrashItem, error) {
 		return TrashItem{}, err
 	}
 	defer f.Close()
-	item := TrashItem{ID: t.key + "/" + name}
+	item := TrashItem{ID: filepath.Join(t.files(), name)}
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		k, v, _ := strings.Cut(sc.Text(), "=")
@@ -189,16 +305,20 @@ func (o Ops) Restore(id string) (string, error) {
 	return item.OriginalPath, os.Remove(filepath.Join(t.info(), name+".trashinfo"))
 }
 
+// trashByID validates an item ID and splits it into its Trash and entry name. The
+// ID is the trashed file's absolute path, "<TrashDir>/files/<name>": clean and
+// absolute, its files-directory named "files", and a name that is a single,
+// non-traversing component.
 func (o Ops) trashByID(id string) (trash, string, error) {
-	key, name, ok := strings.Cut(id, "/")
-	if ok && name != "" && !strings.ContainsAny(name, "/\x00") && name != "." && name != ".." {
-		for _, t := range o.trashes() {
-			if t.key == key {
-				return t, name, nil
-			}
-		}
+	if strings.IndexByte(id, 0) >= 0 || id != filepath.Clean(id) || !filepath.IsAbs(id) {
+		return trash{}, "", fmt.Errorf("unknown Trash item %q", id)
 	}
-	return trash{}, "", fmt.Errorf("unknown Trash item %q", id)
+	name := filepath.Base(id)
+	filesDir := filepath.Dir(id)
+	if filepath.Base(filesDir) != "files" || name == "." || name == ".." || name == string(filepath.Separator) {
+		return trash{}, "", fmt.Errorf("unknown Trash item %q", id)
+	}
+	return trash{dir: filepath.Dir(filesDir)}, name, nil
 }
 
 // escapePath percent-encodes path for a .trashinfo file, keeping "/".

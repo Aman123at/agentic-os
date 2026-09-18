@@ -9,7 +9,7 @@ import (
 // most of them anyway; policy asks before trying.
 var systemPaths = []string{
 	"/etc", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/boot", "/var/lib",
-	"/home/.aos-protected", "/shared",
+	"/home/.aos-protected",
 }
 
 // dotfiles are the Protected entries in home; they are symlinks into /home/.aos-protected.

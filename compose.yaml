@@ -45,8 +45,8 @@ services:
       - aos-home:/home
       - aos-state:/var/lib/aos
       - aos-pkgcache:/var/cache/aos
-      # The Shared Folder; ~/Shared links here (outside home, see ADR-0004).
-      - ${AOS_SHARED_DIR:-./shared}:/shared
+      # M6: no Shared Folder — add a plain bind mount into home if you want one,
+      # e.g. `- ./shared:/home/aos/Shared` (no symlink, no Protected entry).
 
 secrets:
   openai_api_key:

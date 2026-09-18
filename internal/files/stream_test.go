@@ -66,7 +66,7 @@ func (p pipeStreamer) WriteStream(ctx context.Context, a WriteStreamArgs, body i
 }
 
 func TestStreamsRoundTripThroughTheWorkerProtocol(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	s := pipeStreamer{ops: ops}
 	ctx := context.Background()
 	p := filepath.Join(home, "movie.bin")
@@ -111,7 +111,7 @@ func TestStreamsRoundTripThroughTheWorkerProtocol(t *testing.T) {
 }
 
 func TestAnUploadReplacesOnlyWhenAskedAndKeepsNothingFromAFailure(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	dir := filepath.Join(home, "notes")
 	p := filepath.Join(dir, "a.txt")
 	if _, err := ops.WriteStream(WriteStreamArgs{Path: p, Size: 5}, strings.NewReader("first")); err != nil {

@@ -9,7 +9,7 @@ import (
 )
 
 func TestWriteCreatesFoldersAndOnlyOverwritesWhenAsked(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	p := filepath.Join(home, "new", "deep", "notes.md")
 	if err := ops.Write(p, []byte("one"), false); err != nil {
 		t.Fatal(err)
@@ -23,7 +23,7 @@ func TestWriteCreatesFoldersAndOnlyOverwritesWhenAsked(t *testing.T) {
 }
 
 func TestEditReplacesExactlyOneMatch(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	p := filepath.Join(home, "app.conf")
 	writeFile(t, p, "port=80\nhost=a\nport=80\n")
 
@@ -49,7 +49,7 @@ func TestEditReplacesExactlyOneMatch(t *testing.T) {
 }
 
 func TestMoveAndCopyNeverReplaceUnlessAsked(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	src := filepath.Join(home, "src")
 	writeFile(t, filepath.Join(src, "a.txt"), "a")
 	writeFile(t, filepath.Join(src, "sub", "b.sh"), "b")
@@ -85,7 +85,7 @@ func TestMoveAndCopyNeverReplaceUnlessAsked(t *testing.T) {
 }
 
 func TestReadTextReturnsLineRangesAndRecognisesBinaryFiles(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	var b strings.Builder
 	for i := 1; i <= 500; i++ {
 		b.WriteString("line " + strings.Repeat("x", i%7) + "\n")
@@ -117,7 +117,7 @@ func TestReadTextReturnsLineRangesAndRecognisesBinaryFiles(t *testing.T) {
 }
 
 func TestReadReturnsRawChunksAndSignalsEOF(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	// A binary payload with a NUL byte, which ReadText would refuse.
 	blob := []byte("PNG\x00\x01\x02\x03rest of the bytes")
 	p := filepath.Join(home, "pic.png")
@@ -137,7 +137,7 @@ func TestReadReturnsRawChunksAndSignalsEOF(t *testing.T) {
 }
 
 func TestListStatAndSearch(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	writeFile(t, filepath.Join(home, "proj", "main.go"), "package main\n// TODO: port\n")
 	writeFile(t, filepath.Join(home, "proj", "README.md"), "todo list\n")
 	writeFile(t, filepath.Join(home, "proj", ".git", "config"), "TODO in git internals\n")

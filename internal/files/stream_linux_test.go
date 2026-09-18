@@ -26,7 +26,7 @@ func asMe(ops Ops) AsUser {
 }
 
 func TestStreamsThroughAWorkerProcess(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	u := asMe(ops)
 	ctx := context.Background()
 	p := filepath.Join(home, "big.bin")
@@ -59,7 +59,7 @@ func (s *stopAfter) Write(p []byte) (int, error) {
 }
 
 func TestAWorkerIsStoppedWhenItsReaderGoesAway(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	p := filepath.Join(home, "big.bin")
 	if err := os.WriteFile(p, bytes.Repeat([]byte("x"), 8<<20), 0o644); err != nil {
 		t.Fatal(err)
@@ -98,7 +98,7 @@ func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	u := AsUser{Ops: Ops{Home: dir, Shared: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}
+	u := AsUser{Ops: Ops{Home: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}
 	err = u.ReadStream(context.Background(), StreamArgs{Path: secret}, func(StreamHeader) error { return nil }, io.Discard)
 	if !errors.Is(err, ErrPermission) {
 		t.Fatalf("reading a root-only file as nobody: %v, want ErrPermission", err)

@@ -72,7 +72,7 @@ type Env struct {
 	// Files returns a runner for file operations, confined to the Agent ruleset
 	// widened by the given Protected Paths.
 	Files func(widen []string) files.Runner
-	// FileOps configures file operations (home, Shared Folder, uid).
+	// FileOps configures file operations (home, uid).
 	FileOps files.Ops
 	// Stat reports whether a path exists and is a folder, for classifying calls.
 	Stat func(path string) (exists, dir bool)

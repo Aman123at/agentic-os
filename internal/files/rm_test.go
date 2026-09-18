@@ -9,7 +9,7 @@ import (
 )
 
 func TestRmShimTrashesLikeRm(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	writeFile(t, filepath.Join(home, "a.txt"), "a")
 	writeFile(t, filepath.Join(home, "dir", "b.txt"), "b")
 	if err := os.Mkdir(filepath.Join(home, "empty"), 0o755); err != nil {

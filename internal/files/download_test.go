@@ -12,7 +12,7 @@ import (
 )
 
 func TestDownloadNamesTheFileAndResumesAPartialDownload(t *testing.T) {
-	ops, home, _ := machine(t)
+	ops, home := machine(t)
 	body := strings.Repeat("0123456789", 10_000)
 	var ranges []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
