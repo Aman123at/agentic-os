@@ -111,6 +111,9 @@ type Daemon struct {
 	// homes lists the other users' home folders to keep Protected when the
 	// filesystem is widened to the host (M6.8); nil reads /home. A seam for tests.
 	homes func() []string
+	// replay re-applies the Install Ledger at boot (M6.9); nil uses
+	// software.Replay. A seam so the Compose-vs-native gate is testable off a VPS.
+	replay func(context.Context) error
 }
 
 // Run starts aosd and serves until ctx ends.
@@ -232,11 +235,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	sdNotify("READY=1")
 	go d.expireTrash(ctx, userFiles)
 	go d.services.Watch(ctx)
-	// Replay first, then the Services, which may need its software (PLAN.md §11–12).
+	// Replay first (Compose only), then the Services, which may need its software
+	// (PLAN.md §11–12). On a native install Replay is off (M6.9).
 	go func() {
-		if err := d.software.Replay(ctx); err != nil {
-			log.Printf("Replay: %v", err)
-		}
+		d.replayAtBoot(ctx)
 		if ctx.Err() == nil {
 			d.services.StartAll()
 		}
@@ -363,12 +365,32 @@ func (d *Daemon) provider() (llm.Provider, string, error) {
 	return &openai.Provider{Key: keys.read, BaseURL: d.cfg.BaseURL, MaxRetries: d.cfg.MaxRetries}, model, nil
 }
 
+// replayAtBoot re-applies the Install Ledger at startup on a Compose install,
+// but not on a native one (ADR-0003, M6.9). A container discards everything
+// outside its volumes across a restart, so Replay rebuilds it; a native VPS is a
+// persistent server where nothing is discarded, so re-applying the Ledger would
+// be needless and destructive (re-pinning packages, rewriting /etc the user may
+// have changed). The Ledger is still recorded and Restore stays user-initiated.
+func (d *Daemon) replayAtBoot(ctx context.Context) {
+	if d.cfg.Native() {
+		log.Printf("native install: Replay is off (ADR-0003); the Install Ledger is still recorded and Restore is on demand")
+		return
+	}
+	replay := d.replay
+	if replay == nil {
+		replay = d.software.Replay
+	}
+	if err := replay(ctx); err != nil {
+		log.Printf("Replay: %v", err)
+	}
+}
+
 // agentPolicy is the sandbox policy for Agents: the layout, other Sessions'
 // directories hidden, and the paths the user locked.
 func (d *Daemon) agentPolicy() sandbox.Policy {
 	p := d.layout.Policy()
 	p.Hidden = append(p.Hidden, SessionsDir)
-	if d.cfg.Filesystem == "host" {
+	if d.cfg.Native() {
 		d.widenToHost(&p)
 	}
 	for _, l := range d.locks.paths() {

@@ -144,5 +144,11 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	return c, nil
 }
 
+// Native reports whether this is a native install (ADR-0009). There is no other
+// runtime signal for it: install.sh marks a native box by writing filesystem:
+// host (M6.8), so that key doubles as the native marker. It gates the whole-`/`
+// widening (ADR-0004) and turning Replay off at boot (ADR-0003, M6.9).
+func (c Config) Native() bool { return c.Filesystem == "host" }
+
 // Getenv is os.Getenv, for FromEnv.
 var Getenv = os.Getenv

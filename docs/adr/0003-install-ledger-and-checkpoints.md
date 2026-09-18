@@ -22,5 +22,7 @@ Machine is a persistent Ubuntu server: nothing is discarded on a restart, so
 needless and destructive (it would `apt-get`-pin packages and rewrite `/etc` the
 user may have changed). The Install Ledger is still recorded, and Checkpoint and
 Restore stay available **user-initiated**, so "restore to before that Task" still
-works on demand. Whether `/etc` Checkpoints still earn their place once Replay is
-off is left open (§21). See M6.9.
+works on demand. The gate is the native marker `filesystem: host` in
+`config.yml` (ADR-0004, M6.8): `replayAtBoot` runs the Ledger only when it is
+absent (Compose). Whether `/etc` Checkpoints still earn their place once Replay
+is off is left open (§21). See M6.9.
