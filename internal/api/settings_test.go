@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/config"
 	"github.com/Aman123at/agentic-os/internal/policy"
 	"github.com/Aman123at/agentic-os/internal/settings"
 	"github.com/Aman123at/agentic-os/internal/store"
@@ -40,8 +41,10 @@ func TestSettingsCanBeReadAndChangedAndEveryChangeIsAudited(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	st, err := settings.Open(ctx, db, settings.Values{Model: "gpt-5.6-terra", Autonomy: policy.ConfirmRisky, MaxTasks: 3,
-		MaxRetries: 3, TrashRetentionDays: 30, TrashMaxGB: 5}, nil)
+	st, err := settings.Open(filepath.Join(t.TempDir(), "config.yml"),
+		settings.Values{Model: "gpt-5.6-terra", Autonomy: policy.ConfirmRisky, MaxTasks: 3,
+			MaxRetries: 3, TrashRetentionDays: 30, TrashMaxGB: 5},
+		&config.Config{Set: map[string]bool{"AOS_MAX_TASKS": true}})
 	if err != nil {
 		t.Fatal(err)
 	}

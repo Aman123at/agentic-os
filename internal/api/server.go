@@ -640,7 +640,7 @@ func (st settingsService) SaveDesktopState(ctx context.Context, req *connect.Req
 }
 
 func setting(s settings.Setting) *aosv1.Setting {
-	return &aosv1.Setting{Key: s.Key, Value: s.Value, Source: string(s.Source), Env: s.Env, Fallback: s.Fallback}
+	return &aosv1.Setting{Key: s.Key, Value: s.Value, Source: string(s.Source), Env: s.Env, Fallback: s.Fallback, PendingRestart: s.PendingRestart}
 }
 
 func (st settingsService) Get(context.Context, *connect.Request[aosv1.GetSettingsRequest]) (*connect.Response[aosv1.GetSettingsResponse], error) {
@@ -660,7 +660,7 @@ func (st settingsService) Update(ctx context.Context, req *connect.Request[aosv1
 	if st.s.Settings == nil {
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("settings are not available"))
 	}
-	s, err := st.s.Settings.Set(ctx, req.Msg.Key, req.Msg.Value)
+	s, err := st.s.Settings.Set(req.Msg.Key, req.Msg.Value)
 	result := s.Value
 	if err != nil {
 		result = err.Error()

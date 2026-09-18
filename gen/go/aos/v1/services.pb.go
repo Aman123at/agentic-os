@@ -5068,18 +5068,23 @@ func (x *ClearApiKeyResponse) GetHint() string {
 
 type Setting struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// model | reasoning_effort | autonomy | max_tasks | max_retries |
-	// task_cost_limit_usd | daily_cost_limit_usd | trash_retention_days | trash_max_gb
+	// Runtime keys: model | reasoning_effort | autonomy | max_tasks | max_retries
+	// | task_cost_limit_usd | daily_cost_limit_usd | trash_retention_days |
+	// trash_max_gb. Startup-only keys: base_url | require_landlock.
 	Key   string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
-	// default | env | settings (saved from System Settings)
+	// default | env | settings (saved in config.yml, ADR-0010)
 	Source string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
-	// The environment variable that also sets it, such as AOS_MAX_TASKS.
+	// The environment variable that also sets it (Compose bootstrap), such as
+	// AOS_MAX_TASKS.
 	Env string `protobuf:"bytes,4,opt,name=env,proto3" json:"env,omitempty"`
-	// The value without the one saved in System Settings.
-	Fallback      string `protobuf:"bytes,5,opt,name=fallback,proto3" json:"fallback,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// The value without the saved one: the environment's, or the default.
+	Fallback string `protobuf:"bytes,5,opt,name=fallback,proto3" json:"fallback,omitempty"`
+	// A startup-only key whose saved value is not yet in force; a restart applies
+	// it.
+	PendingRestart bool `protobuf:"varint,6,opt,name=pending_restart,json=pendingRestart,proto3" json:"pending_restart,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Setting) Reset() {
@@ -5145,6 +5150,13 @@ func (x *Setting) GetFallback() string {
 		return x.Fallback
 	}
 	return ""
+}
+
+func (x *Setting) GetPendingRestart() bool {
+	if x != nil {
+		return x.PendingRestart
+	}
+	return false
 }
 
 type GetSettingsRequest struct {
@@ -7228,13 +7240,14 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x04hint\x18\x01 \x01(\tR\x04hint\"\x14\n" +
 	"\x12ClearApiKeyRequest\")\n" +
 	"\x13ClearApiKeyResponse\x12\x12\n" +
-	"\x04hint\x18\x01 \x01(\tR\x04hint\"w\n" +
+	"\x04hint\x18\x01 \x01(\tR\x04hint\"\xa0\x01\n" +
 	"\aSetting\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12\x10\n" +
 	"\x03env\x18\x04 \x01(\tR\x03env\x12\x1a\n" +
-	"\bfallback\x18\x05 \x01(\tR\bfallback\"\x14\n" +
+	"\bfallback\x18\x05 \x01(\tR\bfallback\x12'\n" +
+	"\x0fpending_restart\x18\x06 \x01(\bR\x0ependingRestart\"\x14\n" +
 	"\x12GetSettingsRequest\"B\n" +
 	"\x13GetSettingsResponse\x12+\n" +
 	"\bsettings\x18\x01 \x03(\v2\x0f.aos.v1.SettingR\bsettings\">\n" +

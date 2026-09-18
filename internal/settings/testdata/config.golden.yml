@@ -1,0 +1,27 @@
+# Agentic OS configuration (ADR-0010).
+# The single source of truth for every setting that is not a secret.
+# Managed by `aos config` and System Settings; comments and hand-edits are kept.
+# Secrets (the OpenAI key, the JWT signing key) live in /var/lib/aos/, never here.
+
+# The model every Task runs on, such as gpt-5.6-terra.
+model: gpt-5.6-terra
+# How hard the model thinks: none, minimal, low, medium, high or xhigh.
+reasoning_effort: ""
+# How bold Agents are: auto, confirm-risky or confirm-all.
+autonomy: confirm-risky
+# How many Tasks run at once (1-16).
+max_tasks: 3
+# How many times a model call is retried (0-20).
+max_retries: 3
+# Per-Task Cost Limit in USD; 0 means none.
+task_cost_limit_usd: 0
+# Daily Cost Limit in USD; 0 means none.
+daily_cost_limit_usd: 0
+# How long the Trash keeps an item, in days (1-3650).
+trash_retention_days: 30
+# Trash size cap in GB (1-1024).
+trash_max_gb: 5
+# OpenAI-compatible API base URL; empty uses OpenAI's own. Decides where the API key is sent. (startup-only)
+base_url: ""
+# Refuse to start when the kernel has no Landlock, rather than run Agents under policy checks only. (startup-only)
+require_landlock: false

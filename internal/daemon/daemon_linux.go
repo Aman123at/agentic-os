@@ -118,8 +118,25 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d.sampler.Prime()
 	defer d.db.Close()
 
-	if cfg.RequireLandlock && d.abi < 1 {
-		return errors.New("AOS_REQUIRE_LANDLOCK=true, but this Host's kernel has no Landlock")
+	var err error
+	model := d.cfg.Model
+	if model == "" {
+		model = openai.DefaultModel
+	}
+	// config.yml is the single source of truth (ADR-0010). It overlays the
+	// startup-only keys onto d.cfg and holds the runtime settings, which win over
+	// the environment; a malformed file or an unknown key refuses the start. Done
+	// before the Landlock check and provider() so both see the file's values.
+	d.settings, err = settings.Open(d.cfg.ConfigPath, settings.Values{Model: model, ReasoningEffort: d.cfg.ReasoningEffort,
+		Autonomy: d.cfg.Autonomy, MaxTasks: d.cfg.MaxTasks, MaxRetries: d.cfg.MaxRetries, TaskCostLimit: d.cfg.TaskCostLimit,
+		DailyCostLimit: d.cfg.DailyCostLimit, TrashRetentionDays: int(d.cfg.TrashRetention / (24 * time.Hour)),
+		TrashMaxGB: int(d.cfg.TrashMaxBytes >> 30)}, &d.cfg)
+	if err != nil {
+		return fmt.Errorf("loading the configuration: %w", err)
+	}
+
+	if d.cfg.RequireLandlock && d.abi < 1 {
+		return errors.New("require_landlock is set, but this Host's kernel has no Landlock")
 	}
 	if d.abi < 1 {
 		log.Print("WARNING: Landlock is unavailable on this Host: Agents are guarded by policy checks only, and auto Autonomy acts as confirm-risky")
@@ -128,14 +145,6 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	provider, model, err := d.provider()
 	if err != nil {
 		return err
-	}
-	// Settings saved in System Settings win over the environment (PLAN.md §6.4).
-	d.settings, err = settings.Open(ctx, d.db, settings.Values{Model: model, ReasoningEffort: cfg.ReasoningEffort,
-		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, TaskCostLimit: cfg.TaskCostLimit,
-		DailyCostLimit: cfg.DailyCostLimit, TrashRetentionDays: int(cfg.TrashRetention / (24 * time.Hour)),
-		TrashMaxGB: int(cfg.TrashMaxBytes >> 30)}, cfg.Set)
-	if err != nil {
-		return fmt.Errorf("loading the settings: %w", err)
 	}
 	if v := d.settings.Values(); (v.TaskCostLimit > 0 || v.DailyCostLimit > 0) && !d.pricesKnown(v.Model) {
 		log.Printf("WARNING: %s has no model %s, so its cost is unknown and the Cost Limits cannot apply", pricesFile, v.Model)

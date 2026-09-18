@@ -586,16 +586,21 @@ message ClearApiKeyResponse {
 }
 
 message Setting {
-  // model | reasoning_effort | autonomy | max_tasks | max_retries |
-  // task_cost_limit_usd | daily_cost_limit_usd | trash_retention_days | trash_max_gb
+  // Runtime keys: model | reasoning_effort | autonomy | max_tasks | max_retries
+  // | task_cost_limit_usd | daily_cost_limit_usd | trash_retention_days |
+  // trash_max_gb. Startup-only keys: base_url | require_landlock.
   string key = 1;
   string value = 2;
-  // default | env | settings (saved from System Settings)
+  // default | env | settings (saved in config.yml, ADR-0010)
   string source = 3;
-  // The environment variable that also sets it, such as AOS_MAX_TASKS.
+  // The environment variable that also sets it (Compose bootstrap), such as
+  // AOS_MAX_TASKS.
   string env = 4;
-  // The value without the one saved in System Settings.
+  // The value without the saved one: the environment's, or the default.
   string fallback = 5;
+  // A startup-only key whose saved value is not yet in force; a restart applies
+  // it.
+  bool pending_restart = 6;
 }
 
 message GetSettingsRequest {}

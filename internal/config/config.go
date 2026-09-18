@@ -16,16 +16,19 @@ type Config struct {
 	Mode, ImageMode        string
 	Model, ReasoningEffort string
 	BaseURL                string
-	Bind                   string
-	HostPort               string
-	AccessToken            string
-	Autonomy               policy.Autonomy
-	MaxTasks               int
-	MaxRetries             int
-	RequireLandlock        bool
-	UID, GID               int
-	TrashRetention         time.Duration
-	TrashMaxBytes          int64
+	// ConfigPath is /etc/aos/config.yml, the single source of truth for every
+	// non-secret setting (ADR-0010). AOS_CONFIG overrides it (tests, dev).
+	ConfigPath      string
+	Bind            string
+	HostPort        string
+	AccessToken     string
+	Autonomy        policy.Autonomy
+	MaxTasks        int
+	MaxRetries      int
+	RequireLandlock bool
+	UID, GID        int
+	TrashRetention  time.Duration
+	TrashMaxBytes   int64
 	// Cost Limits in USD; 0 means none (PLAN.md §8.4).
 	TaskCostLimit, DailyCostLimit float64
 	// IncludeBrowser asks for the Browser app (ui Mode only, PLAN.md M5.2). The
@@ -91,6 +94,10 @@ func FromEnv(getenv func(string) string) (Config, error) {
 		TrashMaxBytes:   int64(num("AOS_TRASH_MAX_GB", 5)) << 30,
 		FakeModel:       str("AOS_FAKE_MODEL", ""),
 		Set:             set,
+	}
+	c.ConfigPath = strings.TrimSpace(getenv("AOS_CONFIG"))
+	if c.ConfigPath == "" {
+		c.ConfigPath = "/etc/aos/config.yml"
 	}
 	c.Mode = str("AOS_MODE", c.ImageMode)
 	if c.Mode != "cli" && c.Mode != "ui" {
