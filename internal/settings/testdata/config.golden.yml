@@ -21,6 +21,8 @@ daily_cost_limit_usd: 0
 trash_retention_days: 30
 # Trash size cap in GB (1-1024).
 trash_max_gb: 5
+# The Machine's Mode: ui (the Desktop, reached over the network behind a password) or cli (the control socket only, no web UI). (startup-only)
+mode: ui
 # OpenAI-compatible API base URL; empty uses OpenAI's own. Decides where the API key is sent. (startup-only)
 base_url: ""
 # Refuse to start when the kernel has no Landlock, rather than run Agents under policy checks only. (startup-only)

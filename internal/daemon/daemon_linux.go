@@ -152,6 +152,17 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		log.Print("WARNING: Landlock is unavailable on this Host: Agents are guarded by policy checks only, and auto Autonomy acts as confirm-risky")
 	}
 
+	// Mode is resolved from config.yml now that settings.Open has overlaid it
+	// (M6.10). The Desktop is served only in ui Mode; nil assets in ui Mode mean
+	// this binary carries no Desktop, so say so rather than serve one that 404s.
+	if d.cfg.Mode == "ui" {
+		if assets == nil {
+			log.Print("WARNING: ui Mode, but the Desktop was not built into this binary. Build it (npm --prefix desktop run build) before go build, or run the release image")
+		}
+	} else {
+		assets = nil
+	}
+
 	provider, model, err := d.provider()
 	if err != nil {
 		return err
@@ -161,7 +172,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	d.osName = osRelease()
 	browserOK, _ := d.browserStatus()
-	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: cfg.Mode, Landlock: d.abi >= 1, Browser: browserOK})
+	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Browser: browserOK})
 	ledger := &software.Ledger{DB: d.db}
 	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf,
 		Owners: d.socketOwners}
@@ -173,7 +184,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	tools := append(tool.SessionTools(), tool.FilesTools()...)
 	tools = append(append(append(tools, tool.InternetTools()...), tool.SoftwareTools()...), tool.ServiceTools()...)
 	tools = append(tools, tool.CoordinationTools()...)
-	if cfg.Mode == "ui" {
+	if d.cfg.Mode == "ui" {
 		// In cli Mode there is no Desktop to show anything (PLAN.md §9).
 		tools = append(tools, tool.DesktopTools()...)
 	}
@@ -221,7 +232,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	// Bind before signalling readiness so that, under Type=notify, `systemctl start
 	// aos` (and install.sh above it) cannot return before the socket is accepting
 	// (M6.2). cli Mode has no Desktop, so it binds only the control socket (M6.4).
-	tcpLn, sock, err := bindListeners(cfg.Mode, fmt.Sprintf(":%d", Port), SocketPath)
+	tcpLn, sock, err := bindListeners(d.cfg.Mode, fmt.Sprintf(":%d", Port), SocketPath)
 	if err != nil {
 		return err
 	}
@@ -245,10 +256,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}()
 
 	if tcpLn != nil {
-		log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d", cfg.Mode, model, d.abi, Port)
+		log.Printf("%s Mode, model %s, Landlock ABI %d; listening on :%d", d.cfg.Mode, model, d.abi, Port)
 		log.Printf("Open the Desktop at http://<this-host>:%d/ and sign in", Port)
 	} else {
-		log.Printf("%s Mode, model %s, Landlock ABI %d; control socket only, no TCP port", cfg.Mode, model, d.abi)
+		log.Printf("%s Mode, model %s, Landlock ABI %d; control socket only, no TCP port", d.cfg.Mode, model, d.abi)
 	}
 
 	select {

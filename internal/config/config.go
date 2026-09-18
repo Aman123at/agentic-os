@@ -13,7 +13,10 @@ import (
 
 // Config is aosd's configuration.
 type Config struct {
-	Mode, ImageMode        string
+	// Mode is ui (the Desktop, behind a password) or cli (the control socket
+	// only). One image carries both (M6.10); AOS_MODE seeds the generated
+	// config.yml, then the file's mode: key is the source of truth (ADR-0010).
+	Mode                   string
 	Model, ReasoningEffort string
 	BaseURL                string
 	// Filesystem is where Agents may write (ADR-0004, M6.8): "home" confines them
@@ -82,7 +85,6 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	c := Config{
 		TaskCostLimit:   money("AOS_TASK_COST_LIMIT_USD"),
 		DailyCostLimit:  money("AOS_DAILY_COST_LIMIT_USD"),
-		ImageMode:       getenv("AOS_IMAGE_MODE"),
 		Model:           str("OPENAI_MODEL", ""),
 		ReasoningEffort: str("OPENAI_REASONING_EFFORT", ""),
 		BaseURL:         str("OPENAI_BASE_URL", ""),
@@ -101,7 +103,7 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	if c.ConfigPath == "" {
 		c.ConfigPath = "/etc/aos/config.yml"
 	}
-	c.Mode = str("AOS_MODE", c.ImageMode)
+	c.Mode = str("AOS_MODE", "ui")
 	if c.Mode != "cli" && c.Mode != "ui" {
 		errs = append(errs, fmt.Sprintf("AOS_MODE=%q must be cli or ui", c.Mode))
 	}

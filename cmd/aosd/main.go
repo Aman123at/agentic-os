@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"io/fs"
 	"log"
 	"os"
 	"os/signal"
@@ -42,19 +41,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	if cfg.Mode == "ui" && cfg.ImageMode == "cli" {
-		log.Fatal("AOS_MODE=ui, but this image was built for cli Mode. Rebuild it: docker compose up --build")
-	}
 	if cfg.Bind != "127.0.0.1" && cfg.Bind != "localhost" {
 		log.Printf("WARNING: AOS_BIND=%s publishes port %s beyond this computer", cfg.Bind, cfg.HostPort)
 	}
-	var assets fs.FS
-	if cfg.Mode == "ui" {
-		assets = webui.Assets()
-	}
+	// One image always compiles the embed (M6.10); the Mode in force is decided
+	// by config.yml inside daemon.Run, which serves these only in ui Mode. nil
+	// here means the Desktop was never built into this binary.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
-	if err := daemon.Run(ctx, cfg, assets); err != nil {
+	if err := daemon.Run(ctx, cfg, webui.Assets()); err != nil {
 		log.Fatal(err)
 	}
 }

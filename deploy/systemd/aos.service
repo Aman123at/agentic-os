@@ -22,9 +22,8 @@ StartLimitBurst=5
 [Service]
 Type=notify
 ExecStart=/usr/local/bin/aosd
-# AOS_MODE moves into /etc/aos/config.yml in M6.10; until then the native
-# install runs the Desktop, reached over the network behind a password.
-Environment=AOS_MODE=ui
+# Mode is a config.yml key (M6.10): install.sh writes mode: ui, and the built-in
+# default is ui too, so the native install runs the Desktop with no env here.
 Restart=always
 RestartSec=2
 # SIGTERM to aosd, which drains Tasks and then closes the control socket;

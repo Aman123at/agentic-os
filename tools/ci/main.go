@@ -23,21 +23,20 @@ import (
 	"github.com/Aman123at/agentic-os/internal/daemon"
 )
 
-// Image size targets (PLAN.md §16): unpacked MB per target, compressed MB for any.
-// Unpacked and compressed size targets (PLAN.md §16), per image. ui+browser
-// is ui built with INCLUDE_BROWSER=true (M5.2).
-var sizeTargets = map[string]int{"cli": 520, "ui": 540, "ui+browser": 820}
+// Image size targets (PLAN.md §16): unpacked MB per image, compressed MB per
+// image. One runtime image carries both Modes now (M6.10); `browser` is that
+// image built with INCLUDE_BROWSER=true (M5.2).
+var sizeTargets = map[string]int{"default": 540, "browser": 820}
 
-var compressedTargets = map[string]int{"cli": 180, "ui": 180, "ui+browser": 300}
+var compressedTargets = map[string]int{"default": 180, "browser": 300}
 
 // images are the builds the image stage measures.
 var images = []struct {
 	name, target, tag string
 	args              []string
 }{
-	{"cli", "cli", "agentic-os:cli", nil},
-	{"ui", "ui", "agentic-os:ui", nil},
-	{"ui+browser", "ui", "agentic-os:ui-browser", []string{"--build-arg", "INCLUDE_BROWSER=true"}},
+	{"default", "aos", "agentic-os", nil},
+	{"browser", "aos", "agentic-os:browser", []string{"--build-arg", "INCLUDE_BROWSER=true"}},
 }
 
 // bundleBudgetKB is the Desktop's initial bundle target, gzipped (PLAN.md §16).

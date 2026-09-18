@@ -104,6 +104,7 @@ func TestInvalidValuesAreRefusedAndChangeNothing(t *testing.T) {
 		"base_url":             "not-a-url",
 		"require_landlock":     "maybe",
 		"filesystem":           "everywhere",
+		"mode":                 "gui",
 	} {
 		if _, err := s.Set(key, value); err == nil {
 			t.Errorf("%s=%q was accepted", key, value)

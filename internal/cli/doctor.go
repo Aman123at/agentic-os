@@ -26,11 +26,11 @@ func doctorCmd() *cobra.Command {
 			cancel()
 			if err != nil {
 				fmt.Fprintf(w, "aosd:      %v\n", explain(err))
-				fmt.Fprintf(w, "Mode:      %s (image built for %s)\n", envOr("AOS_MODE", "unset"), envOr("AOS_IMAGE_MODE", "unknown"))
+				fmt.Fprintf(w, "Mode:      %s\n", envOr("AOS_MODE", "unset"))
 			} else {
 				i := info.Msg
 				fmt.Fprintf(w, "aosd:      running, version %s\n", i.Version)
-				fmt.Fprintf(w, "Mode:      %s (image built for %s)\n", i.Mode, envOr("AOS_IMAGE_MODE", "unknown"))
+				fmt.Fprintf(w, "Mode:      %s\n", i.Mode)
 				fmt.Fprintf(w, "Model:     %s\n", i.Model)
 				fmt.Fprintf(w, "Autonomy:  %s, up to %d Tasks at once\n", autonomyName(i.Autonomy), i.MaxTasks)
 				fmt.Fprintf(w, "API key:   %s\n", keyText(i))

@@ -1,19 +1,20 @@
 # syntax=docker/dockerfile:1.7
 #
-# Targets (PLAN.md §6.1): `cli` and `ui`. Compose selects one with target: ${AOS_MODE}.
-# BuildKit builds only the stages the chosen target needs, so `cli` never runs Node.
+# One runtime image (PLAN.md §6.1, M6.10): the `aos` target always carries the
+# embedded Desktop, and Mode is a runtime config.yml key rather than a build
+# target. INCLUDE_BROWSER is the only remaining build-time fork (ADR-0008).
 
 ARG GO_VERSION=1.27.1
 ARG NODE_VERSION=24.21.0
 ARG NODE_SHA256_ARM64=6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2
 ARG NODE_SHA256_X64=fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
 # The Browser app (PLAN.md M5.2, ADR-0008): `true` adds Chromium's headless
-# shell to the ui image. Playwright pins the build; keep this in step with
-# desktop/package.json's @playwright/test.
+# shell to the image (used in ui Mode). Playwright pins the build; keep this in
+# step with desktop/package.json's @playwright/test.
 ARG INCLUDE_BROWSER=false
 ARG PLAYWRIGHT_VERSION=1.63.0
 
-# ---------------------------------------------------------------- Desktop (ui only)
+# ---------------------------------------------------------------- Desktop
 FROM --platform=$BUILDPLATFORM node:24-slim AS desktop-build
 WORKDIR /src/desktop
 COPY desktop/package.json desktop/package-lock.json ./
@@ -47,18 +48,15 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 FROM scratch AS go-test
 COPY --from=go-test-run /report/ /
 
-FROM go-base AS aosd-cli
-ARG TARGETOS TARGETARCH
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -ldflags "-s -w" -o /out/ ./cmd/aosd
-
-FROM go-base AS aosd-ui
+# One binary carries the Desktop; there is no build tag (M6.10). Assets() serves
+# the embedded dist only when index.html is present, which it is once Vite has
+# built it into internal/webui/dist/.
+FROM go-base AS aosd
 ARG TARGETOS TARGETARCH
 COPY --from=desktop-build /src/desktop/dist/ internal/webui/dist/
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
-    go build -trimpath -tags desktop -ldflags "-s -w" -o /out/ ./cmd/aosd
+    go build -trimpath -ldflags "-s -w" -o /out/ ./cmd/aosd
 
 # ---------------------------------------------------------------- Node.js (baseline software)
 FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS node-dist
@@ -139,16 +137,11 @@ RUN chmod 0440 /etc/sudoers.d/aos \
 WORKDIR /home/aos
 EXPOSE 7700
 
-FROM machine AS cli
-COPY --from=aosd-cli /out/ /usr/local/bin/
-ENV AOS_IMAGE_MODE=cli
-ENTRYPOINT ["/usr/local/bin/aosd"]
-
-# Build arguments pick one of these two; BuildKit never builds the other, so a
+# INCLUDE_BROWSER picks one of these two; BuildKit never builds the other, so a
 # default build downloads no browser. Any value but true or false fails here.
-FROM machine AS ui-browser-false
+FROM machine AS browser-false
 
-FROM machine AS ui-browser-true
+FROM machine AS browser-true
 # Only the libraries the headless shell links (the ldd check below keeps this
 # honest) and a small set of fonts: Liberation for the web's common faces, Noto
 # for emoji. apt's cache and lists go to /tmp here: the Machine's apt config
@@ -167,7 +160,6 @@ COPY --from=browser-dist /opt/aos-browser/ /opt/aos-browser/
 # Fail the build, not the first launch, if a library is missing.
 RUN ! LD_LIBRARY_PATH=/opt/aos-browser/lib ldd /opt/aos-browser/chrome | grep "not found"
 
-FROM ui-browser-${INCLUDE_BROWSER} AS ui
-COPY --from=aosd-ui /out/ /usr/local/bin/
-ENV AOS_IMAGE_MODE=ui
+FROM browser-${INCLUDE_BROWSER} AS aos
+COPY --from=aosd /out/ /usr/local/bin/
 ENTRYPOINT ["/usr/local/bin/aosd"]

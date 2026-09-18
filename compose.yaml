@@ -7,11 +7,12 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      target: ${AOS_MODE:-ui}
+      # One runtime image carries both Modes (M6.10); Mode is a config.yml key.
+      target: aos
       args:
         # The Browser app, ui Mode only (PLAN.md M5.2).
         INCLUDE_BROWSER: ${INCLUDE_BROWSER:-false}
-    image: agentic-os:${AOS_MODE:-ui}
+    image: agentic-os
     init: true
     hostname: aos
     stop_grace_period: 30s

@@ -126,6 +126,21 @@ type startupField struct {
 }
 
 var startupFields = []startupField{
+	{key: "mode", env: "AOS_MODE",
+		doc: "The Machine's Mode: ui (the Desktop, reached over the network behind a password) or cli (the control socket only, no web UI).",
+		validate: func(s string) error {
+			if s == "cli" || s == "ui" {
+				return nil
+			}
+			return errors.New("mode is cli or ui")
+		},
+		apply: func(c *config.Config, s string) error { c.Mode = s; return nil },
+		current: func(c config.Config) string {
+			if c.Mode == "" {
+				return "ui"
+			}
+			return c.Mode
+		}},
 	{key: "base_url", env: "OPENAI_BASE_URL",
 		doc: "OpenAI-compatible API base URL; empty uses OpenAI's own. Decides where the API key is sent.",
 		validate: func(s string) error {
