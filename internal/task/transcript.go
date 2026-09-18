@@ -3,7 +3,7 @@ package task
 import (
 	"encoding/json"
 
-	"github.com/amantiwari/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/llm"
 )
 
 // cutShort is the output of a call that never finished because AOS stopped:

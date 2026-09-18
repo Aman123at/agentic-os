@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // base is what aosd reads from the environment: here AOS_MAX_TASKS was set and

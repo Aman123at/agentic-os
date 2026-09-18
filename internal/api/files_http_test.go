@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // fileServer is the API over a temp home folder, with file operations in

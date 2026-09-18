@@ -11,7 +11,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/amantiwari/agentic-os/gen/go/aos/v1/aosv1connect"
+	"github.com/Aman123at/agentic-os/gen/go/aos/v1/aosv1connect"
 )
 
 // socketPath is aosd's Unix socket inside the Machine.

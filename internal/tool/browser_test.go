@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/browser"
 )
 
 type fakePage struct {

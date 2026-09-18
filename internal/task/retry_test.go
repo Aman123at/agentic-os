@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/llm/fake"
-	"github.com/amantiwari/agentic-os/internal/policy"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/llm/fake"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 func deleteMissing(n string) fake.Turn {

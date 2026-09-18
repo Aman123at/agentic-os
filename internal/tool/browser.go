@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/amantiwari/agentic-os/internal/browser"
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // BrowserPage is the Desktop Browser's page as a Task uses it (browser.Agent).

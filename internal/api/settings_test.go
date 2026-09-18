@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/settings"
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/settings"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // settingJSON is a Setting as the API sends it. Responses are decoded, never

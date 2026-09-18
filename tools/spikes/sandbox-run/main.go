@@ -14,7 +14,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 type list []string

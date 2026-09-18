@@ -20,9 +20,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/events"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/events"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // Services lets a Restore return Services to earlier definitions.

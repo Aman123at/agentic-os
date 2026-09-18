@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // WorkerArg is the argument that turns aosd into a file worker (`aosd __files`).

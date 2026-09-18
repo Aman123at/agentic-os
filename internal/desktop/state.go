@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // MaxState caps a saved layout, so a runaway client cannot fill the database.

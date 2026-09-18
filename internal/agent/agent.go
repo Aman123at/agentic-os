@@ -16,11 +16,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // Config is how Agents think.

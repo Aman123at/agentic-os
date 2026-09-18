@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 func TestStateRoundTrip(t *testing.T) {

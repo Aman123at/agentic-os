@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/internal/session"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/session"
 )
 
 // framingCase is one kind of command in the M0.2 corpus.

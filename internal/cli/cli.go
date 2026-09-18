@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // exitError carries a process exit code out of a command.

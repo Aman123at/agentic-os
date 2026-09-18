@@ -6,7 +6,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // CoordinationTools returns the Coordination group.

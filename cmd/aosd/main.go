@@ -12,13 +12,13 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/amantiwari/agentic-os/internal/cli"
-	"github.com/amantiwari/agentic-os/internal/config"
-	"github.com/amantiwari/agentic-os/internal/daemon"
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/internal/service"
-	"github.com/amantiwari/agentic-os/internal/webui"
+	"github.com/Aman123at/agentic-os/internal/cli"
+	"github.com/Aman123at/agentic-os/internal/config"
+	"github.com/Aman123at/agentic-os/internal/daemon"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/service"
+	"github.com/Aman123at/agentic-os/internal/webui"
 )
 
 func main() {

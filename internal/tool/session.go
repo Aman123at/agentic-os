@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // Sessions runs commands for one Task (PLAN.md §10).

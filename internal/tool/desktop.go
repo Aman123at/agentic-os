@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // MaxNotifications is how many notifications one Task may send, so an Agent

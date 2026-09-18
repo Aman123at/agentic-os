@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // AgentConfig configures a Task's Agent Session.

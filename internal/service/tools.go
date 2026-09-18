@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // Tools gives Agents the Supervisor (tool.Services).

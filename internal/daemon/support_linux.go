@@ -17,11 +17,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/api"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/session"
-	"github.com/amantiwari/agentic-os/internal/store"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/api"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/session"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // ---------------------------------------------------------------- paths the user locked

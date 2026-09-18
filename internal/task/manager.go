@@ -16,16 +16,16 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/agent"
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/events"
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/settings"
-	"github.com/amantiwari/agentic-os/internal/store"
-	"github.com/amantiwari/agentic-os/internal/tool"
-	"github.com/amantiwari/agentic-os/internal/usage"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/agent"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/events"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/settings"
+	"github.com/Aman123at/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/tool"
+	"github.com/Aman123at/agentic-os/internal/usage"
 )
 
 // Config wires a Manager.

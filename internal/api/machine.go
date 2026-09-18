@@ -7,10 +7,10 @@ import (
 
 	"connectrpc.com/connect"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/service"
-	"github.com/amantiwari/agentic-os/internal/software"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/service"
+	"github.com/Aman123at/agentic-os/internal/software"
 )
 
 // ---------------------------------------------------------------- Software (PLAN.md §11)

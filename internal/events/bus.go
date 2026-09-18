@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 // buffer is how far a subscriber may fall behind before it is dropped. A dropped

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/store"
-	"github.com/amantiwari/agentic-os/internal/usage"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/usage"
 )
 
 func TestUsageListsTheLastDaysEndingToday(t *testing.T) {

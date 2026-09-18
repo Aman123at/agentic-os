@@ -17,7 +17,7 @@ import (
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // rcFile is the Session's bash rc. Markers go to /dev/tty so they survive a

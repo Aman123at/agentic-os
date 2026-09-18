@@ -11,9 +11,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // Spec describes a Tool.

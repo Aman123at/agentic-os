@@ -16,7 +16,7 @@ import (
 	"golang.org/x/term"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 func isTTY(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }

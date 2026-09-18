@@ -8,10 +8,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/browser"
-	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // browserStatus says whether the Browser app can run (PLAN.md M5.2) and, when

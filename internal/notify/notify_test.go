@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/events"
-	"github.com/amantiwari/agentic-os/internal/store"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/events"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 func newCenter(t *testing.T) (*Center, <-chan *aosv1.Event, *time.Time) {

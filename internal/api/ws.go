@@ -8,7 +8,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/amantiwari/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/browser"
 )
 
 // control is a text frame from a viewer; binary frames are keystrokes.

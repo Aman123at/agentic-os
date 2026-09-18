@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // Config is aosd's configuration.

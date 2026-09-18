@@ -7421,7 +7421,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\aMetrics\x12\x16.aos.v1.MetricsRequest\x1a\x17.aos.v1.MetricsResponse\x12@\n" +
 	"\tProcesses\x12\x18.aos.v1.ProcessesRequest\x1a\x19.aos.v1.ProcessesResponse\x12X\n" +
 	"\x11ListNotifications\x12 .aos.v1.ListNotificationsRequest\x1a!.aos.v1.ListNotificationsResponse\x12^\n" +
-	"\x13DismissNotification\x12\".aos.v1.DismissNotificationRequest\x1a#.aos.v1.DismissNotificationResponseB6Z4github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
+	"\x13DismissNotification\x12\".aos.v1.DismissNotificationRequest\x1a#.aos.v1.DismissNotificationResponseB6Z4github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
 
 var (
 	file_aos_v1_services_proto_rawDescOnce sync.Once

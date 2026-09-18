@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/tool"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // Tools gives Agents the Manager (tool.Software).

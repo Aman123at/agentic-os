@@ -13,7 +13,7 @@ import (
 	"connectrpc.com/connect"
 	"golang.org/x/term"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 const chatPrompt = "› "

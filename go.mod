@@ -1,4 +1,4 @@
-module github.com/amantiwari/agentic-os
+module github.com/Aman123at/agentic-os
 
 go 1.27.1
 

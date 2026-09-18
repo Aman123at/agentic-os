@@ -8,7 +8,7 @@ import (
 	connect "connectrpc.com/connect"
 	context "context"
 	errors "errors"
-	v1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	v1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 	http "net/http"
 	strings "strings"
 )

@@ -13,9 +13,9 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/events"
-	"github.com/amantiwari/agentic-os/internal/store"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/events"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // Keep is how many notifications are kept, dismissed or not; older ones are

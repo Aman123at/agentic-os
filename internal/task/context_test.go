@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/llm/fake"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/llm/fake"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 func TestConversationsStartWithTheContextAndFollowUpsGetItWhenItChanged(t *testing.T) {

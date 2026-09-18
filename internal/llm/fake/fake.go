@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/amantiwari/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/llm"
 )
 
 // Turn produces the model's response to one request.

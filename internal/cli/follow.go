@@ -11,7 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 // follower prints a Task's progress as it happens.

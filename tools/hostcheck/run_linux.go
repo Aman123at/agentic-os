@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // Options describes the Machine under test.

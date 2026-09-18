@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/proxy"
+	"github.com/Aman123at/agentic-os/internal/proxy"
 )
 
 // SessionCookie is the Desktop's sign-in cookie; Service forwarding never passes it on.

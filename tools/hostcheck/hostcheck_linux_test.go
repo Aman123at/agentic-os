@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 func TestMain(m *testing.M) {

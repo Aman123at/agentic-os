@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // bind80 binds and listens on port 80 without root.

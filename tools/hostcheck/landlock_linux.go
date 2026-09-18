@@ -9,7 +9,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/amantiwari/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
 // checkLandlock is prototype M0.1, with the home layout decided after M0 (ADR-0004).

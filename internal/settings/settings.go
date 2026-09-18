@@ -14,8 +14,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 // Values are the settings in force.

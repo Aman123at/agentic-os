@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/amantiwari/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/files"
 )
 
 // The plain HTTP routes for file bytes (PLAN.md §13). Browsers cannot stream

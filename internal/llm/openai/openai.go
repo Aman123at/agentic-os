@@ -14,7 +14,7 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 
-	"github.com/amantiwari/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/llm"
 )
 
 // DefaultModel is aosd's built-in model (PLAN.md §6.4).

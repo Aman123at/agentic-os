@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 // Sampler reads the Machine's metrics. CPU use is a rate, so it keeps the

@@ -13,16 +13,16 @@ import (
 	"testing"
 	"time"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/audit"
-	"github.com/amantiwari/agentic-os/internal/events"
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/llm/fake"
-	"github.com/amantiwari/agentic-os/internal/policy"
-	"github.com/amantiwari/agentic-os/internal/settings"
-	"github.com/amantiwari/agentic-os/internal/store"
-	"github.com/amantiwari/agentic-os/internal/tool"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/events"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/llm/fake"
+	"github.com/Aman123at/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/settings"
+	"github.com/Aman123at/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/tool"
 )
 
 // harness is a Manager on a temp database and home folder, with the Files,

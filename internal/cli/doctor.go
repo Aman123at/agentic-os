@@ -10,9 +10,9 @@ import (
 	"connectrpc.com/connect"
 	"github.com/spf13/cobra"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/internal/sandbox"
-	"github.com/amantiwari/agentic-os/tools/hostcheck"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/sandbox"
+	"github.com/Aman123at/agentic-os/tools/hostcheck"
 )
 
 func doctorCmd() *cobra.Command {

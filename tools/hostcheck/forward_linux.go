@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/proxy"
+	"github.com/Aman123at/agentic-os/internal/proxy"
 )
 
 // checkForwarding is prototype M0.5 without the browser part: HTTP and WebSocket

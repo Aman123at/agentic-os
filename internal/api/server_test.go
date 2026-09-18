@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 func TestAPIResponsesAreNotCompressed(t *testing.T) {

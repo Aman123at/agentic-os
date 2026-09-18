@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 // styles are ANSI styles, or empty when output isn't a terminal.

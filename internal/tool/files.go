@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/files"
-	"github.com/amantiwari/agentic-os/internal/policy"
+	"github.com/Aman123at/agentic-os/internal/files"
+	"github.com/Aman123at/agentic-os/internal/policy"
 )
 
 // maxReadBytes caps one read_file result.

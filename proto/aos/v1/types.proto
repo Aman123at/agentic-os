@@ -4,7 +4,7 @@ package aos.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/amantiwari/agentic-os/gen/go/aos/v1;aosv1";
+option go_package = "github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1";
 
 // Autonomy is how much an Agent may do without asking (CONTEXT.md).
 enum Autonomy {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amantiwari/agentic-os/internal/llm"
-	"github.com/amantiwari/agentic-os/internal/store"
+	"github.com/Aman123at/agentic-os/internal/llm"
+	"github.com/Aman123at/agentic-os/internal/store"
 )
 
 const example = `# USD per 1M tokens

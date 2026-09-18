@@ -13,9 +13,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	aosv1 "github.com/amantiwari/agentic-os/gen/go/aos/v1"
-	"github.com/amantiwari/agentic-os/gen/go/aos/v1/aosv1connect"
-	"github.com/amantiwari/agentic-os/internal/files"
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/gen/go/aos/v1/aosv1connect"
+	"github.com/Aman123at/agentic-os/internal/files"
 )
 
 // noLocks is a Protected with nothing locked.
