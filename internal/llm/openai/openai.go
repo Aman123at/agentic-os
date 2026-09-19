@@ -37,7 +37,7 @@ type Provider struct {
 }
 
 // ErrNoKey means no API key is configured.
-var ErrNoKey = errors.New("no OpenAI API key: set OPENAI_API_KEY in .env and run `docker compose up -d` again")
+var ErrNoKey = errors.New("no OpenAI API key: set one in System Settings, or write it to /run/secrets/openai_api_key and run `sudo aos daemon restart`")
 
 // Respond implements llm.Provider.
 func (p *Provider) Respond(ctx context.Context, req llm.Request, onText func(string)) (llm.Response, error) {

@@ -66,7 +66,7 @@ func explain(err error) error {
 	var ne *net.OpError
 	if errors.As(err, &ne) {
 		if _, statErr := os.Stat(socketPath); statErr != nil {
-			return fmt.Errorf("aosd is not running (no %s). Start the Machine: docker compose up -d", socketPath)
+			return fmt.Errorf("aosd is not running (no %s). Start it: sudo aos daemon restart (or systemctl start aos)", socketPath)
 		}
 		return fmt.Errorf("cannot reach aosd at %s: %v", socketPath, ne.Err)
 	}

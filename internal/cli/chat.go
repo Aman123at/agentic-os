@@ -49,7 +49,7 @@ func chat(ctx context.Context) error {
 	fmt.Fprintf(out, "%sAgentic OS%s · %s · Autonomy %s · Ctrl-C cancels the running Task, Ctrl-D quits\n",
 		st.bold, st.reset, info.Msg.Model, autonomyName(info.Msg.Autonomy))
 	if info.Msg.ApiKey != "present" {
-		fmt.Fprintf(out, "%sNo OpenAI API key: set OPENAI_API_KEY in .env and run docker compose up -d again, or set one in System Settings.%s\n", st.yellow, st.reset)
+		fmt.Fprintf(out, "%sNo OpenAI API key: set one in System Settings, or write it to /run/secrets/openai_api_key and run sudo aos daemon restart.%s\n", st.yellow, st.reset)
 	}
 
 	s := &chatSession{c: c, t: t, out: out, st: st, answers: make(chan string)}
