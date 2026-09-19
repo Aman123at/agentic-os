@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -92,6 +93,121 @@ func TestInstallMissingLibrary(t *testing.T) {
 	}
 	if _, statErr := os.Stat(in.Root); !os.IsNotExist(statErr) {
 		t.Errorf("install dir left behind after a missing library: %v", statErr)
+	}
+}
+
+// depsInstaller builds an Installer whose faked ldconfig reads a mutable set of
+// present libraries, whose apt-cache knows a fixed set of packages, and whose
+// apt-get "installs" a package by adding the sonames it provides to that set —
+// enough to drive installDeps and the re-check without a network or apt.
+func depsInstaller(t *testing.T, libs []string, present, aptHas map[string]bool, provides map[string][]string) (*Installer, *[]string) {
+	t.Helper()
+	zipBytes := makeZip(t, makeELF(libs))
+	sum := sha256.Sum256(zipBytes)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(zipBytes)
+	}))
+	t.Cleanup(srv.Close)
+
+	installed := []string{}
+	in := &Installer{
+		Root:        filepath.Join(t.TempDir(), "aos-browser"),
+		Arch:        "amd64",
+		Pins:        map[string]Pin{"amd64": {Version: "1.2.3", Platform: "linux64", SHA256: hex.EncodeToString(sum[:])}},
+		BaseURL:     srv.URL,
+		FreeBytes:   func(string) (uint64, error) { return 10 << 30, nil },
+		InstallDeps: true,
+		Ldconfig: func(context.Context) (string, error) {
+			out := "\t"
+			for lib := range present {
+				out += lib + " (libc6,x86-64) => /lib/" + lib + "\n\t"
+			}
+			return out, nil
+		},
+		AptCache: func(_ context.Context, args ...string) (string, error) {
+			pkg := args[len(args)-1]
+			if aptHas[pkg] {
+				return "Package: " + pkg + "\n", nil
+			}
+			return "", errors.New("E: No packages found")
+		},
+		Apt: func(_ context.Context, args ...string) (string, error) {
+			if args[0] != "install" {
+				return "", nil
+			}
+			for _, a := range args {
+				installed = append(installed, a)
+				for _, lib := range provides[a] {
+					present[lib] = true
+				}
+			}
+			return "", nil
+		},
+	}
+	return in, &installed
+}
+
+func TestInstallInstallsMissingDeps(t *testing.T) {
+	in, installed := depsInstaller(t,
+		[]string{"libnss3.so", "libgbm.so.1"},
+		map[string]bool{"libnss3.so": true},
+		map[string]bool{"libgbm1": true},
+		map[string][]string{"libgbm1": {"libgbm.so.1"}},
+	)
+	if err := in.Install(context.Background()); err != nil {
+		t.Fatalf("Install with deps: %v", err)
+	}
+	if !in.Installed() {
+		t.Error("Installed() = false after installing deps")
+	}
+	found := false
+	for _, a := range *installed {
+		if a == "libgbm1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("libgbm1 was not apt-installed: %v", *installed)
+	}
+}
+
+func TestInstallPrefersAvailablePackageName(t *testing.T) {
+	// libasound.so.2 maps to both libasound2t64 (24.04) and libasound2; only the
+	// t64 name exists in this apt index, so only it is installed.
+	in, installed := depsInstaller(t,
+		[]string{"libasound.so.2"},
+		map[string]bool{},
+		map[string]bool{"libasound2t64": true},
+		map[string][]string{"libasound2t64": {"libasound.so.2"}},
+	)
+	if err := in.Install(context.Background()); err != nil {
+		t.Fatalf("Install with deps: %v", err)
+	}
+	for _, a := range *installed {
+		if a == "libasound2" {
+			t.Errorf("installed the non-existent package name libasound2: %v", *installed)
+		}
+	}
+}
+
+func TestInstallStillMissingAfterDeps(t *testing.T) {
+	// The soname is unmapped, so no package installs it; the install still fails
+	// and names it.
+	in, _ := depsInstaller(t,
+		[]string{"libmystery.so.9"},
+		map[string]bool{},
+		map[string]bool{},
+		map[string][]string{},
+	)
+	err := in.Install(context.Background())
+	if err == nil {
+		t.Fatal("Install did not refuse a library that no package provides")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("libmystery.so.9")) {
+		t.Errorf("error does not name the still-missing library: %v", err)
+	}
+	if _, statErr := os.Stat(in.Root); !os.IsNotExist(statErr) {
+		t.Errorf("install dir left behind: %v", statErr)
 	}
 }
 

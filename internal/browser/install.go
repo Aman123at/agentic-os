@@ -4,8 +4,10 @@
 // and a sha256 we pin ourselves (Playwright verifies nothing), checked for its
 // shared-library needs against `ldconfig -p`, refused under 1 GB free, and
 // unpacked to a staging path that is renamed into place only once it verifies.
-// It stays out of the Install Ledger — Restore would otherwise remove the
-// browser's libraries out from under it (ADR-0008 M6 amendment).
+// When libraries are missing and InstallDeps is set, the install apt-gets the
+// packages that provide them first (the command already runs as root), then
+// re-checks. It stays out of the Install Ledger — Restore would otherwise remove
+// the browser's libraries out from under it (ADR-0008 M6 amendment).
 package browser
 
 import (
@@ -69,17 +71,28 @@ var pins = map[string]Pin{
 }
 
 // Installer fetches and unpacks the headless shell. Its fields default to the
-// production values; tests override the pin, HTTP client, free-space and
-// ldconfig hooks to run without a network or a Linux kernel.
+// production values; tests override the pin, HTTP client, free-space, ldconfig
+// and apt hooks to run without a network or a Linux kernel.
 type Installer struct {
-	Root      string                                    // install dir; default InstallRoot
-	Arch      string                                    // GOARCH; default runtime.GOARCH
-	Pins      map[string]Pin                            // by GOARCH; default pins
-	BaseURL   string                                    // download host; default the CfT bucket
-	Client    *http.Client                              // default 10-minute client
-	FreeBytes func(dir string) (uint64, error)          // free space at dir; default statfs
-	Ldconfig  func(ctx context.Context) (string, error) // `ldconfig -p` output; default execs it
-	Out       io.Writer                                 // progress; nil discards
+	Root        string                                                    // install dir; default InstallRoot
+	Arch        string                                                    // GOARCH; default runtime.GOARCH
+	Pins        map[string]Pin                                            // by GOARCH; default pins
+	BaseURL     string                                                    // download host; default the CfT bucket
+	Client      *http.Client                                              // default 10-minute client
+	FreeBytes   func(dir string) (uint64, error)                          // free space at dir; default statfs
+	Ldconfig    func(ctx context.Context) (string, error)                 // `ldconfig -p` output; default execs it
+	InstallDeps bool                                                      // apt-get the missing libraries before failing
+	Apt         func(ctx context.Context, args ...string) (string, error) // `apt-get`; default execs it
+	AptCache    func(ctx context.Context, args ...string) (string, error) // `apt-cache`; default execs it
+	Out         io.Writer                                                 // progress; nil discards
+}
+
+// aptEnv is the environment apt runs under: a clean PATH and a non-interactive,
+// non-paging frontend so `apt-get install` never blocks on a prompt.
+var aptEnv = []string{
+	"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+	"HOME=/root", "LANG=C.UTF-8", "DEBIAN_FRONTEND=noninteractive",
+	"APT_LISTCHANGES_FRONTEND=none", "TERM=dumb",
 }
 
 func (in *Installer) root() string {
@@ -126,6 +139,26 @@ func (in *Installer) ldconfig(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("running ldconfig -p: %w", err)
 	}
 	return string(out), nil
+}
+
+func (in *Installer) apt(ctx context.Context, args ...string) (string, error) {
+	if in.Apt != nil {
+		return in.Apt(ctx, args...)
+	}
+	cmd := exec.CommandContext(ctx, "apt-get", args...)
+	cmd.Env = aptEnv
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+func (in *Installer) aptCache(ctx context.Context, args ...string) (string, error) {
+	if in.AptCache != nil {
+		return in.AptCache(ctx, args...)
+	}
+	cmd := exec.CommandContext(ctx, "apt-cache", args...)
+	cmd.Env = aptEnv
+	out, err := cmd.CombinedOutput()
+	return string(out), err
 }
 
 func (in *Installer) logf(format string, args ...any) {
@@ -184,8 +217,20 @@ func (in *Installer) Install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := in.checkLibraries(ctx, bin); err != nil {
+	missing, err := in.checkLibraries(ctx, bin)
+	if err != nil {
 		return err
+	}
+	if len(missing) > 0 && in.InstallDeps {
+		if err := in.installDeps(ctx, missing); err != nil {
+			return err
+		}
+		if missing, err = in.checkLibraries(ctx, bin); err != nil {
+			return err
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("the browser needs libraries this system does not have: %s. Install the packages that provide them (on Ubuntu, apt-get install the matching lib* packages), then run `aos browser install` again", strings.Join(missing, ", "))
 	}
 	// The Daemon runs Root/chrome; link it to the unpacked binary by a relative
 	// path so it survives the rename from staging.
@@ -247,22 +292,23 @@ func (in *Installer) download(ctx context.Context, pin Pin) ([]byte, error) {
 	return buf, nil
 }
 
-// checkLibraries reads the binary's DT_NEEDED entries and refuses any that
-// `ldconfig -p` does not resolve, so a box missing a library fails here with the
-// names to install rather than at the browser's first launch.
-func (in *Installer) checkLibraries(ctx context.Context, bin string) error {
+// checkLibraries reads the binary's DT_NEEDED entries and returns the sonames
+// that `ldconfig -p` does not resolve, so a box missing a library is caught here
+// — to install or to report — rather than at the browser's first launch. The
+// error return is only for a failure to read the binary or the cache.
+func (in *Installer) checkLibraries(ctx context.Context, bin string) ([]string, error) {
 	f, err := elf.Open(bin)
 	if err != nil {
-		return fmt.Errorf("reading the browser binary: %w", err)
+		return nil, fmt.Errorf("reading the browser binary: %w", err)
 	}
 	needed, err := f.ImportedLibraries()
 	f.Close()
 	if err != nil {
-		return fmt.Errorf("reading the browser's library needs: %w", err)
+		return nil, fmt.Errorf("reading the browser's library needs: %w", err)
 	}
 	cache, err := in.ldconfig(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	have := parseLdconfig(cache)
 	var missing []string
@@ -271,10 +317,107 @@ func (in *Installer) checkLibraries(ctx context.Context, bin string) error {
 			missing = append(missing, lib)
 		}
 	}
-	if len(missing) > 0 {
-		return fmt.Errorf("the browser needs libraries this system does not have: %s. Install the packages that provide them (on Ubuntu, apt-get install the matching lib* packages), then run `aos browser install` again", strings.Join(missing, ", "))
+	return missing, nil
+}
+
+// libPackages maps each shared-library soname the headless shell may need to the
+// Debian/Ubuntu package(s) that provide it. Ubuntu 24.04's time_t transition
+// renamed several packages with a "t64" suffix, so those sonames list both
+// names; installDeps keeps only the ones the box's apt index actually has, so
+// the same map works across releases without knowing the version.
+var libPackages = map[string][]string{
+	"libnss3.so":             {"libnss3"},
+	"libnssutil3.so":         {"libnss3"},
+	"libsmime3.so":           {"libnss3"},
+	"libnspr4.so":            {"libnspr4"},
+	"libatk-1.0.so.0":        {"libatk1.0-0t64", "libatk1.0-0"},
+	"libatk-bridge-2.0.so.0": {"libatk-bridge2.0-0t64", "libatk-bridge2.0-0"},
+	"libatspi.so.0":          {"libatspi2.0-0t64", "libatspi2.0-0"},
+	"libcups.so.2":           {"libcups2t64", "libcups2"},
+	"libdrm.so.2":            {"libdrm2"},
+	"libgbm.so.1":            {"libgbm1"},
+	"libxkbcommon.so.0":      {"libxkbcommon0"},
+	"libXcomposite.so.1":     {"libxcomposite1"},
+	"libXdamage.so.1":        {"libxdamage1"},
+	"libXfixes.so.3":         {"libxfixes3"},
+	"libXrandr.so.2":         {"libxrandr2"},
+	"libXrender.so.1":        {"libxrender1"},
+	"libXext.so.6":           {"libxext6"},
+	"libX11.so.6":            {"libx11-6"},
+	"libxcb.so.1":            {"libxcb1"},
+	"libXi.so.6":             {"libxi6"},
+	"libpango-1.0.so.0":      {"libpango-1.0-0"},
+	"libpangocairo-1.0.so.0": {"libpangocairo-1.0-0"},
+	"libcairo.so.2":          {"libcairo2"},
+	"libasound.so.2":         {"libasound2t64", "libasound2"},
+	"libdbus-1.so.3":         {"libdbus-1-3"},
+	"libexpat.so.1":          {"libexpat1"},
+	"libglib-2.0.so.0":       {"libglib2.0-0t64", "libglib2.0-0"},
+	"libgio-2.0.so.0":        {"libglib2.0-0t64", "libglib2.0-0"},
+	"libgobject-2.0.so.0":    {"libglib2.0-0t64", "libglib2.0-0"},
+	"libudev.so.1":           {"libudev1"},
+}
+
+// installDeps apt-gets the packages that provide the missing sonames. It maps
+// each soname to its candidate package name(s), keeps only those the apt index
+// knows (so the 22.04/24.04 name fork resolves without checking the release),
+// updates the package lists and installs them. It never fails the whole install
+// for an unmapped or unavailable soname — the caller re-checks afterward and
+// reports whatever is still missing.
+func (in *Installer) installDeps(ctx context.Context, missing []string) error {
+	pkgs := in.availablePackages(ctx, packagesFor(missing))
+	if len(pkgs) == 0 {
+		return nil
+	}
+	in.logf("Installing system libraries the browser needs: %s ...", strings.Join(pkgs, " "))
+	if out, err := in.apt(ctx, "update"); err != nil {
+		return fmt.Errorf("apt-get update: %w\n%s", err, lastLines(out, 15))
+	}
+	args := []string{"install", "-y", "--no-install-recommends"}
+	args = append(args, pkgs...)
+	if out, err := in.apt(ctx, args...); err != nil {
+		return fmt.Errorf("installing the browser's libraries: %w\n%s", err, lastLines(out, 15))
 	}
 	return nil
+}
+
+// packagesFor maps missing sonames to candidate package names, de-duplicated in
+// first-seen order.
+func packagesFor(missing []string) []string {
+	var pkgs []string
+	seen := map[string]bool{}
+	for _, lib := range missing {
+		for _, pkg := range libPackages[lib] {
+			if !seen[pkg] {
+				seen[pkg] = true
+				pkgs = append(pkgs, pkg)
+			}
+		}
+	}
+	return pkgs
+}
+
+// availablePackages keeps only the candidate packages the apt index knows, so a
+// name that does not exist on this release (e.g. the non-t64 name on 24.04) is
+// dropped rather than failing the whole `apt-get install`.
+func (in *Installer) availablePackages(ctx context.Context, pkgs []string) []string {
+	var avail []string
+	for _, pkg := range pkgs {
+		if _, err := in.aptCache(ctx, "show", pkg); err == nil {
+			avail = append(avail, pkg)
+		}
+	}
+	return avail
+}
+
+// lastLines returns the final n lines of s, so a long apt log is trimmed to the
+// part that names the failure.
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) > n {
+		lines = lines[len(lines)-n:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // parseLdconfig turns `ldconfig -p` output into the set of library sonames it

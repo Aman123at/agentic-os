@@ -29,7 +29,8 @@ func browserCmd() *cobra.Command {
 }
 
 func browserInstallCmd() *cobra.Command {
-	return &cobra.Command{
+	var noDeps bool
+	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Download and install the Browser (run with sudo)",
 		Args:  cobra.NoArgs,
@@ -37,13 +38,15 @@ func browserInstallCmd() *cobra.Command {
 			if err := requireRoot("aos browser install"); err != nil {
 				return err
 			}
-			in := &browser.Installer{Out: cmd.OutOrStdout()}
+			in := &browser.Installer{Out: cmd.OutOrStdout(), InstallDeps: !noDeps}
 			if err := in.Install(cmd.Context()); err != nil {
 				return err
 			}
 			return applyBrowser(cmd, "true", "The Browser app is available in the Desktop.")
 		},
 	}
+	cmd.Flags().BoolVar(&noDeps, "no-deps", false, "don't apt-get the system libraries the browser needs; just report any that are missing")
+	return cmd
 }
 
 func browserRemoveCmd() *cobra.Command {
