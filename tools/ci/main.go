@@ -460,6 +460,17 @@ func release() error {
 	if err := os.MkdirAll(releaseDir, 0o755); err != nil {
 		return err
 	}
+	// The release binary must embed the Desktop, exactly as the Docker image does
+	// (docker/Dockerfile builds it and COPYs it into internal/webui/dist). Build
+	// it and stage it here so the `go build` below compiles it in; without this
+	// the binary embeds only the tracked .keep, so aosd serves the "cli Mode"
+	// note for every request even under mode: ui (internal/api/server.go).
+	if err := ui(); err != nil {
+		return err
+	}
+	if err := stageDesktop(); err != nil {
+		return err
+	}
 	unit := daemon.Unit()
 	var sums []string
 	for _, arch := range releaseArches {
@@ -487,6 +498,28 @@ func release() error {
 		fmt.Printf("    %s  %s\n", name, sum)
 	}
 	return os.WriteFile(filepath.Join(releaseDir, "SHA256SUMS"), []byte(strings.Join(sums, "\n")+"\n"), 0o644)
+}
+
+// stageDesktop copies the Desktop that ui() built (desktop/dist) into
+// internal/webui/dist, the tree cmd/aosd embeds (internal/webui/assets.go,
+// //go:embed all:dist). It clears a previous stage's files first — keeping the
+// tracked .keep — so a re-run is clean and os.CopyFS never collides with a file
+// that is already there.
+func stageDesktop() error {
+	dst := filepath.Join("internal", "webui", "dist")
+	entries, err := os.ReadDir(dst)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.Name() == ".keep" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dst, e.Name())); err != nil {
+			return err
+		}
+	}
+	return os.CopyFS(dst, os.DirFS(filepath.Join(desktopDir, "dist")))
 }
 
 // releaseVersion is the version stamped into the release binaries. A tagged
