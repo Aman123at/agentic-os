@@ -34,6 +34,18 @@ func TestTheContextGivesMemoryThenTheMachineProfile(t *testing.T) {
 	if strings.Contains(got, "8081 (nginx)") {
 		t.Errorf("a Service's port is listed twice:\n%s", got)
 	}
+	// M6.12: the Profile names /port/<n>/ and the persistent filesystem, and no
+	// longer the retired Shared Folder, the .localhost form or a fresh system.
+	for _, want := range []string{"/port/<n>/", "filesystem persists across restarts"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the Profile lacks %q:\n%s", want, got)
+		}
+	}
+	for _, gone := range []string{".localhost", "~/Shared", "fresh system", "survive a restart"} {
+		if strings.Contains(got, gone) {
+			t.Errorf("the Profile still carries the retired phrase %q:\n%s", gone, got)
+		}
+	}
 	if empty := Context(nil, Machine{}); strings.Contains(empty, "Memory") || !strings.Contains(empty, "Installed through AOS: nothing yet.") {
 		t.Errorf("without Memory or software:\n%s", empty)
 	}

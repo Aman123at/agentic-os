@@ -83,9 +83,9 @@ func render(m Machine, limit int) string {
 	if len(other) > 0 {
 		b.WriteString("- Also listening: " + list(other, limit, "") + ".\n")
 	}
-	b.WriteString("- Services and ports are reachable from the user's browser at http://<port>.localhost:<AOS port>.\n")
-	b.WriteString("- ~/Downloads holds downloads; ~/Shared is the Shared Folder (keep heavy work such as builds out of it).\n")
-	b.WriteString("- Outside the home folder, only software from install_package and /etc changes by root survive a restart.\n")
+	b.WriteString("- A Service or port is reachable in the user's browser at the AOS address under /port/<n>/ (n is the port).\n")
+	b.WriteString("- ~/Downloads holds downloads.\n")
+	b.WriteString("- The whole filesystem persists across restarts; make software and system changes through install_package and run_privileged_command so AOS can undo and replay them.\n")
 	return b.String()
 }
 

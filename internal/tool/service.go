@@ -79,12 +79,12 @@ type manageService struct{}
 
 func (manageService) Spec() Spec {
 	return Spec{Name: "manage_service", Description: strings.Join([]string{
-		"Manage Services: long-running programs AOS keeps running and starts again when the Machine restarts (there is no systemd).",
+		"Manage Services: long-running programs AOS supervises and starts again when the Machine restarts, rather than your own systemd units.",
 		"create runs command with bash in working_dir (default ~) as aos, confined like you; the command must stay in the foreground (e.g. nginx -g 'daemon off;').",
 		"Programs such as nginx need a configuration in the home folder: their default files under /var and /run are not writable for aos.",
 		"create and remove are Risky Actions, and root=true runs the Service as root outside the sandbox.",
 		"start, stop and restart act on an existing Service; status (name null for all) shows state and ports; logs shows recent output.",
-		"A Service listening on a port is reachable from the user's browser at http://<port>.localhost:<AOS port>.",
+		"A Service listening on a port is reachable in the user's browser at the AOS address under /port/<n>/ (n is the port).",
 	}, " "), Parameters: object(map[string]any{
 		"action":      str("create, remove, start, stop, restart, status or logs"),
 		"name":        optStr("Service name: lower-case letters, digits, '-', '_' and '.'"),

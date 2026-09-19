@@ -116,8 +116,7 @@ func (d *Daemon) startBrowser() (*browser.Process, error) {
 	// ~/.config is a Protected dotfile, so the profile and everything Chromium
 	// would put under XDG folders lives in one writable place.
 	profile := d.browserProfile()
-	env := append(d.userEnv(), "XDG_CONFIG_HOME="+profile+"/config", "XDG_CACHE_HOME="+profile+"/cache",
-		"LD_LIBRARY_PATH="+browser.LibDir)
+	env := append(d.userEnv(), "XDG_CONFIG_HOME="+profile+"/config", "XDG_CACHE_HOME="+profile+"/cache")
 	argv := append([]string{browser.Binary, "--user-data-dir=" + profile}, browser.Flags...)
 	cmd, err := sandbox.Command(rs, d.uid, d.gid, env, argv...)
 	if err != nil {

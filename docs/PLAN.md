@@ -1277,6 +1277,18 @@ are load-bearing rather than tidy:
     `instructions_test.go`, `profile_test.go` — the retired phrases are absent, the
     new ones present.
 
+    > **Built (M6.12).** `instructions.go` and `profile.go` are rewritten together:
+    > no "running in Docker", no "There is no systemd", no "fresh system", no
+    > `~/Shared` (retired in M6.6) — the prompt/Profile now name a persistent
+    > filesystem, `manage_service` over hand-written systemd units, and the
+    > `/port/<n>/` reachable form. `service.go`'s tool description, which the Agent
+    > reads in the same request, got the same two fixes. `browser.go`'s `--no-sandbox`
+    > comment is rewritten and `LibDir` / `LD_LIBRARY_PATH` are deleted (the dir they
+    > pointed at went with M6.11's `browser-dist` stage). New `instructions_test.go`
+    > plus extended `profile_test.go` assert the retired phrases are gone and the new
+    > ones present. Out of scope here: the bind-`127.0.0.1`/wildcard flag (M6.13) and
+    > the Desktop `Host` sweep (M6.14).
+
 13. **A wildcard listener is a publish, and AOS says so.** Under Docker an
     unpublished port was unreachable — the network namespace was the barrier.
     Natively there is none, so an Agent that starts a dev server on `0.0.0.0:3000`

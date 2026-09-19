@@ -18,19 +18,15 @@ import (
 	"time"
 )
 
-// Binary is where the image installs the headless shell (docker/Dockerfile).
+// Binary is where `aos browser install` puts the headless shell (M6.11,
+// internal/browser/install.go).
 const Binary = "/opt/aos-browser/chrome"
-
-// LibDir holds libraries the image keeps beside the browser rather than
-// installing their packages (libgbm, whose package pulls in Mesa); it goes on
-// the browser's LD_LIBRARY_PATH.
-const LibDir = "/opt/aos-browser/lib"
 
 // Flags are the headless shell's flags, besides --user-data-dir. The pipe
 // keeps DevTools off the network, so nothing else in the Machine can drive the
-// browser. --no-sandbox: the container is the sandbox, and aosd confines the
-// browser with Landlock like an Agent (Chromium's own sandbox needs user
-// namespaces, which Docker's default seccomp profile refuses).
+// browser. --no-sandbox: aosd confines the browser with Landlock like an Agent
+// (browserPolicy), and Chromium's own sandbox needs user namespaces AOS doesn't
+// grant.
 var Flags = []string{
 	"--remote-debugging-pipe",
 	"--no-sandbox",
