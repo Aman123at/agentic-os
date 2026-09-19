@@ -9,7 +9,7 @@ import { WALLPAPER_DESIGNS } from "../../shell/wallpaper";
 import type { ThemePref } from "../../theme";
 
 const THEMES: { value: ThemePref; name: string; hint: string }[] = [
-  { value: "auto", name: "Auto", hint: "Follow the Host" },
+  { value: "auto", name: "Auto", hint: "Follow your computer" },
   { value: "light", name: "Light", hint: "" },
   { value: "dark", name: "Dark", hint: "" },
 ];

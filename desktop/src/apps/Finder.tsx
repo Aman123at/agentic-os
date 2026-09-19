@@ -1,6 +1,6 @@
 // Finder browses the Machine's files over FileService, with the Trash over
 // TrashService (PLAN.md §4.3, §13). Navigation and the list, icon and column
-// views sit alongside the file actions: upload/download to the Host, move
+// views sit alongside the file actions: upload/download to the user's own computer, move
 // (drag-and-drop), Protect, move to Trash, restore/empty, and "Ask Agent…",
 // which starts a Task. The open folder refreshes live through Watch (§15), and
 // long folders are virtualised (§4.3 rule 5).
@@ -22,7 +22,7 @@ import {
   UploadError,
   basename,
   crumbs,
-  downloadToHost,
+  download,
   formatSize,
   formatWhen,
   iconFor,
@@ -37,7 +37,7 @@ type View = "list" | "icon" | "column";
 const ROW_H = 28;
 const COL_ROW_H = 24;
 const TRASH = ""; // the Trash "folder" browses TrashService, not FileService
-const DRAG_TYPE = "application/x-aos-path"; // an internal move, told apart from a Host-file drop
+const DRAG_TYPE = "application/x-aos-path"; // an internal move, told apart from a dropped file from the user's own computer
 // The Places sidebar’s width, kept with the window like the folder and the view.
 const SIDEBAR = { fallback: 160, min: 120, max: 360 };
 
@@ -234,7 +234,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
     [reload, refreshTrashCount],
   );
 
-  const doDownload = (e: FileInfo) => downloadToHost(e.path, e.name);
+  const doDownload = (e: FileInfo) => download(e.path, e.name);
   // Only a path the user locked can be unlocked; the menu disables the item for
   // the other kinds, so this decides on the same field it shows.
   const doProtect = (e: FileInfo) =>

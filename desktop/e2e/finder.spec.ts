@@ -28,13 +28,17 @@ test("Finder lists Home and shows a file created in the Machine", async ({ page 
 
   // The sidebar Places are always present (icon + name in one button).
   const sidebar = finder.locator(".finder__sidebar");
-  for (const place of ["Home", "Downloads", "Shared", "Trash"]) {
+  for (const place of ["Home", "Downloads", "Filesystem", "Trash"]) {
     await expect(sidebar.getByText(place)).toBeVisible();
   }
 
   // Home lists the file we just created.
   await sidebar.getByText("Home").click();
   await expect(finder.getByText(name)).toBeVisible();
+
+  // Filesystem opens the machine root, now that "/" is reachable (M6.14).
+  await sidebar.getByText("Filesystem").click();
+  await expect(finder.getByText("home", { exact: true })).toBeVisible();
 
   exec(c, "aos", "rm", "-f", `/home/aos/${name}`);
 });
@@ -141,7 +145,7 @@ test("Finder windows in two tabs leave connections for the rest of the Desktop",
   // event stream holds one; watched folders must not take the rest.
   const openFinders = async (p: Page) => {
     await p.goto("/");
-    for (const place of ["Home", "Downloads", "Shared"]) {
+    for (const place of ["Home", "Downloads", "Filesystem"]) {
       await openApp(p, "Finder");
       await p.locator('.window[aria-label="Finder"]').last().locator(".finder__sidebar").getByText(place).click();
     }
@@ -179,11 +183,13 @@ test("the lock badge covers built-in Protected Paths and what is inside them", a
   await expect(inherited).toBeDisabled();
   await page.keyboard.press("Escape");
 
-  // The Shared Folder is a built-in Protected Path, so what is in it is badged
-  // too, without anyone having locked anything.
+  // /shared is a built-in Protected Path, so what is in it is badged too,
+  // without anyone having locked anything. It is reached through Filesystem now
+  // that "/" is a Place (M6.14) — the Shared sidebar shortcut is gone.
   const guest = `pw-shared-${Date.now()}.txt`;
   sh(c, "aos", `printf 'shared\n' > /shared/${guest}`);
-  await finder.locator(".finder__sidebar").getByText("Shared").click();
+  await finder.locator(".finder__sidebar").getByText("Filesystem").click();
+  await finder.locator(".finder__row", { hasText: "shared" }).dblclick();
   const sharedRow = finder.locator(".finder__row", { hasText: guest });
   await expect(sharedRow.getByTitle("Protected")).toBeVisible();
   sh(c, "aos", `rm -f /shared/${guest}`);

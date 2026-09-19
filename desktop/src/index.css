@@ -1,6 +1,6 @@
 /* Agentic OS Desktop — a Sonoma/Sequoia-style shell (PLAN.md §4.3). The palette
    is CSS custom properties keyed off data-theme, which the theme module sets;
-   "auto" (no attribute) follows the Host's prefers-color-scheme. */
+   "auto" (no attribute) follows the user's own computer's prefers-color-scheme. */
 :root {
   --wall-top: #6ea8fe;
   --wall-bottom: #b39ddb;
@@ -53,7 +53,7 @@
   --code-tag: #7ee787;
 }
 
-/* The manual light choice must win even in a dark Host. */
+/* The manual light choice must win even when the user's own computer is dark. */
 :root[data-theme="light"] {
   --wall-top: #6ea8fe;
   --wall-bottom: #b39ddb;

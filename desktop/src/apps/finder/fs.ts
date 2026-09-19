@@ -20,7 +20,7 @@ export interface Place {
 export const PLACES: Place[] = [
   { id: "home", name: "Home", icon: "🏠", path: "~" },
   { id: "downloads", name: "Downloads", icon: "⬇️", path: "~/Downloads" },
-  { id: "shared", name: "Shared", icon: "🤝", path: "/shared" },
+  { id: "filesystem", name: "Filesystem", icon: "💽", path: "/" },
   { id: "trash", name: "Trash", icon: "🗑️", path: "" },
 ];
 
@@ -130,9 +130,9 @@ export async function ticketedRawUrl(path: string, download = false): Promise<st
   return `/files/raw?${q}`;
 }
 
-// downloadToHost saves a file to the user's own computer. The browser streams it
+// download saves a file to the user's own computer. The browser streams it
 // from /files/raw, so its size is no concern.
-export async function downloadToHost(path: string, name: string): Promise<void> {
+export async function download(path: string, name: string): Promise<void> {
   const a = document.createElement("a");
   a.href = await ticketedRawUrl(path, true);
   a.download = name;

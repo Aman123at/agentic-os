@@ -1,9 +1,10 @@
 // The Desktop's keyboard shortcuts (PLAN.md §4.3), remappable in System Settings.
 // A shortcut is a combo: the modifier flags plus the physical key (KeyboardEvent
-// `code`, so it is layout-stable and matches whatever the Host prints). Combos
-// are stored as a small string ("alt+Space", "alt+KeyW") in the Desktop's saved
-// state, so every tab shares the remap; shell/keyboard.ts matches against them.
-import { hostOS } from "./keyboard";
+// `code`, so it is layout-stable and matches whatever the user's keyboard
+// prints). Combos are stored as a small string ("alt+Space", "alt+KeyW") in the
+// Desktop's saved state, so every tab shares the remap; shell/keyboard.ts
+// matches against them.
+import { browserOS } from "./keyboard";
 
 export type Action = "spotlight" | "closeWindow" | "switchWindow";
 
@@ -16,11 +17,11 @@ export const ACTIONS: { id: Action; name: string; hint: string }[] = [
   { id: "switchWindow", name: "Switch Window", hint: "Cycle the open windows" },
 ];
 
-// defaultShortcuts follows the Host: only Spotlight differs (Ctrl+Space on
-// Windows, Alt+Space elsewhere); Close and Switch use Alt everywhere.
+// defaultShortcuts follows the user's own computer: only Spotlight differs
+// (Ctrl+Space on Windows, Alt+Space elsewhere); Close and Switch use Alt everywhere.
 export function defaultShortcuts(): ShortcutMap {
   return {
-    spotlight: hostOS() === "win" ? "ctrl+Space" : "alt+Space",
+    spotlight: browserOS() === "win" ? "ctrl+Space" : "alt+Space",
     closeWindow: "alt+KeyW",
     switchWindow: "alt+Backquote",
   };
@@ -64,7 +65,7 @@ export function matches(e: KeyboardEvent, combo: string): boolean {
   return !!c && e.altKey === c.alt && e.ctrlKey === c.ctrl && e.metaKey === c.meta && e.shiftKey === c.shift && e.code === c.code;
 }
 
-const MOD_LABEL: Record<(typeof MODS)[number], string> = { alt: hostOS() === "mac" ? "⌥" : "Alt", ctrl: "Ctrl", meta: hostOS() === "mac" ? "⌘" : "Meta", shift: "⇧" };
+const MOD_LABEL: Record<(typeof MODS)[number], string> = { alt: browserOS() === "mac" ? "⌥" : "Alt", ctrl: "Ctrl", meta: browserOS() === "mac" ? "⌘" : "Meta", shift: "⇧" };
 
 // keyLabel turns a KeyboardEvent code into what the key prints: "KeyW" → "W",
 // "Space" → "Space", "Backquote" → "`", "Digit1" → "1".
@@ -79,7 +80,7 @@ function keyLabel(code: string): string {
 export function comboLabel(combo: string): string {
   const c = parse(combo);
   if (!c) return combo;
-  const mac = hostOS() === "mac";
+  const mac = browserOS() === "mac";
   const mods = MODS.filter((m) => c[m]).map((m) => MOD_LABEL[m]);
   const key = keyLabel(c.code);
   return mac ? [...mods, key].join("") : [...mods, key].join("+");

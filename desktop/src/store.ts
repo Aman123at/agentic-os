@@ -83,7 +83,7 @@ interface DesktopState {
   // Liquid Glass on (M4.6); the frame watchdog turns it off if frames drop.
   glass: boolean;
   // The keyboard remap in force, read by shell/keyboard.ts. Seeded from the
-  // Host defaults, then overridden by what System Settings saved.
+  // defaults for the user's own computer, then overridden by what System Settings saved.
   shortcuts: ShortcutMap;
   windows: Win[];
   focused: string;
@@ -951,7 +951,7 @@ function restore(json: string, set: SetState) {
       return { ...w, id, z: i + 1, restore: undefined };
     });
   // A saved remap may cover only some actions (or come from an older layout);
-  // the Host defaults fill in the rest.
+  // the defaults for the user's own computer fill in the rest.
   const shortcuts = { ...defaultShortcuts(), ...saved.shortcuts };
   set({ theme: saved.theme ?? "auto", wallpaper: saved.wallpaper ?? "aurora", glass: saved.glass ?? false, shortcuts, windows, focused, topZ: windows.length + 1 });
 }

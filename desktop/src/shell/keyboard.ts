@@ -1,16 +1,17 @@
-// Host-aware keyboard shortcuts (PLAN.md §4.3). The container is always Linux;
-// the Host is the user's own machine, so we read it from the browser, which
-// decides the per-Host defaults (see shortcuts.ts). System Settings remaps them,
-// and the map installShortcuts matches against comes from there.
+// Keyboard shortcuts that follow the user's own computer (PLAN.md §4.3). The
+// Machine is always Linux; the shortcuts should match whatever the user's real
+// keyboard prints, so we read the OS from the browser and pick the per-OS
+// defaults (see shortcuts.ts). System Settings remaps them, and the map
+// installShortcuts matches against comes from there.
 import { matches, type ShortcutMap } from "./shortcuts";
 
-type HostOS = "mac" | "win" | "linux";
+type BrowserOS = "mac" | "win" | "linux";
 
 interface NavigatorUAData {
   platform?: string;
 }
 
-export function hostOS(): HostOS {
+export function browserOS(): BrowserOS {
   const nav = navigator as Navigator & { userAgentData?: NavigatorUAData };
   const platform = (nav.userAgentData?.platform || navigator.platform || "").toLowerCase();
   if (platform.includes("mac")) return "mac";

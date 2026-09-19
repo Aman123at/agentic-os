@@ -4,7 +4,7 @@
 import { useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
 import { fileKind } from "../filetypes";
-import { downloadToHost } from "../finder/fs";
+import { download } from "../finder/fs";
 import PreviewBody from "./PreviewBody";
 
 export default function Preview() {
@@ -35,7 +35,7 @@ export default function Preview() {
         <button className="finder__btn" title="Show in Finder" onClick={() => revealInFinder(dir, path)}>
           Show in Finder
         </button>
-        <button className="finder__btn" title="Download to this computer" onClick={() => downloadToHost(path, name)}>
+        <button className="finder__btn" title="Download to this computer" onClick={() => download(path, name)}>
           ⬇
         </button>
       </div>

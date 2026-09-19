@@ -112,7 +112,7 @@ function Immersive() {
   return (
     <section className="set__group">
       <h3 className="set__grouphead">Immersive mode</h3>
-      <p className="set__note">Fills the screen and, on Chromium, holds keys like Alt+Tab so they reach AOS instead of the Host.</p>
+      <p className="set__note">Fills the screen and, on Chromium, holds keys like Alt+Tab so they reach AOS instead of your computer.</p>
       {error && (
         <div className="tasks__error" role="alert">
           {error}

@@ -1321,6 +1321,19 @@ are load-bearing rather than tidy:
     `finder.spec.ts` — Places has Filesystem, it navigates to `/`; a grep test in
     `tools/ci lint` that no retired product term reappears in `desktop/src`.
 
+    > **Built (M6.14).** "Host" is retired across `desktop/src`: `hostOS()` →
+    > `browserOS()` (`keyboard.ts`, callers in `shortcuts.ts`), `downloadToHost`
+    > → `download` (`finder/fs.ts`, `Finder.tsx`, `Preview.tsx`), and the two
+    > Settings strings ("Follow your computer", "instead of your computer") plus
+    > the remaining comments now say "your computer"/"the browser". Finder's
+    > Places are Home, Downloads, **Filesystem** (`/`), Trash — the Shared
+    > shortcut is gone (its `/shared` folder is still reachable through
+    > Filesystem). `tools/ci lint` gains `desktopProductLanguage()`, which fails
+    > if `\bHost\b` returns to `desktop/src` (outside `src/gen`). `finder.spec.ts`
+    > asserts the new Places, that Filesystem opens `/`, and reaches `/shared`
+    > through it. `services.go` already said "from this computer's browser". No
+    > behaviour change beyond the new Place.
+
 #### Installer, release and docs
 
 15. **What software a native Machine has.** The Docker image curates ~25 apt

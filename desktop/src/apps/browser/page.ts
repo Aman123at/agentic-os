@@ -43,7 +43,7 @@ function modifiers(e: KeyboardEvent | MouseEvent): number {
 const BUTTONS = ["left", "middle", "right", "back", "forward"];
 
 // Editing shortcuts Chromium on Linux doesn't bind to ⌘; paste is left to the
-// browser's own paste event, which carries the Host clipboard's text.
+// browser's own paste event, which carries the user's own computer's clipboard text.
 const EDIT: Record<string, string> = { a: "selectAll", c: "copy", x: "cut", z: "undo", y: "redo" };
 
 function socketURL(ticket: string): string {
@@ -297,7 +297,7 @@ export class PageView {
           if (event === "down") this.opts.onShortcut(shortcut);
           return;
         }
-        // ⌘V: let the paste event below carry the Host clipboard.
+        // ⌘V: let the paste event below carry the user's own computer's clipboard.
         if (k === "v") return;
       }
       e.preventDefault();

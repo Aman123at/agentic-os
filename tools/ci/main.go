@@ -96,6 +96,9 @@ func lint() error {
 	if err := unitGolden(); err != nil {
 		return err
 	}
+	if err := desktopProductLanguage(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -107,6 +110,49 @@ func lint() error {
 		if err := runEnv(env, "golangci-lint", "run", "./..."); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// desktopProductLanguage guards the M6.14 sweep: "Host" is retired product
+// language for the user's own computer, so it must not reappear in desktop/src.
+// The generated protos (src/gen) legitimately say "Host" for a cgroup's host, so
+// they are skipped.
+func desktopProductLanguage() error {
+	term := regexp.MustCompile(`\bHost\b`)
+	root := filepath.Join(desktopDir, "src")
+	var hits []string
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path == filepath.Join(root, "gen") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".ts", ".tsx", ".css":
+		default:
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if term.MatchString(line) {
+				hits = append(hits, fmt.Sprintf("%s:%d: %s", path, i+1, strings.TrimSpace(line)))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(hits) > 0 {
+		return fmt.Errorf("the retired product term \"Host\" is back in desktop/src (M6.14); say \"your computer\" or \"the browser\":\n%s", strings.Join(hits, "\n"))
 	}
 	return nil
 }
