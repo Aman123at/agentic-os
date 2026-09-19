@@ -55,8 +55,12 @@ type Context struct {
 	// Interactive is false when nobody can answer an Approval.
 	Interactive bool
 	Landlock    bool
-	Grants      []Grant
-	Protected   *Protection
+	// Root is true in Root Mode, where step 1 of the check does not run:
+	// Protected Paths, locks, .env and dirty-git rules are not enforced, because
+	// Root Mode is the unlocked Realm (M7.4). Risky Actions still follow Autonomy.
+	Root      bool
+	Grants    []Grant
+	Protected *Protection
 }
 
 // Verdict is the outcome of Decide.
@@ -86,19 +90,23 @@ func Decide(c Call, ctx Context) Decision {
 	if c.Coordination {
 		return Decision{Verdict: Allow, By: "policy"}
 	}
-	var hits []string
-	var reasons []string
-	for _, e := range c.Effects {
-		if rule, ok := ctx.Protected.Check(e); ok {
-			hits = append(hits, e.Path)
-			reasons = append(reasons, fmt.Sprintf("changes Protected Path %s", rule))
+	// Step 1: Protected Paths, locks, .env and dirty-git. Root Mode skips it — the
+	// Realm is unlocked, so nothing on the filesystem is Protected (M7.4).
+	if !ctx.Root {
+		var hits []string
+		var reasons []string
+		for _, e := range c.Effects {
+			if rule, ok := ctx.Protected.Check(e); ok {
+				hits = append(hits, e.Path)
+				reasons = append(reasons, fmt.Sprintf("changes Protected Path %s", rule))
+			}
 		}
-	}
-	if len(hits) > 0 {
-		if !ctx.Interactive {
-			return Decision{Verdict: Deny, Reasons: append(reasons, "nobody is available to approve it"), ProtectedPaths: hits, By: "policy"}
+		if len(hits) > 0 {
+			if !ctx.Interactive {
+				return Decision{Verdict: Deny, Reasons: append(reasons, "nobody is available to approve it"), ProtectedPaths: hits, By: "policy"}
+			}
+			return Decision{Verdict: Ask, Reasons: reasons, ProtectedPaths: hits, By: "policy"}
 		}
-		return Decision{Verdict: Ask, Reasons: reasons, ProtectedPaths: hits, By: "policy"}
 	}
 	autonomy := ctx.Autonomy
 	if !ctx.Landlock && autonomy == Auto {
@@ -113,7 +121,7 @@ func Decide(c Call, ctx Context) Decision {
 			return Decision{Verdict: Allow, By: "grant"}
 		}
 	}
-	reasons = c.Reasons
+	reasons := c.Reasons
 	if !c.Risky {
 		reasons = []string{"Autonomy is confirm-all"}
 	}

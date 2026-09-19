@@ -48,9 +48,16 @@ func (d *Daemon) newBrowser() *browser.Manager {
 
 // browserProfile is the one writable place for everything Chromium keeps: the
 // user-data-dir plus the XDG folders redirected into it, since ~/.config is a
-// Protected dotfile.
+// Protected dotfile. It is per-Realm (M7.5) — Standard uses aos-browser, Root
+// aos-browser-root — so cookies and logins never leak between Realms. Both live
+// under /home/aos owned by aos: the Browser keeps its own narrow ruleset and runs
+// as aos in either Realm, unlike the rest of the Machine.
 func (d *Daemon) browserProfile() string {
-	return filepath.Join(d.layout.Home, ".local", "share", "aos-browser")
+	name := "aos-browser"
+	if d.realm.IsRoot() {
+		name += "-" + d.realm.String()
+	}
+	return filepath.Join(d.layout.Home, ".local", "share", name)
 }
 
 // browserDownloads is where the Browser saves downloads.
@@ -116,7 +123,12 @@ func (d *Daemon) startBrowser() (*browser.Process, error) {
 	// ~/.config is a Protected dotfile, so the profile and everything Chromium
 	// would put under XDG folders lives in one writable place.
 	profile := d.browserProfile()
-	env := append(d.userEnv(), "XDG_CONFIG_HOME="+profile+"/config", "XDG_CACHE_HOME="+profile+"/cache")
+	// The Browser always runs as aos, so its environment is aos's own even in Root
+	// Mode, not d.userEnv() (which follows the Realm and is root there).
+	home := d.layout.Home
+	env := []string{"HOME=" + home, "USER=aos", "LOGNAME=aos", "SHELL=/bin/bash", "LANG=C.UTF-8",
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + home + "/.local/bin",
+		"XDG_CONFIG_HOME=" + profile + "/config", "XDG_CACHE_HOME=" + profile + "/cache"}
 	argv := append([]string{browser.Binary, "--user-data-dir=" + profile}, browser.Flags...)
 	cmd, err := sandbox.Command(rs, d.uid, d.gid, env, argv...)
 	if err != nil {

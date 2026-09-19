@@ -185,10 +185,12 @@ func (u *userSessions) Create(ctx context.Context, cols, rows uint16) (*aosv1.Se
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	if err := os.Chown(dir, int(d.uid), int(d.gid)); err != nil {
+	if err := os.Chown(dir, int(d.agentUID), int(d.agentGID)); err != nil {
 		return nil, err
 	}
-	sh, err := session.Start(session.Options{Dir: dir, UID: d.uid, GID: d.gid, Home: d.layout.Home})
+	// The Terminal's User Session runs as the Realm's identity: aos in Standard,
+	// root in /root with the red-`#` prompt in Root Mode (M7.5).
+	sh, err := session.Start(session.Options{Dir: dir, UID: d.agentUID, GID: d.agentGID, Home: d.agentHome, User: d.agentUser})
 	if err != nil {
 		return nil, err
 	}

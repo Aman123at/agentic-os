@@ -11,6 +11,9 @@ import (
 type Machine struct {
 	OS, Arch, Mode string
 	Landlock       bool
+	// Root is true in Root Mode: the Profile says the Agent runs as root and
+	// nothing is Protected (M7.6).
+	Root bool
 	// Software is what the Install Ledger installed, without dependencies.
 	Software  []Software
 	Services  []Service
@@ -57,6 +60,9 @@ func render(m Machine, limit int) string {
 		sandbox = "no Landlock on this Host: policy checks only"
 	}
 	fmt.Fprintf(&b, "- %s on %s, %s Mode; %s.\n", or(m.OS, "Ubuntu"), or(m.Arch, "unknown architecture"), or(m.Mode, "cli"), sandbox)
+	if m.Root {
+		b.WriteString("- Root Mode is on: you run as root (~ = /root), sudo is unnecessary, and nothing on the Machine is Protected — prefer the smallest change and say before touching system files.\n")
+	}
 	if m.Replaying {
 		b.WriteString("- Replay is reinstalling software after a restart; installs wait until it finishes.\n")
 	}

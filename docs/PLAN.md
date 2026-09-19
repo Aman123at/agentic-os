@@ -1514,7 +1514,7 @@ installer's `DRY_RUN` rehearsal, the reference-drift check). VPS-only measuremen
 
 ### M7 — Root Mode
 
-*Approved 2026-09-20. M7.1–M7.3 built; M7.4 onward pending.*
+*Approved 2026-09-20. M7.1–M7.6 built; M7.7 onward pending.*
 
 Today every Agent, the Terminal and Finder act as `aos`, confined by Landlock and
 `no_new_privs` (§7.1–§7.4): no `sudo` for Agents, Protected Paths need Approval,

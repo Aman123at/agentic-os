@@ -107,3 +107,18 @@ func TestMemoryProposalsWaitForTheUser(t *testing.T) {
 		t.Errorf("list %v", list)
 	}
 }
+
+// TestProfileRootMode is the M7.6 Profile golden: Root Mode adds a line saying
+// the Agent runs as root and nothing is Protected; Standard omits it.
+func TestProfileRootMode(t *testing.T) {
+	std := Profile(Machine{OS: "Ubuntu", Arch: "amd64", Mode: "ui", Landlock: true})
+	if strings.Contains(std, "Root Mode is on") {
+		t.Errorf("Standard Profile mentions Root Mode:\n%s", std)
+	}
+	root := Profile(Machine{OS: "Ubuntu", Arch: "amd64", Mode: "ui", Landlock: true, Root: true})
+	for _, want := range []string{"Root Mode is on", "you run as root (~ = /root)", "nothing on the Machine is Protected"} {
+		if !strings.Contains(root, want) {
+			t.Errorf("Root Profile lacks %q:\n%s", want, root)
+		}
+	}
+}

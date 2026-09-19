@@ -26,6 +26,9 @@ type AgentConfig struct {
 	Dir      string
 	UID, GID uint32
 	Home     string
+	// User is the account name for the Session's USER/LOGNAME: "root" in Root
+	// Mode, "" (aos) otherwise (M7.4).
+	User string
 	// Policy returns the Agent policy; the Session's directory is added to it.
 	Policy func() sandbox.Policy
 	// Confine is false on Hosts without Landlock: commands still run with no_new_privs.
@@ -122,7 +125,7 @@ func (a *Agent) shell() (*Session, []string, error) {
 	if err != nil {
 		return nil, notes, err
 	}
-	opts := Options{Dir: a.cfg.Dir, UID: a.cfg.UID, GID: a.cfg.GID, Home: a.cfg.Home, Confine: &rs, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}
+	opts := Options{Dir: a.cfg.Dir, UID: a.cfg.UID, GID: a.cfg.GID, Home: a.cfg.Home, User: a.cfg.User, Confine: &rs, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}
 	if restore != "" {
 		opts.Env = append(append([]string{}, opts.Env...), "AOS_RESTORE="+restore)
 	}
@@ -272,7 +275,7 @@ func (a *Agent) RunIsolated(ctx context.Context, command string, widen []string,
 	if err != nil {
 		return tool.CommandResult{}, err
 	}
-	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
+	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, User: a.cfg.User, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
 	if err != nil {
 		return tool.CommandResult{}, err
 	}
@@ -359,7 +362,7 @@ func (a *Agent) Start(ctx context.Context, command string) (tool.Process, error)
 	if err != nil {
 		return tool.Process{}, err
 	}
-	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
+	cmd, err := sandbox.Command(rs, a.cfg.UID, a.cfg.GID, baseEnv(Options{Home: a.cfg.Home, User: a.cfg.User, Env: a.cfg.Env, PathPrefix: a.cfg.PathPrefix}), "bash", "-c", command)
 	if err != nil {
 		f.Close()
 		return tool.Process{}, err

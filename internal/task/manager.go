@@ -44,7 +44,10 @@ type Config struct {
 	// MaxRetries is AOS_MAX_RETRIES (PLAN.md §8.3).
 	MaxRetries int
 	Landlock   bool
-	Home       string
+	// Root is true in Root Mode: the policy check skips Protected Paths, locks,
+	// .env and dirty-git, since that Realm is unlocked (M7.4).
+	Root bool
+	Home string
 	// Usage records usage per day and estimates costs; nil records usage without prices.
 	Usage *usage.Tracker
 	// Context returns AOS's message that starts an Agent's conversation: the
@@ -738,6 +741,7 @@ func (r *run) Decide(c policy.Call) policy.Decision {
 		Autonomy:    fromProto(r.task.Autonomy),
 		Interactive: r.task.Interactive,
 		Landlock:    cfg.Landlock,
+		Root:        cfg.Root,
 		Grants:      grants,
 		Protected:   protection,
 	})

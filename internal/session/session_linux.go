@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -20,10 +21,13 @@ import (
 	"github.com/Aman123at/agentic-os/internal/sandbox"
 )
 
-// rcFile is the Session's bash rc. Markers go to /dev/tty so they survive a
-// command that redirects the shell's own stdout.
+// rcFile is the Session's bash rc; promptToken is replaced with the PS1 value.
+// Markers go to /dev/tty so they survive a command that redirects the shell's own
+// stdout. It cannot be a format string: the marker printfs carry literal %s.
+const promptToken = "@@AOS_PROMPT@@"
+
 const rcFile = `# AOS Session
-PS1='aos$ '
+PS1=@@AOS_PROMPT@@
 HISTCONTROL=ignorespace
 bind 'set enable-bracketed-paste off' 2>/dev/null
 __aos_c() { printf '\033]133;C;aos=%s\007' "$1" >/dev/tty; }
@@ -40,6 +44,11 @@ type Options struct {
 	Dir      string
 	UID, GID uint32
 	Home     string
+	// User is the account name for USER and LOGNAME, and picks the prompt: "" or
+	// "aos" is the ordinary `aos$ ` prompt, "root" the red-`#` root prompt of Root
+	// Mode (M7.5). It is cosmetic — the frame markers, not the prompt, delimit
+	// commands — but the Terminal shows it, so it must read as the Realm's user.
+	User string
 	// Confine is the Agent Session's Ruleset; nil starts an unconfined User Session.
 	Confine *sandbox.Ruleset
 	// Env is appended to the base environment.
@@ -96,7 +105,7 @@ var ErrBusy = errors.New("session is still running a command")
 // Start launches bash on a new PTY.
 func Start(opts Options) (*Session, error) {
 	rc := filepath.Join(opts.Dir, "bashrc")
-	if err := os.WriteFile(rc, []byte(rcFile), 0o644); err != nil {
+	if err := os.WriteFile(rc, []byte(strings.Replace(rcFile, promptToken, promptFor(opts.User), 1)), 0o644); err != nil {
 		return nil, err
 	}
 	argv := []string{"bash", "--noprofile", "--rcfile", rc, "-i"}
@@ -149,10 +158,24 @@ func Start(opts Options) (*Session, error) {
 	return s, nil
 }
 
+// promptFor is the single-quoted PS1 for user: the red-`#` root prompt in Root
+// Mode (M7.5), the ordinary `aos$ ` prompt otherwise. The value is a bash
+// single-quoted string, so it is written verbatim into PS1.
+func promptFor(user string) string {
+	if user == "root" {
+		return `'\[\e[1;31m\]root@\h\[\e[0m\]:\w# '`
+	}
+	return `'aos$ '`
+}
+
 func baseEnv(opts Options) []string {
+	user := opts.User
+	if user == "" {
+		user = "aos"
+	}
 	env := []string{
 		"HOME=" + opts.Home,
-		"USER=aos", "LOGNAME=aos", "SHELL=/bin/bash",
+		"USER=" + user, "LOGNAME=" + user, "SHELL=/bin/bash",
 		// System directories first, so nothing written to ~/.local/bin can shadow sudo or other system tools.
 		"PATH=" + opts.PathPrefix + "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + opts.Home + "/.local/bin",
 		"LANG=C.UTF-8", "TERM=xterm-256color",

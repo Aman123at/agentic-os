@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,5 +98,36 @@ func TestAViewerReplaysRecentOutputThenFollowsUntilTheShellEnds(t *testing.T) {
 	}
 	if _, open := <-output; open {
 		t.Error("a late viewer's channel should already be closed")
+	}
+}
+
+// TestUserSessionCredentialsPerRealm covers the M7.5 Terminal identity: the User
+// option sets USER/LOGNAME and picks the prompt, so the Root Realm's Session
+// reads as root with the red-`#` prompt, and the Standard one as aos. It does not
+// setuid (that needs root), so it exercises the environment and prompt the Realm
+// selects, not the kernel credential.
+func TestUserSessionCredentialsPerRealm(t *testing.T) {
+	if got := promptFor("root"); !strings.Contains(got, "root@") || !strings.Contains(got, "#") {
+		t.Errorf("root prompt = %q, want a root@…# prompt", got)
+	}
+	if got := promptFor(""); got != `'aos$ '` {
+		t.Errorf("default prompt = %q, want 'aos$ '", got)
+	}
+
+	dir := t.TempDir()
+	s, err := Start(Options{Dir: dir, Home: dir, User: "root", UID: uint32(os.Getuid()), GID: uint32(os.Getgid())})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if res := runIn(t, s, `printf '%s|%s\n' "$USER" "$LOGNAME"`); string(res.Output) != "root|root\r\n" {
+		t.Errorf("USER|LOGNAME = %q, want root|root", res.Output)
+	}
+	rc, err := os.ReadFile(dir + "/bashrc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(rc, []byte(`root@`)) || bytes.Contains(rc, []byte(`PS1='aos$ '`)) {
+		t.Errorf("root Session rc does not carry the root prompt:\n%s", rc)
 	}
 }

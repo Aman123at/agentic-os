@@ -286,3 +286,17 @@ func TestExpireRemovesOldItemsThenOldestUntilUnderTheCap(t *testing.T) {
 		t.Errorf("EmptyTrash removed %d (%v), %d left", removed, err, len(items))
 	}
 }
+
+// TestRootHomeUsesRootsOwnTrash covers the M7.5 wiring: in Root Mode the file
+// Ops carry root's home, so deletions land in /root's Trash — the Trash app then
+// shows only the Root Realm's Trash, not aos's.
+func TestRootHomeUsesRootsOwnTrash(t *testing.T) {
+	root := Ops{Home: "/root", UID: 0}.homeTrash().dir
+	if root != "/root/.local/share/Trash" {
+		t.Errorf("root home Trash = %q, want /root/.local/share/Trash", root)
+	}
+	aos := Ops{Home: "/home/aos", UID: 1000}.homeTrash().dir
+	if aos == root {
+		t.Errorf("aos and root share a Trash directory %q", root)
+	}
+}

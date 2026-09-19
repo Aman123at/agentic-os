@@ -65,3 +65,44 @@ func TestInstructionsDefaults(t *testing.T) {
 		t.Errorf("the no-Landlock sandbox line is missing:\n%s", got)
 	}
 }
+
+// TestInstructionsRootMode is the M7.6 golden for both Realms: Standard says the
+// Agent acts as aos without sudo and that Protected Paths need an Approval; Root
+// Mode says it is root, that sudo is unnecessary and nothing is Protected, while
+// both keep the shared guidance (install_package, the sandbox line).
+func TestInstructionsRootMode(t *testing.T) {
+	std := Instructions(Machine{OS: "Ubuntu 24.04.3 LTS", Arch: "amd64", Mode: "ui", Landlock: true})
+	for _, want := range []string{
+		"You act as the user aos (home folder ~ = /home/aos), without sudo.",
+		"Protected Paths can't be changed without the user's Approval",
+	} {
+		if !strings.Contains(std, want) {
+			t.Errorf("Standard prompt lacks %q:\n%s", want, std)
+		}
+	}
+	for _, gone := range []string{"You are **root**", "Nothing is Protected in Root Mode"} {
+		if strings.Contains(std, gone) {
+			t.Errorf("Standard prompt carries Root-only text %q:\n%s", gone, std)
+		}
+	}
+
+	root := Instructions(Machine{OS: "Ubuntu 24.04.3 LTS", Arch: "amd64", Mode: "ui", Landlock: true, Root: true})
+	for _, want := range []string{
+		"You are **root** on this Machine (home folder ~ = /root)",
+		"`sudo` is unnecessary",
+		"nothing on the filesystem is Protected",
+		"say what you are about to do before you touch system files",
+		"Nothing is Protected in Root Mode",
+		"Risky Actions still do",
+		// The shared guidance survives in both Realms.
+		"install_package",
+		"Landlock enforces these protections",
+	} {
+		if !strings.Contains(root, want) {
+			t.Errorf("Root prompt lacks %q:\n%s", want, root)
+		}
+	}
+	if strings.Contains(root, "You act as the user aos") {
+		t.Errorf("Root prompt still calls the Agent aos:\n%s", root)
+	}
+}

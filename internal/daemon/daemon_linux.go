@@ -82,8 +82,19 @@ type Daemon struct {
 	cfg      config.Config
 	layout   sandbox.Layout
 	uid, gid uint32
-	abi      int
-	exe      string
+	// agentUID/agentGID/agentHome/agentUser are the identity everything an Agent
+	// or the user drives through AOS runs as — Agent Sessions, run_command,
+	// background commands, the Files helper, the Terminal's User Session and
+	// Services. In the Standard Realm they are the unprivileged aos account
+	// (uid/gid, /home/aos); in Root Mode they are root (uid 0, /root, USER=root),
+	// so the whole Machine runs as root (M7.4–M7.5). uid/gid above stay the aos
+	// account throughout, for what AOS always does as aos: preparing /home/aos and
+	// running the Browser under its own narrow ruleset.
+	agentUID, agentGID uint32
+	agentHome          string
+	agentUser          string
+	abi                int
+	exe                string
 	// realm is which Realm this run serves (Standard or Root), resolved once from
 	// config.yml's root_mode after settings.Open (M7.1). bootID is a random id
 	// fixed for this run, new on every start, so a restart can be detected (M7.3).
@@ -201,7 +212,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	d.osName = osRelease()
 	browserOK, _ := d.browserStatus()
-	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Browser: browserOK})
+	instructions := agent.Instructions(agent.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Browser: browserOK, Root: d.realm.IsRoot()})
 	ledger := &software.Ledger{DB: d.db}
 	d.services = &service.Supervisor{DB: d.db, Ledger: ledger, Bus: d.bus, Launch: d.launchService, LogDir: servicesDir, Logf: log.Printf,
 		Owners: d.socketOwners}
@@ -225,7 +236,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d.tasks, err = task.New(task.Config{
 		DB: d.db, Bus: d.bus, Audit: d.audit, Provider: provider, Tools: registry,
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
-		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.layout.Home,
+		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.agentHome, Root: d.realm.IsRoot(),
 		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit, Context: d.agentContext,
 		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values,
 	})
@@ -252,10 +263,13 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	var restartOnce sync.Once
 	restarter := restarterFor(d.cfg.Native(), nil, func() { restartOnce.Do(func() { close(restartc) }) })
 
-	userOps := files.Ops{Home: d.layout.Home, UID: int(d.uid)}
-	userFiles := files.AsUser{Ops: userOps, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv()}
+	// The Desktop's Files API and Finder act as the Realm's identity: aos in
+	// Standard, root in Root Mode, so every folder opens and the Trash is the
+	// Realm's own (M7.5).
+	userOps := files.Ops{Home: d.agentHome, UID: int(d.agentUID)}
+	userFiles := files.AsUser{Ops: userOps, UID: d.agentUID, GID: d.agentGID, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
-		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
+		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.agentHome,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
@@ -337,6 +351,14 @@ func (d *Daemon) init() error {
 	uid, _ := strconv.Atoi(u.Uid)
 	gid, _ := strconv.Atoi(u.Gid)
 	d.uid, d.gid = uint32(uid), uint32(gid)
+	// Everything Agent- and user-facing runs as the Realm's identity: aos in
+	// Standard, root in Root Mode (M7.4). aosd itself is always root; only what it
+	// launches for the Realm changes.
+	if d.realm.IsRoot() {
+		d.agentUID, d.agentGID, d.agentHome, d.agentUser = 0, 0, "/root", "root"
+	} else {
+		d.agentUID, d.agentGID, d.agentHome, d.agentUser = d.uid, d.gid, d.layout.Home, "aos"
+	}
 	if d.exe, err = os.Executable(); err != nil {
 		return err
 	}
@@ -477,6 +499,9 @@ func (d *Daemon) replayAtBoot(ctx context.Context) {
 // agentPolicy is the sandbox policy for Agents: the layout, other Sessions'
 // directories hidden, and the paths the user locked.
 func (d *Daemon) agentPolicy() sandbox.Policy {
+	if d.realm.IsRoot() {
+		return d.rootPolicy()
+	}
 	p := d.layout.Policy()
 	p.Hidden = append(p.Hidden, SessionsDir)
 	if d.cfg.Native() {
@@ -486,6 +511,23 @@ func (d *Daemon) agentPolicy() sandbox.Policy {
 		p.Protected = append(p.Protected, resolvePath(l))
 	}
 	return p
+}
+
+// rootPolicy is the third Landlock ruleset (M7.4): a root Agent reads and writes
+// everything except AOS's own state. /var/lib/aos and /etc/aos are Hidden (the
+// Realm databases, keys and config), and aosd's binary and its unit are
+// read-only, so a root Agent can neither read the other Realm's history nor
+// rewrite the Daemon out from under itself. Nothing else is Protected — no locks,
+// no Protected dotfiles, no other users' homes — because Root Mode is the
+// unlocked Realm; the policy check (§7.4, M7.4) already skips those rules, and
+// the ruleset matches. no_new_privs is still set by sandbox.Command, so the §7.5
+// socket guard still refuses a root Agent on the control socket.
+func (d *Daemon) rootPolicy() sandbox.Policy {
+	return sandbox.Policy{
+		Hidden:    []string{"/run/secrets", SessionsDir, StateDir, "/etc/aos"},
+		Protected: []string{d.exe, "/usr/local/bin/aos", "/usr/local/lib/aos", unitPath},
+		Writable:  []string{"/"},
+	}
 }
 
 // widenToHost opens the Writable set from home to the whole VPS minus an explicit
@@ -534,20 +576,22 @@ func (d *Daemon) plan(p sandbox.Policy) (sandbox.Ruleset, error) {
 	return sandbox.Plan(p, sandbox.RootFS())
 }
 
+// workerEnv is the environment of the Files helper (Confined and AsUser). It runs
+// as the Realm's identity, so its HOME and USER follow the Realm (M7.5).
 func (d *Daemon) workerEnv() []string {
-	return []string{"HOME=" + d.layout.Home, "USER=aos", "LANG=C.UTF-8", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
+	return []string{"HOME=" + d.agentHome, "USER=" + d.agentUser, "LANG=C.UTF-8", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 }
 
 // newEnv gives a Task its Agent Session and sandboxed Tools.
 func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 	agentSession := session.NewAgent(session.AgentConfig{
-		TaskID: env.TaskID, Dir: filepath.Join(SessionsDir, env.TaskID), UID: d.uid, GID: d.gid, Home: d.layout.Home,
+		TaskID: env.TaskID, Dir: filepath.Join(SessionsDir, env.TaskID), UID: d.agentUID, GID: d.agentGID, Home: d.agentHome, User: d.agentUser,
 		Policy: d.agentPolicy, Confine: d.abi >= 1, PathPrefix: AgentBinDir + ":", Outputs: d.outputs, Registry: d.registry,
 		OnStart: func(pid int) { d.sampler.Started(pid, env.TaskID) },
 		// npm's global prefix is in the home folder (PLAN.md §11).
-		Env: []string{"NPM_CONFIG_PREFIX=" + d.layout.Home + "/.local"},
+		Env: []string{"NPM_CONFIG_PREFIX=" + d.agentHome + "/.local"},
 	})
-	ops := files.Ops{Home: d.layout.Home, UID: int(d.uid)}
+	ops := files.Ops{Home: d.agentHome, UID: int(d.agentUID)}
 	env.Sessions = agentSession
 	env.Cwd = agentSession.Cwd
 	env.FileOps = ops
@@ -572,7 +616,7 @@ func (d *Daemon) newEnv(env *tool.Env) (func(), error) {
 		env.Browser = d.agentBrowser(env.TaskID)
 	}
 	env.Files = func(widen []string) files.Runner {
-		return files.Confined{Ops: ops, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
+		return files.Confined{Ops: ops, UID: d.agentUID, GID: d.agentGID, Exe: d.exe, Env: d.workerEnv(), Ruleset: func() (sandbox.Ruleset, error) {
 			p := d.agentPolicy()
 			if len(widen) > 0 {
 				resolved := make([]string, len(widen))
@@ -614,7 +658,7 @@ func (d *Daemon) protection(taskID string) *policy.Protection {
 		}
 		dirty, ok := seen[root]
 		if !ok {
-			dirty = gitDirty(root, d.uid, d.gid)
+			dirty = gitDirty(root, d.agentUID, d.agentGID)
 			seen[root] = dirty
 		}
 		return root, dirty
@@ -631,7 +675,7 @@ func (d *Daemon) agentContext(ctx context.Context) string {
 
 // machine describes the Machine for its Profile.
 func (d *Daemon) machine() profile.Machine {
-	m := profile.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Replaying: d.software.Replaying()}
+	m := profile.Machine{OS: d.osName, Arch: runtime.GOARCH, Mode: d.cfg.Mode, Landlock: d.abi >= 1, Root: d.realm.IsRoot(), Replaying: d.software.Replaying()}
 	if pkgs, err := d.software.Installed(context.Background()); err == nil {
 		for _, p := range pkgs {
 			name, _, _ := strings.Cut(p.Name, ":") // nginx:arm64 → nginx
@@ -663,24 +707,27 @@ func (d *Daemon) taskCheckpoint(ctx context.Context, taskID, title string) (stri
 	return cp.Id, cp.Name, created, nil
 }
 
-// userEnv is the environment of what AOS runs as aos outside a Session: pipx,
-// npm and Services.
+// userEnv is the environment of what AOS runs outside a Session as the Realm's
+// identity: pipx, npm and Services (aos in Standard, root in Root Mode, M7.5).
+// The Browser is the exception — it always runs as aos with its own env.
 func (d *Daemon) userEnv() []string {
-	home := d.layout.Home
-	return []string{"HOME=" + home, "USER=aos", "LOGNAME=aos", "SHELL=/bin/bash", "LANG=C.UTF-8",
+	home := d.agentHome
+	return []string{"HOME=" + home, "USER=" + d.agentUser, "LOGNAME=" + d.agentUser, "SHELL=/bin/bash", "LANG=C.UTF-8",
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + home + "/.local/bin",
 		"NPM_CONFIG_PREFIX=" + home + "/.local", "npm_config_yes=true", "PIP_NO_INPUT=1"}
 }
 
-// socketOwners asks `aosd __sockets`, running as aos, which of aos's processes
-// hold which sockets: root in the container can't read their /proc/<pid>/fd.
+// socketOwners asks `aosd __sockets`, running as the Realm's identity, which of
+// its processes hold which sockets: aosd (root) can't read the /proc/<pid>/fd of
+// a process another user runs, so it asks a helper running as that user. In Root
+// Mode Services run as root, so the helper does too (M7.5).
 func (d *Daemon) socketOwners() map[string]int {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, d.exe, service.SocketsArg)
 	cmd.Env = []string{"PATH=/usr/bin:/bin"}
 	cmd.Dir = "/"
-	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: d.uid, Gid: d.gid, Groups: []uint32{}}}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: d.agentUID, Gid: d.agentGID, Groups: []uint32{}}}
 	out, err := cmd.Output()
 	var owners map[string]int
 	if err != nil || json.Unmarshal(out, &owners) != nil {
@@ -689,25 +736,29 @@ func (d *Daemon) socketOwners() map[string]int {
 	return owners
 }
 
-// asUser runs argv as aos, confined like an Agent (pipx and npm installs).
+// asUser runs argv as the Realm's identity, confined like an Agent (pipx and npm
+// installs): aos in Standard, root in Root Mode (M7.4).
 func (d *Daemon) asUser(argv ...string) (*exec.Cmd, error) {
 	rs, err := d.plan(d.agentPolicy())
 	if err != nil {
 		return nil, err
 	}
-	cmd, err := sandbox.Command(rs, d.uid, d.gid, d.userEnv(), argv...)
+	cmd, err := sandbox.Command(rs, d.agentUID, d.agentGID, d.userEnv(), argv...)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Dir = d.layout.Home
+	cmd.Dir = d.agentHome
 	return cmd, nil
 }
 
-// launchService runs a Service's command: as aos, confined like the Agent
-// that created it, or as root when it was created as a Privileged Tool call.
+// launchService runs a Service's command: as the Realm's identity, confined like
+// the Agent that created it — aos in Standard, root under rootPolicy in Root Mode
+// (M7.5) — or fully unconfined as root when it was created as a Privileged Tool
+// call. Services are Realm-scoped (M7.2), so the ones Root Mode started are not
+// loaded in Standard, and leaving Root Mode stops them.
 func (d *Daemon) launchService(def service.Definition) (*exec.Cmd, error) {
 	env := d.userEnv()
-	dir := d.layout.Home
+	dir := d.agentHome
 	if def.Root {
 		env, dir = []string{"HOME=/root", "USER=root", "LANG=C.UTF-8", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}, "/"
 	}
@@ -731,7 +782,7 @@ func (d *Daemon) launchService(def service.Definition) (*exec.Cmd, error) {
 		if err != nil {
 			return nil, err
 		}
-		if cmd, err = sandbox.Command(rs, d.uid, d.gid, env, "bash", "-c", def.Command); err != nil {
+		if cmd, err = sandbox.Command(rs, d.agentUID, d.agentGID, env, "bash", "-c", def.Command); err != nil {
 			return nil, err
 		}
 	}

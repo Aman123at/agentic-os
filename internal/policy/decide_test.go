@@ -95,3 +95,36 @@ func TestWithoutLandlockAutoActsAsConfirmRisky(t *testing.T) {
 		t.Errorf("safe call: got %+v, want Allow", d)
 	}
 }
+
+// TestRootModeSkipsTheProtectedStepButKeepsRisky is the M7.4 policy change: in
+// Root Mode step 1 (Protected Paths, locks, .env, dirty-git) does not run, so a
+// change to a Protected Path is allowed without an Approval — while Risky Actions
+// still follow the Autonomy level, so confirm-risky still asks before an rm -rf.
+func TestRootModeSkipsTheProtectedStepButKeepsRisky(t *testing.T) {
+	// A write to a Protected dotfile: Standard asks, Root allows outright.
+	protectedWrite := Call{Tool: "write_file", Effects: []Effect{{Path: "/home/aos/.ssh/config", Op: Write}}, Folder: "/home/aos/.ssh"}
+	if d := Decide(protectedWrite, Context{Autonomy: Auto, Interactive: true, Landlock: true, Protected: protection()}); d.Verdict != Ask {
+		t.Errorf("Standard: got %+v, want Ask for the Protected Path", d)
+	}
+	if d := Decide(protectedWrite, Context{Autonomy: Auto, Interactive: true, Landlock: true, Root: true, Protected: protection()}); d.Verdict != Allow || d.By != "autonomy" {
+		t.Errorf("Root: got %+v, want Allow with the Protected step skipped", d)
+	}
+
+	// A .env write, likewise: enforced by pattern in Standard, ignored in Root.
+	envWrite := Call{Tool: "write_file", Effects: []Effect{{Path: "/home/aos/project/.env", Op: Write}}, Folder: "/home/aos/project"}
+	if d := Decide(envWrite, Context{Autonomy: Auto, Interactive: true, Landlock: true, Protected: protection()}); d.Verdict != Ask {
+		t.Errorf("Standard .env: got %+v, want Ask", d)
+	}
+	if d := Decide(envWrite, Context{Autonomy: Auto, Interactive: true, Landlock: true, Root: true, Protected: protection()}); d.Verdict != Allow {
+		t.Errorf("Root .env: got %+v, want Allow", d)
+	}
+
+	// Risky Actions are unchanged: confirm-risky still asks, even in Root Mode.
+	risky := Call{Tool: "run_command", Risky: true, Reasons: []string{"rm -rf build"}, Effects: []Effect{{Path: "/srv/app/build", Op: Delete}}, Folder: "/srv/app"}
+	if d := Decide(risky, Context{Autonomy: ConfirmRisky, Interactive: true, Landlock: true, Root: true, Protected: protection()}); d.Verdict != Ask {
+		t.Errorf("Root Risky under confirm-risky: got %+v, want Ask", d)
+	}
+	if d := Decide(risky, Context{Autonomy: Auto, Interactive: true, Landlock: true, Root: true, Protected: protection()}); d.Verdict != Allow {
+		t.Errorf("Root Risky under auto: got %+v, want Allow", d)
+	}
+}
