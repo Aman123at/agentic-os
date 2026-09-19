@@ -2,13 +2,17 @@
 // It works the same locally and in GitHub Actions.
 //
 // Stages: lint, unit, unit-linux, ui, auth-ui, image, e2e, playwright. With
-// no arguments, all run in order. `live` (the real-model suite, §16 M4.7) is
-// optional: it spends the key, so it runs only when named — `go run ./tools/ci live`.
+// no arguments, all run in order. `live` (the real-model suite, §16 M4.7) and
+// `release` (the tarball build, M6.18) are optional: they run only when named —
+// `go run ./tools/ci live`, `go run ./tools/ci release`.
 package main
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -59,6 +63,9 @@ var stages = []struct {
 	{"playwright", playwright, false},
 	// `live` spends the real key, so it is never part of the default sweep.
 	{"live", live, true},
+	// `release` builds cross-compiled tarballs; it runs only when named (a tag
+	// build calls `go run ./tools/ci release`), never in the default sweep.
+	{"release", release, true},
 }
 
 func main() {
@@ -369,6 +376,147 @@ func live() error {
 		return err
 	}
 	return run("npm", "--prefix", desktopDir, "run", "e2e:live")
+}
+
+// releaseArches are the two platforms the installer serves (M6.18). install.sh
+// maps `uname -m` to exactly these; adding one here means adding a case there.
+var releaseArches = []string{"amd64", "arm64"}
+
+// releaseDir is where the release stage writes tarballs and SHA256SUMS.
+const releaseDir = "dist"
+
+// versionSymbol is the -ldflags -X path stamped at release time. Version lives
+// in internal/daemon as a var (not a const), which is what lets -X write it.
+const versionSymbol = "github.com/Aman123at/agentic-os/internal/daemon.Version"
+
+// release builds the linux/amd64 and linux/arm64 tarballs install.sh fetches
+// (M6.18). Version-less asset names — agentic-os-linux-<arch>.tar.gz — let
+// /releases/latest/download resolve without the GitHub API. Each tarball carries
+// aosd (the one binary) and aos.service (byte-for-byte daemon.Unit(), so a
+// verified tarball is a verified unit); a sibling SHA256SUMS lists them all.
+func release() error {
+	version := releaseVersion()
+	fmt.Printf("    version %s\n", version)
+	if err := os.MkdirAll(releaseDir, 0o755); err != nil {
+		return err
+	}
+	unit := daemon.Unit()
+	var sums []string
+	for _, arch := range releaseArches {
+		bin := filepath.Join(releaseDir, "aosd-"+arch)
+		env := []string{"CGO_ENABLED=0", "GOOS=linux", "GOARCH=" + arch}
+		ldflags := "-s -w -X " + versionSymbol + "=" + version
+		if err := runEnv(env, "go", "build", "-trimpath", "-ldflags", ldflags, "-o", bin, "./cmd/aosd"); err != nil {
+			return err
+		}
+		name := "agentic-os-linux-" + arch + ".tar.gz"
+		if err := writeTarball(filepath.Join(releaseDir, name), bin, unit); err != nil {
+			return err
+		}
+		// The staged binary was only an input to the tarball.
+		if err := os.Remove(bin); err != nil {
+			return err
+		}
+		sum, err := sha256File(filepath.Join(releaseDir, name))
+		if err != nil {
+			return err
+		}
+		// GNU sha256sum's binary form (`<hex> *<name>`); install.sh greps this
+		// exact line and runs `sha256sum -c` on it.
+		sums = append(sums, fmt.Sprintf("%s *%s", sum, name))
+		fmt.Printf("    %s  %s\n", name, sum)
+	}
+	return os.WriteFile(filepath.Join(releaseDir, "SHA256SUMS"), []byte(strings.Join(sums, "\n")+"\n"), 0o644)
+}
+
+// releaseVersion is the version stamped into the release binaries. A tagged
+// build — the only kind that reaches users — takes the tag; RELEASE_VERSION or
+// GitHub's ref override for a manual run; otherwise the source default's base,
+// with the -m<n> development suffix dropped, so a local `release` matches what a
+// tag would produce (v0.1.0 → 0.1.0). The first tag MUST be v0.1.0: a -m6 suffix
+// makes GitHub mark the release a prerelease and /releases/latest 404s.
+func releaseVersion() string {
+	if v := os.Getenv("RELEASE_VERSION"); v != "" {
+		return strings.TrimPrefix(v, "v")
+	}
+	if v := os.Getenv("GITHUB_REF_NAME"); strings.HasPrefix(v, "v") {
+		return strings.TrimPrefix(v, "v")
+	}
+	if out, err := output("git", "describe", "--tags", "--exact-match"); err == nil {
+		return strings.TrimPrefix(strings.TrimSpace(out), "v")
+	}
+	data, _ := os.ReadFile(filepath.Join("internal", "daemon", "version.go"))
+	return baseVersion(parseVersion(data))
+}
+
+// versionRe pulls the string out of `var Version = "…"` in version.go.
+var versionRe = regexp.MustCompile(`(?m)^var Version = "([^"]+)"`)
+
+func parseVersion(data []byte) string {
+	if m := versionRe.FindSubmatch(data); m != nil {
+		return string(m[1])
+	}
+	return ""
+}
+
+// baseVersion drops a development prerelease suffix (0.1.0-m5 → 0.1.0), which is
+// the clean form the git tag carries.
+func baseVersion(v string) string {
+	if i := strings.IndexByte(v, '-'); i >= 0 {
+		return v[:i]
+	}
+	return v
+}
+
+// writeTarball writes a .tar.gz carrying aosd (0755) and aos.service (0644) —
+// the two-file layout install.sh unpacks (M6.17/M6.18).
+func writeTarball(path, binPath, unit string) error {
+	binData, err := os.ReadFile(binPath)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	entries := []struct {
+		name string
+		mode int64
+		data []byte
+	}{
+		{"aosd", 0o755, binData},
+		{"aos.service", 0o644, []byte(unit)},
+	}
+	for _, e := range entries {
+		if err := tw.WriteHeader(&tar.Header{
+			Typeflag: tar.TypeReg,
+			Name:     e.name,
+			Mode:     e.mode,
+			Size:     int64(len(e.data)),
+		}); err != nil {
+			return err
+		}
+		if _, err := tw.Write(e.data); err != nil {
+			return err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return err
+	}
+	return gz.Close()
+}
+
+// sha256File returns a file's hex SHA-256, the form SHA256SUMS lists.
+func sha256File(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // npmInstall installs the Desktop's dependencies, skipping the reinstall when a

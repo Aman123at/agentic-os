@@ -41,6 +41,9 @@ FROM go-base AS go-test-run
 # Machine reports). Copied only into this stage, so a doc edit never invalidates
 # a build.
 COPY docs/ docs/
+# The installer, for the release stage's asset-name drift check (M6.18): it
+# asserts install.sh still fetches the names the release stage produces.
+COPY install.sh install.sh
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     mkdir /report; \
     CGO_ENABLED=0 go test -count=1 -json ./... >/report/test.json 2>/report/stderr.txt; \

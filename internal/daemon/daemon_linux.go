@@ -65,10 +65,7 @@ const (
 	AgentBinDir = "/usr/local/lib/aos/agent-bin"
 	// unitPath is where systemd keeps aosd's unit; Protected when the filesystem
 	// widens so a widened Agent cannot rewrite aosd's own service (M6.8).
-	unitPath = "/etc/systemd/system/aos.service"
-	// Version is what the Desktop shows in Settings ▸ Status and About This
-	// Machine. Bump it with the milestone; version_test.go keeps it honest.
-	Version        = "0.1.0-m5"
+	unitPath       = "/etc/systemd/system/aos.service"
 	keyFile        = StateDir + "/keys/openai"
 	sessionKeyFile = StateDir + "/keys/session"
 	outputsDir     = StateDir + "/outputs"

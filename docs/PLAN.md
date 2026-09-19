@@ -1428,6 +1428,27 @@ are load-bearing rather than tidy:
     the tag agree. *Tests:* `release_test.go` — asset names, arch matrix,
     `-X`-writable `Version`; the version-scheme reconciliation.
 
+    > **Built (M6.18).** The `release` stage in `tools/ci` (optional, like
+    > `live` — a tag build runs `go run ./tools/ci release`) cross-compiles both
+    > arches with `-ldflags "-s -w -X …/internal/daemon.Version=<tag>"` and packs
+    > each into `agentic-os-linux-<arch>.tar.gz` (aosd 0755 + aos.service 0644,
+    > byte-for-byte `daemon.Unit()`), then writes a `sha256sum`-format
+    > `SHA256SUMS` — verified end to end here through install.sh's own
+    > grep-then-`sha256sum -c` path. Both traps are disarmed: `Version` moved out
+    > of the `daemon_linux.go` `const` block into a cross-platform
+    > `internal/daemon/version.go` `var` (so `-X` writes it *and* `aos --version`
+    > reads it off-Linux, wired via `root.Version`), and `releaseVersion()`
+    > strips the leading `v` and any `-m<n>` dev suffix so the stamped version is
+    > the clean tag. `version_linux_test.go` is reconciled: it now ties only the
+    > `-m<n>` suffix to the newest milestone and asserts the base is a clean
+    > semver (the tag scheme), leaving the base free to advance. `release_test.go`
+    > proves the `var` shape by parsing the source (a `const` would build fine but
+    > silently ignore `-X`), the arch matrix, the installer asset-name contract,
+    > the tarball layout, and the `v`-prefix stripping; the Dockerfile's go-test
+    > stage now stages `install.sh` for the drift check. The real tagged release
+    > on a public repo stays Aman's (M6.20 must land first — `/releases/latest`
+    > 404s while private).
+
 19. **`aos uninstall`.** Removes the binary and the systemd unit; keeps
     `/home/aos`, `/var/lib/aos` and the config unless `--purge`. *Acceptance:*
     `aos uninstall` leaves data, `--purge` removes it. *Tests:* `uninstall_test.go`

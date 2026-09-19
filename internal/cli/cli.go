@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/Aman123at/agentic-os/internal/daemon"
 	"github.com/Aman123at/agentic-os/internal/files"
 )
 
@@ -44,8 +45,12 @@ func rootCmd() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
-		RunE:          func(cmd *cobra.Command, _ []string) error { return chat(cmd.Context()) },
+		// `aos --version` prints the build's stamped Version — on a tagged
+		// release the tag itself (M6.18), so the binary and the tag agree.
+		Version: daemon.Version,
+		RunE:    func(cmd *cobra.Command, _ []string) error { return chat(cmd.Context()) },
 	}
+	root.SetVersionTemplate("aos {{.Version}}\n")
 	root.AddCommand(runCmd(), tasksCmd(), showCmd(), followUpCmd(), resumeCmd(), replyCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
 		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), softwareCmd(), checkpointCmd(), serviceCmd(), memoryCmd(),
 		auditCmd(), doctorCmd(), configCmd(), daemonCmd(), statusCmd(), modeCmd(), browserCmd())
