@@ -99,6 +99,9 @@ type Server struct {
 	Software   *software.Manager
 	Supervisor *service.Supervisor
 	Info       func() *aosv1.InfoResponse
+	// Restart restarts aosd out of band after the RPC replies (M7.3); nil means
+	// restart is not available (e.g. a foreground run with no supervisor).
+	Restart func() error
 	// Browser is the Browser app's page; nil when it isn't included.
 	Browser *browser.Manager
 	// Assets is the Desktop (ui Mode); nil serves a short note.
@@ -873,6 +876,26 @@ func (sys systemService) DismissNotification(ctx context.Context, req *connect.R
 		return nil, connectError(err)
 	}
 	return connect.NewResponse(&aosv1.DismissNotificationResponse{}), nil
+}
+
+func (sys systemService) Restart(ctx context.Context, _ *connect.Request[aosv1.RestartRequest]) (*connect.Response[aosv1.RestartResponse], error) {
+	if sys.s.Restart == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("restart is not available"))
+	}
+	// Trigger the restart, then audit the outcome and reply. The restart is out
+	// of band (systemd's SIGTERM, or a Compose drain), so the response flushes
+	// before aosd goes down; the guard on the control socket (§7.5) has already
+	// refused any Agent-confined caller, so this only ever runs for the user.
+	err := sys.s.Restart()
+	result := "restarting"
+	if err != nil {
+		result = err.Error()
+	}
+	_ = sys.s.Audit.Record(ctx, audit.Entry{Tool: "restart", Result: result, Decision: "allow", DecidedBy: ActorFrom(ctx), Actor: ActorFrom(ctx)})
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.RestartResponse{}), nil
 }
 
 func (sys systemService) Audit(ctx context.Context, req *connect.Request[aosv1.AuditRequest]) (*connect.Response[aosv1.AuditResponse], error) {

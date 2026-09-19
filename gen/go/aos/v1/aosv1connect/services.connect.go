@@ -210,6 +210,8 @@ const (
 	// SystemServiceDismissNotificationProcedure is the fully-qualified name of the SystemService's
 	// DismissNotification RPC.
 	SystemServiceDismissNotificationProcedure = "/aos.v1.SystemService/DismissNotification"
+	// SystemServiceRestartProcedure is the fully-qualified name of the SystemService's Restart RPC.
+	SystemServiceRestartProcedure = "/aos.v1.SystemService/Restart"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2219,6 +2221,14 @@ type SystemServiceClient interface {
 	// Notifications not yet dismissed, newest first, so they survive a reload.
 	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
 	DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error)
+	// Restart aosd itself (M7.3). The Daemon replies, then restarts out of band —
+	// under systemd through `systemctl restart --no-block aos`, under Compose by
+	// draining and exiting for `restart: unless-stopped` to bring the container
+	// back. The usual drain (M6.2) runs first, so running Tasks stop cleanly and
+	// are marked interrupted, not lost. Never an Agent: the control socket's §7.5
+	// guard already refuses Agent-confined callers. The client confirms the
+	// restart by watching Info's boot_id change.
+	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
 }
 
 // NewSystemServiceClient constructs a client for the aos.v1.SystemService service. By default, it
@@ -2274,6 +2284,12 @@ func NewSystemServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(systemServiceMethods.ByName("DismissNotification")),
 			connect.WithClientOptions(opts...),
 		),
+		restart: connect.NewClient[v1.RestartRequest, v1.RestartResponse](
+			httpClient,
+			baseURL+SystemServiceRestartProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("Restart")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -2286,6 +2302,7 @@ type systemServiceClient struct {
 	processes           *connect.Client[v1.ProcessesRequest, v1.ProcessesResponse]
 	listNotifications   *connect.Client[v1.ListNotificationsRequest, v1.ListNotificationsResponse]
 	dismissNotification *connect.Client[v1.DismissNotificationRequest, v1.DismissNotificationResponse]
+	restart             *connect.Client[v1.RestartRequest, v1.RestartResponse]
 }
 
 // Info calls aos.v1.SystemService.Info.
@@ -2323,6 +2340,11 @@ func (c *systemServiceClient) DismissNotification(ctx context.Context, req *conn
 	return c.dismissNotification.CallUnary(ctx, req)
 }
 
+// Restart calls aos.v1.SystemService.Restart.
+func (c *systemServiceClient) Restart(ctx context.Context, req *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error) {
+	return c.restart.CallUnary(ctx, req)
+}
+
 // SystemServiceHandler is an implementation of the aos.v1.SystemService service.
 type SystemServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
@@ -2338,6 +2360,14 @@ type SystemServiceHandler interface {
 	// Notifications not yet dismissed, newest first, so they survive a reload.
 	ListNotifications(context.Context, *connect.Request[v1.ListNotificationsRequest]) (*connect.Response[v1.ListNotificationsResponse], error)
 	DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error)
+	// Restart aosd itself (M7.3). The Daemon replies, then restarts out of band —
+	// under systemd through `systemctl restart --no-block aos`, under Compose by
+	// draining and exiting for `restart: unless-stopped` to bring the container
+	// back. The usual drain (M6.2) runs first, so running Tasks stop cleanly and
+	// are marked interrupted, not lost. Never an Agent: the control socket's §7.5
+	// guard already refuses Agent-confined callers. The client confirms the
+	// restart by watching Info's boot_id change.
+	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
 }
 
 // NewSystemServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2389,6 +2419,12 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(systemServiceMethods.ByName("DismissNotification")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemServiceRestartHandler := connect.NewUnaryHandler(
+		SystemServiceRestartProcedure,
+		svc.Restart,
+		connect.WithSchema(systemServiceMethods.ByName("Restart")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SystemService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemServiceInfoProcedure:
@@ -2405,6 +2441,8 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 			systemServiceListNotificationsHandler.ServeHTTP(w, r)
 		case SystemServiceDismissNotificationProcedure:
 			systemServiceDismissNotificationHandler.ServeHTTP(w, r)
+		case SystemServiceRestartProcedure:
+			systemServiceRestartHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2440,4 +2478,8 @@ func (UnimplementedSystemServiceHandler) ListNotifications(context.Context, *con
 
 func (UnimplementedSystemServiceHandler) DismissNotification(context.Context, *connect.Request[v1.DismissNotificationRequest]) (*connect.Response[v1.DismissNotificationResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.DismissNotification is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.Restart is not implemented"))
 }

@@ -13,6 +13,10 @@ services:
     image: agentic-os
     init: true
     hostname: aos
+    # The Restart operation (M7.3) drains and exits on a Compose install; this
+    # brings the container back, while an explicit `docker compose stop` stays
+    # stopped.
+    restart: unless-stopped
     stop_grace_period: 30s
     ports:
       - "${AOS_BIND:-127.0.0.1}:${AOS_PORT:-7700}:7700"

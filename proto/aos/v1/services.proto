@@ -744,7 +744,18 @@ service SystemService {
   // Notifications not yet dismissed, newest first, so they survive a reload.
   rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
   rpc DismissNotification(DismissNotificationRequest) returns (DismissNotificationResponse);
+  // Restart aosd itself (M7.3). The Daemon replies, then restarts out of band —
+  // under systemd through `systemctl restart --no-block aos`, under Compose by
+  // draining and exiting for `restart: unless-stopped` to bring the container
+  // back. The usual drain (M6.2) runs first, so running Tasks stop cleanly and
+  // are marked interrupted, not lost. Never an Agent: the control socket's §7.5
+  // guard already refuses Agent-confined callers. The client confirms the
+  // restart by watching Info's boot_id change.
+  rpc Restart(RestartRequest) returns (RestartResponse);
 }
+
+message RestartRequest {}
+message RestartResponse {}
 
 message ListNotificationsRequest {}
 message ListNotificationsResponse {

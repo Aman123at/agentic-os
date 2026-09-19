@@ -241,13 +241,24 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		defer d.browser.Close()
 	}
 
+	// Restart as an operation (M7.3). The RPC replies, then aosd restarts out of
+	// band: under systemd `systemctl restart --no-block aos` enqueues it and
+	// returns, so the reply flushes before systemd's SIGTERM; under Compose there
+	// is no systemd, so closing restartc ends the serve loop below exactly like a
+	// signal — the same M6.2 drain runs, Tasks are interrupted, aosd exits, and
+	// `restart: unless-stopped` brings the container back. restartOnce guards the
+	// close so a second Restart during the drain cannot panic.
+	restartc := make(chan struct{})
+	var restartOnce sync.Once
+	restarter := restarterFor(d.cfg.Native(), nil, func() { restartOnce.Do(func() { close(restartc) }) })
+
 	userOps := files.Ops{Home: d.layout.Home, UID: int(d.uid)}
 	userFiles := files.AsUser{Ops: userOps, UID: d.uid, GID: d.gid, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
 		Sampler:       d.sampler,
 		Notifications: d.notify,
 		Browser:       d.browser,
@@ -293,6 +304,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 
 	select {
 	case <-ctx.Done():
+	case <-restartc:
+		// A Compose Restart (M7.3): drain and exit like a signal, then
+		// `restart: unless-stopped` brings the container back with a new boot_id.
+		log.Print("restart requested: draining, then exiting for the container supervisor to bring aosd back")
 	case err := <-errc:
 		if !errors.Is(err, http.ErrServerClosed) {
 			return err
