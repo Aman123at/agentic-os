@@ -30,6 +30,8 @@ func TestInstructionsDropTheDockerEraFalsehoods(t *testing.T) {
 		"systemd units",
 		"manage_service",
 		"~/Downloads",
+		// M6.13: bind Services to loopback unless the user asked for public.
+		"Bind Services to 127.0.0.1",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, got)

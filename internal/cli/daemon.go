@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,9 +120,52 @@ func statusCmd() *cobra.Command {
 			fmt.Fprintf(w, "Port:    %s\n", port)
 			fmt.Fprintf(w, "Model:   %s\n", i.Model)
 			printUnitState(w)
+			printExposed(cmd.Context(), w)
 			return nil
 		},
 	}
+}
+
+// printExposed warns about ports reachable from outside the Machine: a Service
+// or loose listener bound to a wildcard address (0.0.0.0 or ::) is on the
+// network past the Account. Best-effort — silent if the supervisor doesn't
+// answer, so status still prints when it is busy.
+func printExposed(ctx context.Context, w io.Writer) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	resp, err := newClient().supervisor.ListServices(ctx, connect.NewRequest(&aosv1.ListServicesRequest{}))
+	if err != nil {
+		return
+	}
+	seen := map[int32]bool{}
+	var exposed []int32
+	for _, s := range resp.Msg.Services {
+		if s.Reachable {
+			for _, p := range s.Ports {
+				if !seen[p] {
+					seen[p], exposed = true, append(exposed, p)
+				}
+			}
+		}
+	}
+	for _, l := range resp.Msg.Listeners {
+		if l.Reachable && !seen[l.Port] {
+			seen[l.Port], exposed = true, append(exposed, l.Port)
+		}
+	}
+	if len(exposed) == 0 {
+		return
+	}
+	sort.Slice(exposed, func(i, j int) bool { return exposed[i] < exposed[j] })
+	nums := make([]string, len(exposed))
+	for i, p := range exposed {
+		nums[i] = fmt.Sprint(p)
+	}
+	noun := "ports"
+	if len(exposed) == 1 {
+		noun = "port"
+	}
+	fmt.Fprintf(w, "Exposed: %s %s reachable from outside (bound to 0.0.0.0/::)\n", noun, strings.Join(nums, ", "))
 }
 
 // printUnitState adds the systemd unit's active state when systemd is present;

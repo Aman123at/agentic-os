@@ -91,6 +91,11 @@ export default function Services() {
                       <span className="svc__name">{s.name}</span>
                       <span className={`svc__state svc__state--${st.mod}`}>{st.text}</span>
                       {s.root && <span className="svc__tag" title="Runs as root">root</span>}
+                      {s.reachable && (
+                        <span className="svc__tag svc__tag--exposed" title="Bound to 0.0.0.0 — reachable from the internet, past your Account">
+                          exposed
+                        </span>
+                      )}
                       {s.ports.length > 0 && <span className="svc__ports">:{s.ports.join(", :")}</span>}
                     </div>
                     <div className="svc__meta">
@@ -143,6 +148,11 @@ export default function Services() {
                 <span className="svc__portno">:{l.port}</span>
                 <span className="svc__portproc">{l.process || "—"}</span>
                 <span className="svc__portaddr">{l.address}</span>
+                {l.reachable && (
+                  <span className="svc__tag svc__tag--exposed" title="Bound to 0.0.0.0 — reachable from the internet, past your Account">
+                    exposed
+                  </span>
+                )}
                 <button className="svc__btn" onClick={() => openPort(l.port)}>
                   Open
                 </button>

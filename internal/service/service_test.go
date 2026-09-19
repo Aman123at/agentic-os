@@ -184,3 +184,21 @@ func TestCreatingIsRecordedInTheLedgerAndARestoreUndoesIt(t *testing.T) {
 		t.Errorf("ledger after the removal: %+v", ops)
 	}
 }
+
+// TestInfoMarksReachable checks that info() sets Reachable on a Service whose
+// listener binds a wildcard address, and leaves it false for a loopback bind.
+func TestInfoMarksReachable(t *testing.T) {
+	s := &Supervisor{services: map[string]*svc{}}
+	v := &svc{def: Definition{Name: "site"}, state: aosv1.ServiceState_SERVICE_STATE_RUNNING}
+	s.services["site"] = v
+
+	s.listeners = []Listener{{Port: 3000, Address: "0.0.0.0", Service: "site"}}
+	if i := s.info(v); !i.Reachable {
+		t.Errorf("a Service on 0.0.0.0 should be reachable: %+v", i)
+	}
+
+	s.listeners = []Listener{{Port: 3000, Address: "127.0.0.1", Service: "site"}}
+	if i := s.info(v); i.Reachable {
+		t.Errorf("a Service on 127.0.0.1 should not be reachable: %+v", i)
+	}
+}

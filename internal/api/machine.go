@@ -123,7 +123,7 @@ func (sv supervisorService) ListServices(ctx context.Context, _ *connect.Request
 		if l.Internal() {
 			continue
 		}
-		resp.Listeners = append(resp.Listeners, &aosv1.Listener{Port: int32(l.Port), Pid: int32(l.PID), Process: l.Process, Service: l.Service, Address: l.Address})
+		resp.Listeners = append(resp.Listeners, &aosv1.Listener{Port: int32(l.Port), Pid: int32(l.PID), Process: l.Process, Service: l.Service, Address: l.Address, Reachable: l.Reachable()})
 	}
 	return connect.NewResponse(resp), nil
 }

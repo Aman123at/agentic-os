@@ -273,6 +273,9 @@ message ServiceInfo {
   // How the last run ended, such as "exit 1" or "signal 9"; empty if it hasn't.
   string last_exit = 14;
   google.protobuf.Timestamp started_at = 15;
+  // Reachable from outside the Machine: a listener binds a wildcard address
+  // (0.0.0.0 or ::), so it is on the network past the Account, not just loopback.
+  bool reachable = 16;
 }
 
 // Listener is a program listening on a TCP port in the Machine.
@@ -284,6 +287,9 @@ message Listener {
   string service = 4;
   // The address it listens on, such as 0.0.0.0 or 127.0.0.1.
   string address = 5;
+  // Reachable from outside the Machine: it binds a wildcard address (0.0.0.0
+  // or ::), so it is on the network past the Account, not just loopback.
+  bool reachable = 6;
 }
 
 // ---------------------------------------------------------------- Memory (PLAN.md §8.5)

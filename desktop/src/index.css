@@ -2670,6 +2670,10 @@ button.stack__item:hover {
   background: var(--border);
   color: var(--muted);
 }
+.svc__tag--exposed {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
 .svc__ports { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--accent); }
 .svc__meta { margin-top: 4px; color: var(--muted); font-size: 11px; display: flex; flex-wrap: wrap; gap: 2px; }
 .svc__cmd { font-family: "SF Mono", Menlo, Consolas, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }

@@ -1737,8 +1737,11 @@ type ServiceInfo struct {
 	Ports    []int32      `protobuf:"varint,12,rep,packed,name=ports,proto3" json:"ports,omitempty"`
 	Restarts int32        `protobuf:"varint,13,opt,name=restarts,proto3" json:"restarts,omitempty"`
 	// How the last run ended, such as "exit 1" or "signal 9"; empty if it hasn't.
-	LastExit      string                 `protobuf:"bytes,14,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	LastExit  string                 `protobuf:"bytes,14,opt,name=last_exit,json=lastExit,proto3" json:"last_exit,omitempty"`
+	StartedAt *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	// Reachable from outside the Machine: a listener binds a wildcard address
+	// (0.0.0.0 or ::), so it is on the network past the Account, not just loopback.
+	Reachable     bool `protobuf:"varint,16,opt,name=reachable,proto3" json:"reachable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1878,6 +1881,13 @@ func (x *ServiceInfo) GetStartedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *ServiceInfo) GetReachable() bool {
+	if x != nil {
+		return x.Reachable
+	}
+	return false
+}
+
 // Listener is a program listening on a TCP port in the Machine.
 type Listener struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
@@ -1887,7 +1897,10 @@ type Listener struct {
 	// The Service it belongs to, if any.
 	Service string `protobuf:"bytes,4,opt,name=service,proto3" json:"service,omitempty"`
 	// The address it listens on, such as 0.0.0.0 or 127.0.0.1.
-	Address       string `protobuf:"bytes,5,opt,name=address,proto3" json:"address,omitempty"`
+	Address string `protobuf:"bytes,5,opt,name=address,proto3" json:"address,omitempty"`
+	// Reachable from outside the Machine: it binds a wildcard address (0.0.0.0
+	// or ::), so it is on the network past the Account, not just loopback.
+	Reachable     bool `protobuf:"varint,6,opt,name=reachable,proto3" json:"reachable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1955,6 +1968,13 @@ func (x *Listener) GetAddress() string {
 		return x.Address
 	}
 	return ""
+}
+
+func (x *Listener) GetReachable() bool {
+	if x != nil {
+		return x.Reachable
+	}
+	return false
 }
 
 type Memory struct {
@@ -2162,7 +2182,7 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"\xa4\x04\n" +
+	"finishedAt\"\xc2\x04\n" +
 	"\vServiceInfo\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\acommand\x18\x02 \x01(\tR\acommand\x12\x1f\n" +
@@ -2181,16 +2201,18 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\brestarts\x18\r \x01(\x05R\brestarts\x12\x1b\n" +
 	"\tlast_exit\x18\x0e \x01(\tR\blastExit\x129\n" +
 	"\n" +
-	"started_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x1a6\n" +
+	"started_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1c\n" +
+	"\treachable\x18\x10 \x01(\bR\treachable\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"~\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x9c\x01\n" +
 	"\bListener\x12\x12\n" +
 	"\x04port\x18\x01 \x01(\x05R\x04port\x12\x10\n" +
 	"\x03pid\x18\x02 \x01(\x05R\x03pid\x12\x18\n" +
 	"\aprocess\x18\x03 \x01(\tR\aprocess\x12\x18\n" +
 	"\aservice\x18\x04 \x01(\tR\aservice\x12\x18\n" +
-	"\aaddress\x18\x05 \x01(\tR\aaddress\"\x98\x01\n" +
+	"\aaddress\x18\x05 \x01(\tR\aaddress\x12\x1c\n" +
+	"\treachable\x18\x06 \x01(\bR\treachable\"\x98\x01\n" +
 	"\x06Memory\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x16\n" +

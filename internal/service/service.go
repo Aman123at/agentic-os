@@ -524,8 +524,14 @@ func (s *Supervisor) info(v *svc) *aosv1.ServiceInfo {
 		i.StartedAt = timestamppb.New(v.started)
 	}
 	for _, l := range s.listeners {
-		if l.Service == d.Name && !contains(i.Ports, int32(l.Port)) {
+		if l.Service != d.Name {
+			continue
+		}
+		if !contains(i.Ports, int32(l.Port)) {
 			i.Ports = append(i.Ports, int32(l.Port))
+		}
+		if l.Reachable() {
+			i.Reachable = true
 		}
 	}
 	return i

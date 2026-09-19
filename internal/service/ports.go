@@ -143,6 +143,11 @@ func scanListeners(procfs string, more map[string]int) ([]Listener, error) {
 
 func wildcard(addr string) bool { return addr == "0.0.0.0" || addr == "::" }
 
+// Reachable reports whether the listener is on the network past the Account: it
+// binds a wildcard address (0.0.0.0 or ::), not just loopback. Natively there is
+// no network namespace, so a wildcard bind is straight on the internet.
+func (l Listener) Reachable() bool { return wildcard(l.Address) }
+
 // socketOwners maps socket inodes to the pids whose file descriptors hold them.
 func socketOwners(procfs string) map[string]int {
 	owners := map[string]int{}

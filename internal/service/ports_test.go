@@ -113,3 +113,24 @@ func TestInternalListeners(t *testing.T) {
 		}
 	}
 }
+
+// TestReachable is the wildcard classification behind the proto reachable flag:
+// a wildcard bind (0.0.0.0 or ::) is reachable from outside; loopback and a
+// named address are not.
+func TestReachable(t *testing.T) {
+	for _, tc := range []struct {
+		addr string
+		want bool
+	}{
+		{"0.0.0.0", true},
+		{"::", true},
+		{"127.0.0.1", false},
+		{"::1", false},
+		{"192.168.1.10", false},
+		{"", false},
+	} {
+		if got := (Listener{Address: tc.addr}).Reachable(); got != tc.want {
+			t.Errorf("Reachable(%q) = %v, want %v", tc.addr, got, tc.want)
+		}
+	}
+}

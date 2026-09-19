@@ -1301,6 +1301,16 @@ are load-bearing rather than tidy:
     *Tests:* `ports_test.go` — `wildcard()` classification feeds the reachable flag;
     the prompt carries the bind sentence.
 
+    > **Built (M6.13).** A `reachable` flag rides the `Listener` and `ServiceInfo`
+    > protos (regenerated, not hand-edited). `Listener.Reachable()` in `ports.go`
+    > wraps the existing `wildcard()`; `service.info()` and `api/machine.go` set it.
+    > It shows as `, exposed` in `aos service list`, an `Exposed: …` warning line
+    > in `aos status`, and an `exposed` badge in Activity Monitor
+    > (`Services.tsx` + `.svc__tag--exposed`). The Agent prompt gains the bind
+    > sentence. Tests: `TestReachable`, `TestInfoMarksReachable`, and the
+    > instructions bind assertion. Only *reports* — no change to binding or the
+    > forwarder.
+
 14. **The Desktop's product language.** The four `Host` surfaces are a text-and-rename
     sweep — no behaviour changes, only the word: `keyboard.ts:13` (`hostOS()` →
     `browserOS()`), `AppearancePane.tsx:12` ("Follow the Host" → "Follow your

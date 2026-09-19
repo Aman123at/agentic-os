@@ -32,6 +32,9 @@ func serviceCmd() *cobra.Command {
 				if s.Root {
 					state += ", root"
 				}
+				if s.Reachable {
+					state += ", exposed"
+				}
 				cmdText := s.Command
 				if len(cmdText) > 60 {
 					cmdText = cmdText[:59] + "…"
@@ -44,7 +47,11 @@ func serviceCmd() *cobra.Command {
 			var other []string
 			for _, l := range resp.Msg.Listeners {
 				if l.Service == "" {
-					other = append(other, fmt.Sprintf("%d (%s, pid %d)", l.Port, orText(l.Process, "?"), l.Pid))
+					line := fmt.Sprintf("%d (%s, pid %d)", l.Port, orText(l.Process, "?"), l.Pid)
+					if l.Reachable {
+						line = fmt.Sprintf("%d (%s, pid %d, reachable from outside)", l.Port, orText(l.Process, "?"), l.Pid)
+					}
+					other = append(other, line)
 				}
 			}
 			if len(other) > 0 {
