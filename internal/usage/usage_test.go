@@ -91,3 +91,53 @@ func TestTheTrackerAddsUpEachDayAndRereadsChangedPrices(t *testing.T) {
 		t.Errorf("the next day %+v", today)
 	}
 }
+
+// TestSpendTodaySumsBothRealms checks the M7.2 Cost Limit: it adds this Realm's
+// spend and the other Realm's, while the per-Realm Today stays scoped to one
+// database so a Realm's spend never shows in the other's Activity.
+func TestSpendTodaySumsBothRealms(t *testing.T) {
+	dir := t.TempDir()
+	open := func(name string) *store.DB {
+		db, err := store.Open(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { db.Close() })
+		return db
+	}
+	this, other := open("aos.db"), open("root-aos.db")
+	now := time.Date(2026, 9, 14, 12, 0, 0, 0, time.Local)
+	path := filepath.Join(dir, "prices.yaml")
+	if err := os.WriteFile(path, []byte(example), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	prices := &File{Path: path}
+	ctx := context.Background()
+	nowFn := func() time.Time { return now }
+
+	// $1.40 in this Realm, $2.80 in the other.
+	u := llm.Usage{InputTokens: 500_000, OutputTokens: 50_000}
+	record := func(tr *Tracker) {
+		t.Helper()
+		if _, _, err := tr.Record(ctx, "gpt-big", u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	record(&Tracker{DB: this, Prices: prices, Now: nowFn})
+	otherTr := &Tracker{DB: other, Prices: prices, Now: nowFn}
+	record(otherTr)
+	record(otherTr)
+
+	tr := &Tracker{DB: this, Other: other, Prices: prices, Now: nowFn}
+	if spend, err := tr.SpendToday(ctx); err != nil || math.Abs(spend-4.2) > 1e-9 {
+		t.Errorf("SpendToday $%v, %v; want $4.20 across both Realms", spend, err)
+	}
+	// The per-Realm view stays scoped to this Realm's own database.
+	if today, _ := tr.Today(ctx); math.Abs(today.CostUsd-1.4) > 1e-9 {
+		t.Errorf("Today $%v; want only this Realm's $1.40", today.CostUsd)
+	}
+	// With no other Realm, SpendToday is just this Realm.
+	if spend, err := (&Tracker{DB: this, Prices: prices, Now: nowFn}).SpendToday(ctx); err != nil || math.Abs(spend-1.4) > 1e-9 {
+		t.Errorf("SpendToday without Other $%v, %v; want $1.40", spend, err)
+	}
+}

@@ -671,12 +671,13 @@ func (r *run) Budget(ctx context.Context) error {
 		if acked {
 			return nil
 		}
-		today, err := cfg.Usage.Today(ctx)
+		// SpendToday sums both Realms so Root Mode cannot dodge the daily limit (M7.2).
+		spend, err := cfg.Usage.SpendToday(ctx)
 		if err != nil {
 			return err
 		}
-		if today.CostUsd >= limit {
-			why := fmt.Sprintf("Today's estimated model spend reached $%.2f, the daily Cost Limit ($%.2f).", today.CostUsd, limit)
+		if spend >= limit {
+			why := fmt.Sprintf("Today's estimated model spend reached $%.2f, the daily Cost Limit ($%.2f).", spend, limit)
 			if err := r.pauseForCost(ctx, why, "Reply to let this Task continue today, or cancel it."); err != nil {
 				return err
 			}

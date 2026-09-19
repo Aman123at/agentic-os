@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -86,5 +87,45 @@ func TestM6AuthTablesCascade(t *testing.T) {
 	var n int
 	if err := db.Read().QueryRow(`SELECT count(*) FROM refresh_tokens`).Scan(&n); err != nil || n != 0 {
 		t.Errorf("refresh_tokens after deleting the user: %d rows (%v), want 0", n, err)
+	}
+}
+
+// TestPerRealmDatabasesAreIndependent stands in for the M7.2 isolation: the Root
+// Realm gets its own database file, which migrates from empty just like the
+// Standard one, and no query can reach across the two — a row written to one is
+// absent from the other, because there is no shared realm column to forget.
+func TestPerRealmDatabasesAreIndependent(t *testing.T) {
+	dir := t.TempDir()
+	standard, err := Open(filepath.Join(dir, "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer standard.Close()
+	// The Root database is a fresh file under its own directory (the Daemon
+	// creates it 0700 on a first Root start); opening it applies every migration
+	// from empty, exactly as on that first start.
+	if err := os.MkdirAll(filepath.Join(dir, "root"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root, err := Open(filepath.Join(dir, "root", "aos.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	var version int
+	if err := root.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
+		t.Fatalf("Root database user_version %d, %v; want every migration applied", version, err)
+	}
+
+	ctx := context.Background()
+	if err := standard.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO usage (day, model, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, cost_usd, cost_known) VALUES ('2026-09-20', 'gpt-big', 1, 0, 1, 0, 1.0, 1)`)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := root.Read().QueryRow(`SELECT count(*) FROM usage`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("Root usage after a Standard write: %d rows (%v), want 0 — the Realms must not share history", n, err)
 	}
 }

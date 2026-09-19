@@ -69,8 +69,6 @@ const (
 	unitPath       = "/etc/systemd/system/aos.service"
 	keyFile        = StateDir + "/keys/openai"
 	sessionKeyFile = StateDir + "/keys/session"
-	outputsDir     = StateDir + "/outputs"
-	databaseFile   = StateDir + "/aos.db"
 	pricesFile     = StateDir + "/prices.yaml"
 	modelsFile     = StateDir + "/models.yaml"
 	blobsDir       = StateDir + "/blobs"
@@ -92,24 +90,31 @@ type Daemon struct {
 	realm  realm.Realm
 	bootID string
 
-	db       *store.DB
-	bus      *events.Bus
-	audit    *audit.Log
-	tasks    *task.Manager
-	registry *session.Registry
-	locks    *locks
-	outputs  *tool.Outputs
-	auth     *api.Auth
-	usage    *usage.Tracker
-	models   *catalogue.File
-	memories *profile.Memories
-	osName   string
-	software *software.Manager
-	services *service.Supervisor
-	settings *settings.Store
-	sampler  *sysinfo.Sampler
-	notify   *notify.Center
-	browser  *browser.Manager
+	// db is the Realm's database, used for everything but the account.
+	// accountDB is always the Standard database (users, refresh_tokens,
+	// protected_paths), so one sign-in and one set of locks survive a switch; it
+	// equals db in the Standard Realm. otherDB is the opposite Realm's database,
+	// summed into the Cost Limit read-only, or nil when it does not exist (M7.2).
+	accountDB *store.DB
+	otherDB   *store.DB
+	db        *store.DB
+	bus       *events.Bus
+	audit     *audit.Log
+	tasks     *task.Manager
+	registry  *session.Registry
+	locks     *locks
+	outputs   *tool.Outputs
+	auth      *api.Auth
+	usage     *usage.Tracker
+	models    *catalogue.File
+	memories  *profile.Memories
+	osName    string
+	software  *software.Manager
+	services  *service.Supervisor
+	settings  *settings.Store
+	sampler   *sysinfo.Sampler
+	notify    *notify.Center
+	browser   *browser.Manager
 
 	gitMu sync.Mutex
 	git   map[string]map[string]bool // Task id → repo root → dirty when first seen
@@ -126,13 +131,6 @@ type Daemon struct {
 func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	d := &Daemon{cfg: cfg, layout: sandbox.DefaultLayout(), abi: sandbox.ABI(), git: map[string]map[string]bool{}, bootID: newBootID()}
 	d.sampler = &sysinfo.Sampler{Disks: []string{d.layout.Home, StateDir}}
-	if err := d.init(); err != nil {
-		return err
-	}
-	// The CPU columns are rates, so they need a reading to measure against
-	// before the Desktop asks for the first one.
-	d.sampler.Prime()
-	defer d.db.Close()
 
 	var err error
 	model := d.cfg.Model
@@ -141,8 +139,9 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	}
 	// config.yml is the single source of truth (ADR-0010). It overlays the
 	// startup-only keys onto d.cfg and holds the runtime settings, which win over
-	// the environment; a malformed file or an unknown key refuses the start. Done
-	// before the Landlock check and provider() so both see the file's values.
+	// the environment; a malformed file or an unknown key refuses the start. Read
+	// before init() (so the Realm is known before its database is opened), the
+	// Landlock check and provider(), which all depend on the file's values.
 	d.settings, err = settings.Open(d.cfg.ConfigPath, settings.Values{Model: model, ReasoningEffort: d.cfg.ReasoningEffort,
 		Autonomy: d.cfg.Autonomy, MaxTasks: d.cfg.MaxTasks, MaxRetries: d.cfg.MaxRetries, TaskCostLimit: d.cfg.TaskCostLimit,
 		DailyCostLimit: d.cfg.DailyCostLimit, TrashRetentionDays: int(d.cfg.TrashRetention / (24 * time.Hour)),
@@ -151,9 +150,26 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		return fmt.Errorf("loading the configuration: %w", err)
 	}
 	// The Realm is resolved once, now that settings.Open has overlaid root_mode
-	// onto d.cfg (M7.1). Everything that needs it takes this value; no other
-	// package reads the key.
+	// onto d.cfg (M7.1), and before init() opens the Realm's database (M7.2).
+	// Everything that needs it takes this value; no other package reads the key.
 	d.realm = realm.Of(d.cfg.RootMode)
+
+	if err := d.init(); err != nil {
+		return err
+	}
+	// The CPU columns are rates, so they need a reading to measure against
+	// before the Desktop asks for the first one.
+	d.sampler.Prime()
+	defer d.db.Close()
+	// The account database is a second handle only in Root Mode; in Standard it
+	// is the same file as db. otherDB is opened only when the opposite Realm's
+	// database exists.
+	if d.accountDB != d.db {
+		defer d.accountDB.Close()
+	}
+	if d.otherDB != nil && d.otherDB != d.accountDB {
+		defer d.otherDB.Close()
+	}
 	// A reasoning effort the chosen model does not accept is an HTTP 400, so
 	// settings validates the pair against the catalogue (M6.16).
 	d.settings.Efforts = d.models.Efforts
@@ -316,7 +332,12 @@ func (d *Daemon) init() error {
 	if err != nil {
 		return fmt.Errorf("preparing the home folder: %w", err)
 	}
-	for dir, mode := range map[string]fs.FileMode{StateDir: 0o700, StateDir + "/keys": 0o700, outputsDir: 0o700, RunDir: 0o755, SessionsDir: 0o755} {
+	// The Realm's file layout: Standard under /var/lib/aos, Root under
+	// /var/lib/aos/root (created 0700 on first Root start, so nothing but root
+	// reads its history). MkdirAll on the outputs path creates the Root directory
+	// too (M7.2).
+	dirs := dirsFor(StateDir, d.realm)
+	for dir, mode := range map[string]fs.FileMode{StateDir: 0o700, StateDir + "/keys": 0o700, dirs.Outputs: 0o700, RunDir: 0o755, SessionsDir: 0o755} {
 		if err := os.MkdirAll(dir, mode); err != nil {
 			return err
 		}
@@ -333,8 +354,28 @@ func (d *Daemon) init() error {
 	if err := keys.copy(); err != nil {
 		log.Printf("API key: %v", err)
 	}
-	if d.db, err = store.Open(databaseFile); err != nil {
+	// One database file per Realm (M7.2). The account (users, refresh_tokens) and
+	// the shared protected_paths always live in the Standard database, so one
+	// sign-in and one set of locks survive a switch; in the Standard Realm the
+	// Realm's database is that same file.
+	if d.accountDB, err = store.Open(dirs.Account); err != nil {
 		return err
+	}
+	if dirs.DB == dirs.Account {
+		d.db = d.accountDB
+	} else if d.db, err = store.Open(dirs.DB); err != nil {
+		return err
+	}
+	// The Cost Limit sums both Realms' spend so Root Mode cannot dodge it. In Root
+	// the other Realm is Standard, whose database is already open as accountDB; in
+	// Standard it is the Root database, opened read-only for the sum only when a
+	// Root start has created it.
+	if dirs.Other == dirs.Account {
+		d.otherDB = d.accountDB
+	} else if _, statErr := os.Stat(dirs.Other); statErr == nil {
+		if d.otherDB, err = store.Open(dirs.Other); err != nil {
+			return err
+		}
 	}
 	key, err := sessionKey()
 	if err != nil {
@@ -344,13 +385,13 @@ func (d *Daemon) init() error {
 	// access tokens and tickets; over the control socket the uid check accepts
 	// only the user aosd runs as — root, under systemd (M6.2) — which its 0600
 	// mode already enforces, the uid check being the belt to that braces.
-	d.auth = &api.Auth{Model: &auth.Model{DB: d.db, Key: key}, SocketUID: os.Getuid(), SelfPort: Port}
+	d.auth = &api.Auth{Model: &auth.Model{DB: d.accountDB, Key: key}, SocketUID: os.Getuid(), SelfPort: Port}
 	// The user edits prices.yaml; it is only written when missing.
 	if f, err := os.OpenFile(pricesFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
 		_, _ = f.WriteString(usage.DefaultPrices)
 		f.Close()
 	}
-	d.usage = &usage.Tracker{DB: d.db, Prices: &usage.File{Path: pricesFile}}
+	d.usage = &usage.Tracker{DB: d.db, Other: d.otherDB, Prices: &usage.File{Path: pricesFile}}
 	// The user edits models.yaml too; seeded once, then re-read on change (M6.16).
 	if f, err := os.OpenFile(modelsFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
 		_, _ = f.WriteString(catalogue.DefaultModels)
@@ -362,8 +403,11 @@ func (d *Daemon) init() error {
 	d.memories = &profile.Memories{DB: d.db, Notify: d.post}
 	d.audit = &audit.Log{DB: d.db}
 	d.registry = session.NewRegistry()
-	d.outputs = &tool.Outputs{Dir: outputsDir}
-	d.locks = &locks{db: d.db, home: d.layout.Home}
+	d.outputs = &tool.Outputs{Dir: dirs.Outputs}
+	// protected_paths is shared: your locks describe files on one machine, and
+	// Root Mode simply does not enforce them (M7.4), so the locks are read from
+	// the Standard database in either Realm (M7.2).
+	d.locks = &locks{db: d.accountDB, home: d.layout.Home}
 	return d.locks.load()
 }
 

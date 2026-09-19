@@ -159,6 +159,11 @@ func (f *File) Prices() (Prices, error) {
 // Tracker records usage per day.
 type Tracker struct {
 	DB *store.DB
+	// Other is the opposite Realm's database, read-only. It may be nil. Only the
+	// Cost Limit reads it, via SpendToday, so Root Mode cannot be used to dodge a
+	// limit; the per-Realm views (Today, Days) stay scoped to DB so one Realm's
+	// spend never shows in the other's Activity (M7.2).
+	Other *store.DB
 	// Prices may be nil: costs are then unknown.
 	Prices *File
 	Now    func() time.Time
@@ -208,6 +213,33 @@ func (t *Tracker) Today(ctx context.Context) (*aosv1.Usage, error) {
 		COALESCE(SUM(output_tokens), 0), COALESCE(SUM(reasoning_tokens), 0), COALESCE(SUM(cost_usd), 0), COALESCE(MIN(cost_known), 1)
 		FROM usage WHERE day = ?`, t.day()).Scan(&u.InputTokens, &u.CachedInputTokens, &u.OutputTokens, &u.ReasoningTokens, &u.CostUsd, &u.CostKnown)
 	return u, err
+}
+
+// SpendToday returns today's estimated cost summed across every Realm — this
+// Realm's database and, when set, the other Realm's (M7.2). The daily Cost Limit
+// uses it so the two Realms share one budget and Root Mode cannot dodge it; it
+// is only ever a total, never a Task.
+func (t *Tracker) SpendToday(ctx context.Context) (float64, error) {
+	cost, err := t.dayCost(ctx, t.DB)
+	if err != nil {
+		return 0, err
+	}
+	if t.Other != nil {
+		other, err := t.dayCost(ctx, t.Other)
+		if err != nil {
+			return 0, err
+		}
+		cost += other
+	}
+	return cost, nil
+}
+
+// dayCost is today's total estimated cost in one database.
+func (t *Tracker) dayCost(ctx context.Context, db *store.DB) (float64, error) {
+	var cost float64
+	err := db.Read().QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(cost_usd), 0) FROM usage WHERE day = ?`, t.day()).Scan(&cost)
+	return cost, err
 }
 
 // Days returns the last n days' usage over every model, today included and
