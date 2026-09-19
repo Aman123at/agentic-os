@@ -25,7 +25,7 @@ func Main() int {
 	if filepath.Base(os.Args[0]) == "rm" {
 		return rmShim(os.Args[1:])
 	}
-	err := rootCmd().Execute()
+	err := Root().Execute()
 	var exit exitError
 	switch {
 	case errors.As(err, &exit):
@@ -37,7 +37,9 @@ func Main() int {
 	return 0
 }
 
-func rootCmd() *cobra.Command {
+// Root is the aos command tree. It is exported so tools/docsgen can walk it to
+// generate the documentation site's command reference.
+func Root() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "aos",
 		Short:         "Agentic OS: give Agents Tasks on this Machine",

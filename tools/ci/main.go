@@ -117,6 +117,9 @@ func lint() error {
 	if err := installerShellcheck(); err != nil {
 		return err
 	}
+	if err := docsReference(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -130,6 +133,14 @@ func lint() error {
 		}
 	}
 	return nil
+}
+
+// docsReference fails when the committed command reference no longer matches the
+// aos command tree. It is pure Go (needs no Node, unlike the `docs` stage), so it
+// belongs in lint: a command whose Short changes drifts the reference the way an
+// unformatted file drifts gofmt.
+func docsReference() error {
+	return run("go", "run", "./tools/docsgen", "-check")
 }
 
 // desktopProductLanguage guards the M6.14 sweep: "Host" is retired product
