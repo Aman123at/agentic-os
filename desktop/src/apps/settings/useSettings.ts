@@ -6,10 +6,12 @@ import { useCallback, useEffect, useState } from "react";
 
 import { settings as settingsApi } from "../../api/client";
 import { friendlyError } from "../../api/error";
-import type { Setting } from "../../gen/aos/v1/services_pb";
+import type { ModelChoice, Setting } from "../../gen/aos/v1/services_pb";
 
 export interface Settings {
   byKey: Record<string, Setting>;
+  /** The model catalogue (M6.16): the models to offer and each one's accepted efforts. */
+  models: ModelChoice[];
   loading: boolean;
   error: string;
   saving: string;
@@ -19,6 +21,7 @@ export interface Settings {
 
 export function useSettings(): Settings {
   const [byKey, setByKey] = useState<Record<string, Setting>>({});
+  const [models, setModels] = useState<ModelChoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState("");
@@ -30,6 +33,7 @@ export function useSettings(): Settings {
         const resp = await settingsApi.get({});
         if (!live) return;
         setByKey(Object.fromEntries(resp.settings.map((s) => [s.key, s])));
+        setModels(resp.models);
         setError("");
       } catch (err) {
         if (live) setError(friendlyError(err));
@@ -57,5 +61,5 @@ export function useSettings(): Settings {
     }
   }, []);
 
-  return { byKey, loading, error, saving, update };
+  return { byKey, models, loading, error, saving, update };
 }

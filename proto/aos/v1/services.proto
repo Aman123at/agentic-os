@@ -663,6 +663,23 @@ message Setting {
 message GetSettingsRequest {}
 message GetSettingsResponse {
   repeated Setting settings = 1;
+  // The model catalogue (M6.16), for the Settings dropdowns: which models to
+  // offer and, per model, which reasoning efforts it accepts. Open, not an
+  // allow-list — the model field is still free text, so an unlisted model stays
+  // usable. Empty when the catalogue is unavailable.
+  repeated ModelChoice models = 2;
+}
+
+// ModelChoice is one entry of the model catalogue as System Settings shows it.
+message ModelChoice {
+  string id = 1;
+  string label = 2;
+  // The reasoning efforts this model accepts; any other value is an HTTP 400.
+  repeated string efforts = 3;
+  // What OpenAI uses when the request omits an effort; "" when undocumented.
+  string default_effort = 4;
+  // The model aosd defaults to.
+  bool is_default = 5;
 }
 
 message UpdateSettingRequest {

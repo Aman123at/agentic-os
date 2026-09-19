@@ -91,6 +91,40 @@ func TestSavedSettingsSurviveARestart(t *testing.T) {
 	}
 }
 
+// TestPerModelEffortValidation covers the M6.16 fix: max is a wire value, an
+// effort the chosen model does not accept is refused (it would be an HTTP 400),
+// and changing the model substitutes a saved effort the new model rejects.
+func TestPerModelEffortValidation(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "config.yml"))
+	// A stand-in catalogue: terra takes none..max, astra rejects none.
+	efforts := map[string][]string{
+		"gpt-5.6-terra": {"none", "low", "medium", "high", "xhigh", "max"},
+		"gpt-6-astra":   {"low", "medium", "high", "xhigh", "max"},
+	}
+	s.Efforts = func(model string) []string { return efforts[model] }
+
+	if _, err := s.Set("reasoning_effort", "max"); err != nil {
+		t.Fatalf("terra should accept max: %v", err)
+	}
+	if _, err := s.Set("reasoning_effort", "none"); err != nil {
+		t.Fatalf("terra should accept none: %v", err)
+	}
+	// Switch to astra: the saved effort none is a 400 there, so it is substituted.
+	if _, err := s.Set("model", "gpt-6-astra"); err != nil {
+		t.Fatalf("set model astra: %v", err)
+	}
+	if v := s.Values(); v.ReasoningEffort != SubstituteEffort {
+		t.Errorf("changing to astra should substitute the invalid effort with %q, got %q", SubstituteEffort, v.ReasoningEffort)
+	}
+	// none is now refused outright on astra, naming what it accepts.
+	if _, err := s.Set("reasoning_effort", "none"); err == nil || !strings.Contains(err.Error(), "accepts") {
+		t.Errorf("astra should refuse none: %v", err)
+	}
+	if _, err := s.Set("reasoning_effort", "max"); err != nil {
+		t.Errorf("astra should accept max: %v", err)
+	}
+}
+
 func TestInvalidValuesAreRefusedAndChangeNothing(t *testing.T) {
 	s := open(t, filepath.Join(t.TempDir(), "config.yml"))
 	for key, value := range map[string]string{

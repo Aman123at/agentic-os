@@ -76,15 +76,15 @@ var fields = []field{
 			v.Model = s
 			return nil
 		}},
-	{"reasoning_effort", "OPENAI_REASONING_EFFORT", "How hard the model thinks: none, minimal, low, medium, high or xhigh.",
+	{"reasoning_effort", "OPENAI_REASONING_EFFORT", "How hard the model thinks; the values a model accepts differ (see models.yaml). The wire values are none, minimal, low, medium, high, xhigh or max.",
 		func(v Values) string { return v.ReasoningEffort },
 		func(v *Values, s string) error {
 			switch s {
-			case "none", "minimal", "low", "medium", "high", "xhigh":
+			case "none", "minimal", "low", "medium", "high", "xhigh", "max":
 				v.ReasoningEffort = s
 				return nil
 			}
-			return errors.New("the reasoning effort is none, minimal, low, medium, high or xhigh")
+			return errors.New("the reasoning effort is none, minimal, low, medium, high, xhigh or max")
 		}},
 	{"autonomy", "AOS_AUTONOMY", "How bold Agents are: auto, confirm-risky or confirm-all.",
 		func(v Values) string { return AutonomyName(v.Autonomy) },
@@ -272,10 +272,32 @@ type Store struct {
 	startupInForce map[string]string
 	startupBase    map[string]string
 
+	// Efforts, when set, returns the reasoning efforts a model accepts, so the
+	// reasoning_effort setting is validated against the chosen model — an
+	// unsupported effort is an HTTP 400, not a silent clamp — and re-validated when
+	// the model changes. nil accepts any wire value for any model. Set once before
+	// the Store serves; reads happen under mu.
+	Efforts func(model string) []string
+
 	mu       sync.RWMutex
 	cur      Values
 	saved    map[string]string // runtime keys present in the file
 	onChange []func(Values)
+}
+
+// SubstituteEffort is what AOS falls back to when changing the model leaves the
+// saved effort invalid for the new model; OpenAI's migration guidance is to start
+// at low when coming from none or minimal. If the new model does not accept low
+// either, the effort is cleared so OpenAI uses the model's own default.
+const SubstituteEffort = "low"
+
+func accepts(efforts []string, effort string) bool {
+	for _, e := range efforts {
+		if e == effort {
+			return true
+		}
+	}
+	return false
 }
 
 // Open loads config.yml at path over base (the runtime environment-or-defaults)
@@ -463,6 +485,14 @@ func (s *Store) setRuntime(f field, key, value string) (Setting, error) {
 		}
 	}
 	s.mu.Lock()
+	// A reasoning effort the chosen model does not accept is an HTTP 400 on every
+	// Task (M6.16), so refuse it here against the catalogue rather than save it.
+	if key == "reasoning_effort" && value != "" && s.Efforts != nil {
+		if efforts := s.Efforts(s.cur.Model); !accepts(efforts, value) {
+			s.mu.Unlock()
+			return Setting{}, fmt.Errorf("%s does not accept the reasoning effort %q; it accepts %s", s.cur.Model, value, strings.Join(efforts, ", "))
+		}
+	}
 	if err := s.write(key, value); err != nil {
 		s.mu.Unlock()
 		return Setting{}, err
@@ -473,6 +503,24 @@ func (s *Store) setRuntime(f field, key, value string) (Setting, error) {
 		s.saved[key] = value
 	}
 	s.cur = s.compute()
+	// Changing the model can leave the saved effort invalid for the new one
+	// (none is valid on gpt-5.6-terra and a 400 on gpt-6-astra), so substitute.
+	if key == "model" && s.Efforts != nil && s.cur.ReasoningEffort != "" {
+		if efforts := s.Efforts(s.cur.Model); !accepts(efforts, s.cur.ReasoningEffort) {
+			sub := SubstituteEffort
+			if !accepts(efforts, sub) {
+				sub = ""
+			}
+			if err := s.write("reasoning_effort", sub); err == nil {
+				if sub == "" {
+					delete(s.saved, "reasoning_effort")
+				} else {
+					s.saved["reasoning_effort"] = sub
+				}
+				s.cur = s.compute()
+			}
+		}
+	}
 	cur, st, listeners := s.cur, s.describe(f), append([]func(Values){}, s.onChange...)
 	s.mu.Unlock()
 	for _, fn := range listeners {

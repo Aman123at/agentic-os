@@ -1368,6 +1368,26 @@ are load-bearing rather than tidy:
     effort list is offered; `max` is present and `minimal` gone. *Tests:*
     `models_test.go` — catalogue seeding, per-model effort, the corrected list.
 
+    > **Built (M6.16).** New package `internal/catalogue`: `DefaultModels` (the
+    > six-model seed from the research, with per-model `efforts`, `default_effort`,
+    > `price` and `long_context`), a `yaml.v3` parser that refuses an unknown
+    > version or a non-wire effort, `Lookup` (id → alias → dash-prefix snapshot,
+    > like `prices.Lookup`), and `Efforts` — a listed model's own set, the full
+    > wire enum for an unlisted one (open, not an allow-list). aosd seeds
+    > `/var/lib/aos/models.yaml` on first run exactly as it seeds `prices.yaml`,
+    > and re-reads it on change. The effort defect is fixed by validating the
+    > **pair**: `internal/settings` gained an `Efforts` hook, wired to the
+    > catalogue, so an effort a model rejects is refused (not a saved 400) and a
+    > model change substitutes an invalid saved effort with `low`; the wire floor
+    > now includes `max`. The catalogue reaches System Settings over the
+    > `SettingsService.Get` RPC (new `ModelChoice` message; `buf generate`
+    > regenerated Go + TS), where the Model field became a combobox (catalogue +
+    > free-text escape hatch) and the effort dropdown narrows to the selected
+    > model's set. Asserted in `catalogue_test.go` and `settings_test.go`; the
+    > `GET /v1/models` entitlement/`shutdown_date` surfacing and the ~2 live calls
+    > that close the Astra-default / `minimal`-on-5.6 gaps stay Aman's (they spend
+    > the key). Version unchanged (no new `### M` heading).
+
 17. **`install.sh`** (prototype at `tools/spikes/install/`, rehearsable with
     `DRY_RUN=1`). POSIX `sh`, `set -eu`, body in a `main()` called on the last line
     so a truncated `curl | sh` does nothing. Version-less asset names mean no GitHub

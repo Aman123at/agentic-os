@@ -30,6 +30,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/audit"
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/catalogue"
 	"github.com/Aman123at/agentic-os/internal/config"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
@@ -73,6 +74,7 @@ const (
 	outputsDir     = StateDir + "/outputs"
 	databaseFile   = StateDir + "/aos.db"
 	pricesFile     = StateDir + "/prices.yaml"
+	modelsFile     = StateDir + "/models.yaml"
 	blobsDir       = StateDir + "/blobs"
 	servicesDir    = StateDir + "/services"
 	aptArchives    = "/var/cache/aos/apt/archives"
@@ -96,6 +98,7 @@ type Daemon struct {
 	outputs  *tool.Outputs
 	auth     *api.Auth
 	usage    *usage.Tracker
+	models   *catalogue.File
 	memories *profile.Memories
 	osName   string
 	software *software.Manager
@@ -144,6 +147,9 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("loading the configuration: %w", err)
 	}
+	// A reasoning effort the chosen model does not accept is an HTTP 400, so
+	// settings validates the pair against the catalogue (M6.16).
+	d.settings.Efforts = d.models.Efforts
 
 	if d.cfg.RequireLandlock && d.abi < 1 {
 		return errors.New("require_landlock is set, but this Host's kernel has no Landlock")
@@ -218,7 +224,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.layout.Home,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
-		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
+		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Assets: assets,
 		Sampler:       d.sampler,
 		Notifications: d.notify,
 		Browser:       d.browser,
@@ -338,6 +344,12 @@ func (d *Daemon) init() error {
 		f.Close()
 	}
 	d.usage = &usage.Tracker{DB: d.db, Prices: &usage.File{Path: pricesFile}}
+	// The user edits models.yaml too; seeded once, then re-read on change (M6.16).
+	if f, err := os.OpenFile(modelsFile, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600); err == nil {
+		_, _ = f.WriteString(catalogue.DefaultModels)
+		f.Close()
+	}
+	d.models = &catalogue.File{Path: modelsFile}
 	d.bus = events.New()
 	d.notify = &notify.Center{DB: d.db, Bus: d.bus}
 	d.memories = &profile.Memories{DB: d.db, Notify: d.post}

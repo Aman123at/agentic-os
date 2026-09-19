@@ -3,7 +3,7 @@
 // or one saved here) with a Reset that clears the saved value so env or the
 // default returns. Each control commits on blur or Enter, then reflects the
 // value the server accepted (which may differ, e.g. "$1" becomes "1").
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 
 import type { Setting } from "../../gen/aos/v1/services_pb";
 import type { Settings } from "./useSettings";
@@ -45,11 +45,14 @@ function Row({ settings, keyName, label, hint, children }: { settings: Settings;
   );
 }
 
-// TextSetting edits a free-text setting (the model name).
-export function TextSetting({ settings, keyName, label, hint, placeholder }: { settings: Settings; keyName: string; label: string; hint?: string; placeholder?: string }) {
+// TextSetting edits a free-text setting (the model name). With `list` it becomes
+// a combobox: the catalogue models are offered as suggestions, but any model can
+// still be typed (M6.16 — the catalogue is open, not an allow-list).
+export function TextSetting({ settings, keyName, label, hint, placeholder, list }: { settings: Settings; keyName: string; label: string; hint?: string; placeholder?: string; list?: { value: string; name: string }[] }) {
   const s = settings.byKey[keyName];
   const [draft, setDraft] = useState(s?.value ?? "");
   useEffect(() => setDraft(s?.value ?? ""), [s?.value]);
+  const listId = useId();
   const commit = () => {
     if (draft !== (s?.value ?? "")) void settings.update(keyName, draft);
   };
@@ -62,10 +65,20 @@ export function TextSetting({ settings, keyName, label, hint, placeholder }: { s
         placeholder={placeholder}
         disabled={settings.saving === keyName}
         aria-label={label}
+        list={list ? listId : undefined}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => e.key === "Enter" && commit()}
       />
+      {list && (
+        <datalist id={listId}>
+          {list.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.name}
+            </option>
+          ))}
+        </datalist>
+      )}
     </Row>
   );
 }

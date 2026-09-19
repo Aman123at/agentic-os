@@ -19,6 +19,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/audit"
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
+	"github.com/Aman123at/agentic-os/internal/catalogue"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
 	"github.com/Aman123at/agentic-os/internal/files"
@@ -82,6 +83,8 @@ type Server struct {
 	Desktop   *desktop.State
 	// Settings are the settings that can change while aosd runs.
 	Settings *settings.Store
+	// Catalogue is the model catalogue the Settings dropdowns offer (M6.16).
+	Catalogue *catalogue.File
 	// APIKey replaces the OpenAI API key.
 	APIKey APIKey
 	// WatchInterval is how often FileService.Watch lists a folder again; 0 means 2 s.
@@ -736,6 +739,13 @@ func (st settingsService) Get(context.Context, *connect.Request[aosv1.GetSetting
 	resp := &aosv1.GetSettingsResponse{}
 	for _, s := range st.s.Settings.List() {
 		resp.Settings = append(resp.Settings, setting(s))
+	}
+	if cat, err := st.s.Catalogue.Catalogue(); err == nil && cat != nil {
+		for _, m := range cat.Models {
+			resp.Models = append(resp.Models, &aosv1.ModelChoice{
+				Id: m.ID, Label: m.Label, Efforts: m.Efforts, DefaultEffort: m.DefaultEffort, IsDefault: m.Default,
+			})
+		}
 	}
 	return connect.NewResponse(resp), nil
 }

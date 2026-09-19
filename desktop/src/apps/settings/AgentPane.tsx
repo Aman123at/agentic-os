@@ -5,14 +5,20 @@
 import { NumberSetting, SelectSetting, TextSetting } from "./Field";
 import { useSettings } from "./useSettings";
 
-const EFFORT = [
-  { value: "none", name: "None" },
-  { value: "minimal", name: "Minimal" },
-  { value: "low", name: "Low" },
-  { value: "medium", name: "Medium" },
-  { value: "high", name: "High" },
-  { value: "xhigh", name: "Extra high" },
-];
+// The display name for each reasoning effort; the wire values a model accepts
+// come from the catalogue (M6.16), so this only translates them for the reader.
+const EFFORT_NAME: Record<string, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+};
+
+// The full wire enum, used when the model is unlisted (the catalogue is open).
+const WIRE_EFFORTS = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 const AUTONOMY = [
   { value: "auto", name: "Auto — act without asking" },
@@ -20,10 +26,24 @@ const AUTONOMY = [
   { value: "confirm-all", name: "Confirm everything" },
 ];
 
+// modelEfforts returns the reasoning efforts the chosen model accepts: its
+// catalogue entry (by id or alias), or the full wire enum for an unlisted model.
+function modelEfforts(models: { id: string; efforts: string[] }[], model: string): string[] {
+  const entry = models.find((m) => m.id === model);
+  return entry && entry.efforts.length > 0 ? entry.efforts : WIRE_EFFORTS;
+}
+
 export default function AgentPane() {
   const settings = useSettings();
 
   if (settings.loading) return <div className="agent__empty">Loading…</div>;
+
+  const model = settings.byKey["model"]?.value ?? "";
+  const modelList = settings.models.map((m) => ({ value: m.id, name: m.label || m.id }));
+  const effortOptions = [
+    { value: "", name: "Model default" },
+    ...modelEfforts(settings.models, model).map((e) => ({ value: e, name: EFFORT_NAME[e] ?? e })),
+  ];
 
   return (
     <div className="set__pane">
@@ -36,8 +56,8 @@ export default function AgentPane() {
 
       <section className="set__group">
         <h3 className="set__grouphead">Model</h3>
-        <TextSetting settings={settings} keyName="model" label="Model" hint="The model every Task runs on" placeholder="gpt-5.6-terra" />
-        <SelectSetting settings={settings} keyName="reasoning_effort" label="Reasoning effort" hint="How hard the model thinks" options={EFFORT} />
+        <TextSetting settings={settings} keyName="model" label="Model" hint="Pick one, or type any model your key can use" placeholder="gpt-5.6-terra" list={modelList} />
+        <SelectSetting settings={settings} keyName="reasoning_effort" label="Reasoning effort" hint="Only the values this model accepts" options={effortOptions} />
       </section>
 
       <section className="set__group">
