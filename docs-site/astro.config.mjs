@@ -2,18 +2,20 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
-// The site is uploaded to a sub-path of Aman's own domain, so `base` is not
-// cosmetic: with the default "/", every asset URL and every internal link the
-// build emits is absolute from the root and 404s once uploaded — and it fails
-// only there, never in `astro dev` or `astro preview`.
+// The site is served at the root of its own subdomain
+// (agenticos.amantiwari.co.in, a GitHub Pages custom domain — see public/CNAME),
+// so `base` is "/": every asset URL and internal link the build emits is
+// absolute from the root, which is exactly where the host serves them. A
+// non-root `base` (e.g. "/agentic-os/") would prefix every asset with a path the
+// subdomain does not have, and the whole site loads unstyled — and it fails only
+// on the real host, never in `astro dev` or `astro preview`.
 //
-// Nothing in this site may be published at /agentic-os/install.sh. That path is
-// a redirect to raw.githubusercontent.com (issue 11, decision 8); a file here
-// would shadow it and a docs deploy would start serving a web page to
-// `curl | sudo sh`.
+// Nothing in this site may be published at /install.sh. That path is a redirect
+// to raw.githubusercontent.com (issue 11, decision 8); a file here would shadow
+// it and a docs deploy would start serving a web page to `curl | sudo sh`.
 export default defineConfig({
-  site: "https://amantiwari.co.in",
-  base: "/agentic-os/",
+  site: "https://agenticos.amantiwari.co.in",
+  base: "/",
   integrations: [
     starlight({
       title: "Agentic OS",

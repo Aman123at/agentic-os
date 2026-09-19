@@ -8,23 +8,24 @@ in anyone's binary.
 ```sh
 cd docs-site
 npm ci               # ~270 packages, gitignored
-npm run dev          # http://localhost:4321/agentic-os/
+npm run dev          # http://localhost:4321/
 npm run build        # -> dist/
 ```
 
-## The sub-path base is load-bearing
+## The root base is load-bearing
 
-The site is served from a sub-path of Aman's own domain
-(`https://amantiwari.co.in/agentic-os/`), so `base: "/agentic-os/"` in
-`astro.config.mjs` is not cosmetic: with the default `/`, every asset URL and
-internal link the build emits is root-absolute and 404s once uploaded — and it
-fails *only there*, never in `astro dev` or `astro preview`. `go run ./tools/ci
-docs` builds the site and asserts every href and asset in `dist/index.html`
-starts with `/agentic-os/`, so the mistake cannot ship.
+The site is served at the root of its own subdomain
+(`https://agenticos.amantiwari.co.in/`, a GitHub Pages custom domain kept in
+`public/CNAME`), so `base: "/"` in `astro.config.mjs` is not cosmetic: a non-root
+base prefixes every asset URL and internal link with a path the subdomain does
+not have, so the whole site 503s and loads unstyled — and it fails *only there*,
+never in `astro dev` or `astro preview`. `go run ./tools/ci docs` builds the site
+and asserts no href or asset in `dist/index.html` carries a stale non-root base,
+so the mistake cannot ship.
 
-**Nothing here may ever be published at `/agentic-os/install.sh`.** That path is
-a redirect to `raw.githubusercontent.com`; a file here would shadow it and start
-serving a web page to `curl | sudo sh`. There is a comment saying so in
+**Nothing here may ever be published at `/install.sh`.** That path is a redirect
+to `raw.githubusercontent.com`; a file here would shadow it and start serving a
+web page to `curl | sudo sh`. There is a comment saying so in
 `astro.config.mjs`.
 
 ## The command reference is generated

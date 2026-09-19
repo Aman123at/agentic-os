@@ -590,12 +590,19 @@ func npmInstall() error {
 
 const docsDir = "docs-site"
 
-// docsBase is the sub-path the site is served from (astro.config.mjs `base`).
-// Every root-absolute href and asset the build emits must start with it, or the
-// page 404s once uploaded — and only there, never in `astro dev`/`preview`.
-const docsBase = "/agentic-os/"
+// docsBase is the path the site is served from (astro.config.mjs `base`). The
+// site lives at the root of its own subdomain, so it is "/". A stale build made
+// with a non-root base prefixes every asset with a path the host does not have
+// and the site loads unstyled — the check below catches that regression, since
+// it only ever shows up on the real host, never in `astro dev`/`preview`.
+const docsBase = "/"
 
-// docs builds the documentation site and asserts its sub-path base is baked in.
+// docsStaleBase is the previous, non-root base. A build must never emit assets
+// under it again: on the current subdomain those URLs 503 and the site is
+// unstyled. docsBaseCheck rejects any root-absolute URL that starts with it.
+const docsStaleBase = "/agentic-os/"
+
+// docs builds the documentation site and asserts its root base is baked in.
 // It needs Node, so it is optional (a tag build names it); the default sweep
 // never runs it.
 func docs() error {
@@ -620,11 +627,11 @@ func docsInstall() error {
 // docsAttr pulls href/src values out of the built index.html.
 var docsAttr = regexp.MustCompile(`(?:href|src)="([^"]*)"`)
 
-// docsBaseCheck fails if any root-absolute URL in dist/index.html points outside
-// the sub-path base. It ignores external URLs (http:, //, mailto:, data:),
-// in-page anchors and relative links: only paths starting with a single "/"
-// must live under docsBase. This is the one place the base mistake is caught —
-// it never shows up locally.
+// docsBaseCheck fails if any root-absolute URL in dist/index.html is not served
+// from the base — either not under docsBase, or under the stale non-root base.
+// It ignores external URLs (http:, //, mailto:, data:), in-page anchors and
+// relative links: only paths starting with a single "/" are checked. This is the
+// one place the base mistake is caught — it never shows up locally.
 func docsBaseCheck() error {
 	index := filepath.Join(docsDir, "dist", "index.html")
 	data, err := os.ReadFile(index)
@@ -637,12 +644,12 @@ func docsBaseCheck() error {
 		if !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") {
 			continue // external, relative or in-page: not a root-absolute path
 		}
-		if !strings.HasPrefix(v, docsBase) {
+		if !strings.HasPrefix(v, docsBase) || strings.HasPrefix(v, docsStaleBase) {
 			bad = append(bad, v)
 		}
 	}
 	if len(bad) > 0 {
-		return fmt.Errorf("%s has %d root-absolute URL(s) outside %q (base misconfigured?):\n%s",
+		return fmt.Errorf("%s has %d root-absolute URL(s) not served from %q (base misconfigured?):\n%s",
 			index, len(bad), docsBase, strings.Join(bad, "\n"))
 	}
 	return nil

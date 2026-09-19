@@ -2,7 +2,7 @@
 
 Turn a fresh Ubuntu or Debian server into a Machine that OpenAI-powered Agents operate for you. You give it a Task in plain English — "set up a Postgres instance and a nightly backup", "read these CSVs and build me a report" — and an Agent does the work with real shell commands on the real server, while you watch and steer from a macOS-style Desktop in your browser (or from a terminal). Anything with lasting consequences stops and asks you first.
 
-Status: under development ([plan](docs/PLAN.md)). Documentation site: <https://amantiwari.co.in/agentic-os/>.
+Status: under development ([plan](docs/PLAN.md)). Documentation site: <https://agenticos.amantiwari.co.in/>.
 
 ## Install on a server
 
@@ -50,6 +50,6 @@ docker compose up --build
 
 ## Learn more
 
-- The [documentation site](https://amantiwari.co.in/agentic-os/) — install, configure, and command reference.
+- The [documentation site](https://agenticos.amantiwari.co.in/) — install, configure, and command reference.
 - [docs/PLAN.md](docs/PLAN.md) — the design and the milestone plan.
 - `docker compose exec aos aos doctor --host-check` (Compose) or `sudo aos doctor` (native) prints a pass/fail report of the sandbox, Sessions, secret handling, and forwarding.

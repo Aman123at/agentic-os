@@ -15,10 +15,10 @@ There are two ways to run it, and they differ in one way that matters more than 
 `install.sh` installs the daemon on the server itself. The machine the Agents work on **is your
 server**: they read and write the real filesystem, install real packages with `apt`, and run real
 services under systemd. That is the point of it, and it is also the risk of it — see
-[what the password protects](/agentic-os/start/password-is-root/) before you install on a server
+[what the password protects](/start/password-is-root/) before you install on a server
 that holds anything you care about.
 
-[Install it →](/agentic-os/start/install/)
+[Install it →](/start/install/)
 
 ## Docker Compose
 
@@ -26,9 +26,9 @@ The same product, confined to a container. Agents get a complete Ubuntu machine,
 your server: the filesystem they see is the container's, and it goes away when the container does.
 Use it to try Agentic OS, or to keep Agents away from a host you are not willing to hand over.
 
-[Run it with Compose →](/agentic-os/start/compose/)
+[Run it with Compose →](/start/compose/)
 
 ---
 
 Both shapes give you the same two front ends: a macOS-style **Desktop** in the browser, and the
-`aos` command line over SSH. Every command is in the [reference](/agentic-os/reference/).
+`aos` command line over SSH. Every command is in the [reference](/reference/).
