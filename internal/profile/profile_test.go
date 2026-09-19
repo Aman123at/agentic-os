@@ -36,7 +36,9 @@ func TestTheContextGivesMemoryThenTheMachineProfile(t *testing.T) {
 	}
 	// M6.12: the Profile names /port/<n>/ and the persistent filesystem, and no
 	// longer the retired Shared Folder, the .localhost form or a fresh system.
-	for _, want := range []string{"/port/<n>/", "filesystem persists across restarts"} {
+	// M6.15: the Profile says the base Machine is a minimal toolchain, so the
+	// Agent installs what a Task needs rather than assuming it is present.
+	for _, want := range []string{"/port/<n>/", "filesystem persists across restarts", "starts with a minimal toolchain"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the Profile lacks %q:\n%s", want, got)
 		}
@@ -59,7 +61,7 @@ func TestTheMachineProfileStaysUnder1KB(t *testing.T) {
 		m.Listeners = append(m.Listeners, Listener{Port: 9000 + i, Process: "python3"})
 	}
 	p := Profile(m)
-	if len(p) >= maxProfile || !strings.Contains(p, "(apt) and 196 more.") || !strings.Contains(p, "port 8003) and 196 more.") {
+	if len(p) >= maxProfile || !strings.Contains(p, "(apt) and 198 more.") || !strings.Contains(p, "port 8001) and 198 more.") {
 		t.Errorf("profile of %d bytes:\n%s", len(p), p)
 	}
 }

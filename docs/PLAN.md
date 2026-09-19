@@ -1346,6 +1346,19 @@ are load-bearing rather than tidy:
     restart. *Tests:* covered by the live suite (Aman); the prompt text is asserted
     in M6.12.
 
+    > **Built (M6.15).** The contract is made honest in the code the model reads.
+    > The Agent prompt (`internal/agent/instructions.go`) no longer lists
+    > `apt, pipx or npm` as if all three runtimes are present: it says the Machine
+    > starts with a minimal toolchain, so if a Task needs one (Node, a Python app
+    > runner, …) the Agent installs it with `install_package` first, and what it
+    > installs that way persists across restarts through the Ledger. The Machine
+    > Profile (`internal/profile/profile.go`) gains the same one line, so the model
+    > doesn't assume a runtime exists. The `docker/Dockerfile` header no longer
+    > claims the Compose image and a native install "carry exactly the same
+    > software" — it is a curated convenience image; a native box ships only `aosd`
+    > (`install.sh` is M6.17). Asserted in `instructions_test.go`/`profile_test.go`;
+    > the live Node-installs-and-survives-restart acceptance stays Aman's VPS.
+
 16. **The Model Catalogue ships as data.** It seeds `/var/lib/aos/models.yaml`,
     open rather than a strict allow-list, because `GET /v1/models` reports nothing
     about reasoning effort. Fix the live defect found on the way: the fixed effort

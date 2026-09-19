@@ -3,8 +3,12 @@
 # One runtime image (PLAN.md §6.1, M6.10/M6.11): the `aos` target always carries
 # the embedded Desktop, Mode is a runtime config.yml key, and the Browser app's
 # headless shell is no longer baked in — `sudo aos browser install` fetches it on
-# demand (ADR-0008, M6.11). There is one runtime stage and no build-time fork, so
-# the Compose image and a native install carry exactly the same software.
+# demand (ADR-0008, M6.11). There is one runtime stage and no build-time fork.
+#
+# This Compose image is a curated convenience: the `machine` stage below apt-installs
+# ~25 baseline packages and a pinned Node, free in a disposable container. A native
+# install carries none of that (M6.15) — `install.sh` ships only `aosd`, and Agents
+# install what a Task needs through the Install Ledger, which persists natively.
 
 ARG GO_VERSION=1.27.1
 ARG NODE_VERSION=24.21.0

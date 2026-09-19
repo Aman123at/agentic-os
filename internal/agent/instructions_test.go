@@ -32,6 +32,10 @@ func TestInstructionsDropTheDockerEraFalsehoods(t *testing.T) {
 		"~/Downloads",
 		// M6.13: bind Services to loopback unless the user asked for public.
 		"Bind Services to 127.0.0.1",
+		// M6.15: the native Machine may be bare, so the prompt tells the Agent to
+		// install what a Task needs rather than assuming a toolchain is present.
+		"minimal toolchain",
+		"don't assume a runtime is already there",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the prompt lacks %q:\n%s", want, got)

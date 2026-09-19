@@ -65,6 +65,7 @@ func render(m Machine, limit int) string {
 		software[i] = fmt.Sprintf("%s %s (%s)", s.Name, s.Version, s.Manager)
 	}
 	b.WriteString("- Installed through AOS: " + list(software, limit, "nothing yet") + ".\n")
+	b.WriteString("- The Machine starts with a minimal toolchain; install what a Task needs (Node, a Python runner, …) with install_package rather than assuming it is present.\n")
 	services := make([]string, len(m.Services))
 	for i, s := range m.Services {
 		services[i] = s.Name + " (" + s.State
