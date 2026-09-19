@@ -1,0 +1,16 @@
+{
+  "name": "aos-docs-site",
+  "private": true,
+  "type": "module",
+  "description": "The Agentic OS documentation site (Astro + Starlight). Built and deployed on tag to https://amantiwari.co.in/agentic-os/.",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/starlight": "^0.42.1",
+    "astro": "^7.3.3",
+    "sharp": "^0.35.4"
+  }
+}

@@ -14,14 +14,10 @@ desktop/node_modules/
 desktop/dist/
 desktop/*.tsbuildinfo
 
-# Documentation site (M6) and its spike
+# Documentation site
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/
-tools/spikes/docs-site/node_modules/
-tools/spikes/docs-site/dist/
-tools/spikes/docs-site/.astro/
-.refgen-spike/
 
 # Playwright e2e output (added M3.5)
 desktop/e2e/.artifacts/

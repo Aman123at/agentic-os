@@ -1,0 +1,52 @@
+# Build the documentation site and deploy it to GitHub Pages when a tag is cut.
+# One version, deployed on tag, so the site can never describe a command that is
+# not in anyone's binary (docs-site/README.md).
+#
+# `go run ./tools/ci docs` builds the site AND asserts every root-absolute URL in
+# dist/index.html lives under /agentic-os/ — the sub-path base mistake 404s only
+# on the real host, never locally, so CI is the only place it is caught.
+#
+# The custom domain (amantiwari.co.in) and enabling Pages are repository
+# settings, done once by hand; this workflow only publishes.
+name: docs
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+# Allow one concurrent deploy; let an in-progress run finish (a published site
+# should never be left half-updated).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build and check the site
+        run: go run ./tools/ci docs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

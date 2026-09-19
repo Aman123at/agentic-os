@@ -2,9 +2,10 @@
 // It works the same locally and in GitHub Actions.
 //
 // Stages: lint, unit, unit-linux, ui, auth-ui, image, e2e, playwright. With
-// no arguments, all run in order. `live` (the real-model suite, §16 M4.7) and
-// `release` (the tarball build, M6.18) are optional: they run only when named —
-// `go run ./tools/ci live`, `go run ./tools/ci release`.
+// no arguments, all run in order. `live` (the real-model suite, §16 M4.7),
+// `release` (the tarball build, M6.18) and `docs` (the documentation site,
+// M6.21) are optional: they run only when named — `go run ./tools/ci live`,
+// `go run ./tools/ci release`, `go run ./tools/ci docs`.
 package main
 
 import (
@@ -66,6 +67,10 @@ var stages = []struct {
 	// `release` builds cross-compiled tarballs; it runs only when named (a tag
 	// build calls `go run ./tools/ci release`), never in the default sweep.
 	{"release", release, true},
+	// `docs` builds the documentation site and checks its sub-path base; it needs
+	// Node, so it runs only when named (a tag build calls `go run ./tools/ci
+	// docs`), never in the default sweep.
+	{"docs", docs, true},
 }
 
 func main() {
@@ -526,6 +531,66 @@ func npmInstall() error {
 		return nil
 	}
 	return run("npm", "ci", "--prefix", desktopDir)
+}
+
+const docsDir = "docs-site"
+
+// docsBase is the sub-path the site is served from (astro.config.mjs `base`).
+// Every root-absolute href and asset the build emits must start with it, or the
+// page 404s once uploaded — and only there, never in `astro dev`/`preview`.
+const docsBase = "/agentic-os/"
+
+// docs builds the documentation site and asserts its sub-path base is baked in.
+// It needs Node, so it is optional (a tag build names it); the default sweep
+// never runs it.
+func docs() error {
+	if err := docsInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", docsDir, "run", "build"); err != nil {
+		return err
+	}
+	return docsBaseCheck()
+}
+
+// docsInstall installs the site's dependencies, skipping the reinstall when a
+// developer already has node_modules in place; CI starts from a clean checkout.
+func docsInstall() error {
+	if _, err := os.Stat(filepath.Join(docsDir, "node_modules")); err == nil {
+		return nil
+	}
+	return run("npm", "ci", "--prefix", docsDir)
+}
+
+// docsAttr pulls href/src values out of the built index.html.
+var docsAttr = regexp.MustCompile(`(?:href|src)="([^"]*)"`)
+
+// docsBaseCheck fails if any root-absolute URL in dist/index.html points outside
+// the sub-path base. It ignores external URLs (http:, //, mailto:, data:),
+// in-page anchors and relative links: only paths starting with a single "/"
+// must live under docsBase. This is the one place the base mistake is caught —
+// it never shows up locally.
+func docsBaseCheck() error {
+	index := filepath.Join(docsDir, "dist", "index.html")
+	data, err := os.ReadFile(index)
+	if err != nil {
+		return err
+	}
+	var bad []string
+	for _, m := range docsAttr.FindAllStringSubmatch(string(data), -1) {
+		v := m[1]
+		if !strings.HasPrefix(v, "/") || strings.HasPrefix(v, "//") {
+			continue // external, relative or in-page: not a root-absolute path
+		}
+		if !strings.HasPrefix(v, docsBase) {
+			bad = append(bad, v)
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("%s has %d root-absolute URL(s) outside %q (base misconfigured?):\n%s",
+			index, len(bad), docsBase, strings.Join(bad, "\n"))
+	}
+	return nil
 }
 
 // chunkName splits Vite's [name]-[hash] file names; the hash is 8 characters

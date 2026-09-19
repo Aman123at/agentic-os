@@ -12,13 +12,16 @@ Run `aos` with no command to start an interactive chat: each message is a Task.
 | [`aos approve`](./approve/) | Allow a pending Approval (--for-task: the same Tool in the same folder for the rest of the Task) |
 | [`aos attach`](./attach/) | Watch or type into a Task's Session (Ctrl-] detaches; the Agent is told what you typed) |
 | [`aos audit`](./audit/) | Show the Audit Log, newest first |
+| [`aos browser`](./browser/) | Install or remove the Browser app (Chromium's headless shell) |
 | [`aos cancel`](./cancel/) | Cancel a Task |
 | [`aos checkpoint`](./checkpoint/) | List, create or restore Checkpoints of the Machine's software |
+| [`aos config`](./config/) | Show or change settings (stored in /etc/aos/config.yml) |
+| [`aos daemon`](./daemon/) | Control the aosd systemd service (start, stop, restart, logs) |
 | [`aos deny`](./deny/) | Deny a pending Approval |
-| [`aos desktop-url`](./desktop-url/) | Print a one-time sign-in link for the Desktop |
-| [`aos doctor`](./doctor/) | Show Mode, Landlock status and API key presence; --host-check runs the Host acceptance report |
+| [`aos doctor`](./doctor/) | Show Mode, Landlock status and API key presence |
 | [`aos follow-up`](./follow-up/) | Continue a finished Task with a further instruction |
 | [`aos memory`](./memory/) | Memory: what every Agent is told about your preferences |
+| [`aos mode`](./mode/) | Show or switch the Machine's Mode (ui or cli) |
 | [`aos protect`](./protect/) | Lock a path: Agents need your Approval to change it (no path: list Protected Paths) |
 | [`aos reply`](./reply/) | Answer a Task that is waiting for you: its question, or a hint after its Retries ran out |
 | [`aos resume`](./resume/) | Continue a Task that AOS stopping interrupted |
@@ -26,7 +29,9 @@ Run `aos` with no command to start an interactive chat: each message is a Task.
 | [`aos service`](./service/) | Services: programs AOS keeps running, also after restarts |
 | [`aos show`](./show/) | Show a Task's steps (--follow keeps watching) |
 | [`aos software`](./software/) | Software installed through AOS: the Install Ledger |
+| [`aos status`](./status/) | Show whether the Machine is running, its Mode, port and health |
 | [`aos stop`](./stop/) | Stop every Agent |
 | [`aos tasks`](./tasks/) | List recent Tasks |
 | [`aos trash`](./trash/) | List, restore or empty the Trash |
+| [`aos uninstall`](./uninstall/) | Remove the systemd unit and the binary (--purge also deletes the account and all data) |
 | [`aos unprotect`](./unprotect/) | Unlock a path you locked |
