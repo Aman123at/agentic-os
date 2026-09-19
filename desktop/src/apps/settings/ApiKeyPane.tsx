@@ -10,6 +10,7 @@ import { useDesktop } from "../../store";
 
 export default function ApiKeyPane() {
   const info = useDesktop((s) => s.info);
+  const setApiKeyInfo = useDesktop((s) => s.setApiKeyInfo);
   const [hint, setHint] = useState(info?.apiKeyHint ?? "");
   const [source, setSource] = useState(info?.apiKeySource ?? (info?.apiKey === "missing" ? "" : "env"));
   const [draft, setDraft] = useState("");
@@ -25,6 +26,7 @@ export default function ApiKeyPane() {
       const resp = await settings.setApiKey({ key });
       setHint(resp.hint);
       setSource("settings");
+      setApiKeyInfo(resp.hint, "settings");
       setDraft("");
     } catch (err) {
       setError(friendlyError(err));
@@ -40,6 +42,7 @@ export default function ApiKeyPane() {
       const resp = await settings.clearApiKey({});
       setHint(resp.hint);
       setSource(resp.hint ? "env" : "");
+      setApiKeyInfo(resp.hint, resp.hint ? "env" : "");
     } catch (err) {
       setError(friendlyError(err));
     } finally {

@@ -137,6 +137,8 @@ interface DesktopState {
   setGlass: (on: boolean) => void;
   /** Adds a client-only notification (e.g. the watchdog's), kept until dismissed here. */
   pushLocalNotification: (n: { title: string; body?: string }) => void;
+  /** Updates the cached Info after the API key changes, so panes that re-mount re-seed truthfully. */
+  setApiKeyInfo: (hint: string, source: string) => void;
   /** Remaps one keyboard shortcut; shared with every tab through the saved layout. */
   setShortcut: (action: keyof ShortcutMap, combo: string) => void;
   /** Opens an app; given a document, opens it in its own window, or focuses the window already showing it. */
@@ -375,6 +377,13 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     // A local id so dismissNotification removes it here without a server call.
     const note = createMessage(NotificationSchema, { id: `local-${localNoteId++}`, title: n.title, body: n.body ?? "" });
     set((s) => ({ notifications: [note, ...s.notifications].slice(0, MAX_NOTIFICATIONS) }));
+  },
+
+  setApiKeyInfo: (hint, source) => {
+    // Info is a boot-time snapshot the event stream never refreshes; patch it here
+    // so the API key pane, which seeds from Info on mount, still shows the key
+    // after the pane unmounts and re-mounts (a Settings tab switch).
+    set((s) => (s.info ? { info: { ...s.info, apiKeyHint: hint, apiKeySource: source, apiKey: hint ? "present" : "missing" } } : {}));
   },
 
   setShortcut: (action, combo) => {
