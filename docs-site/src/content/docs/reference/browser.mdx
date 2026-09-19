@@ -12,7 +12,13 @@ Install or remove the Browser app (Chromium's headless shell)
 Download and install the Browser (run with sudo)
 
 ```
-aos browser install
+aos browser install [flags]
+```
+
+Options:
+
+```
+      --no-deps   don't apt-get the system libraries the browser needs; just report any that are missing
 ```
 
 ### `aos browser remove`
