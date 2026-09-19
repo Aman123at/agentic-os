@@ -120,6 +120,9 @@ func lint() error {
 	if err := docsReference(); err != nil {
 		return err
 	}
+	if err := readmeLinks(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -141,6 +144,47 @@ func lint() error {
 // unformatted file drifts gofmt.
 func docsReference() error {
 	return run("go", "run", "./tools/docsgen", "-check")
+}
+
+// mdLink matches a Markdown inline link's target: the (...) after [text].
+var mdLink = regexp.MustCompile(`\[[^\]]*\]\(([^)]+)\)`)
+
+// readmeLinks fails when README.md links to a repo path that does not exist —
+// the front door promising a file that moved or was never there (M6.23). It is
+// the README's link-check, pure Go so it stays in lint beside docsReference.
+// External URLs (http:, //, mailto:) and in-page anchors are left to the reader;
+// only relative targets are resolved on disk, with any #fragment or :line
+// suffix stripped first. Broken links are listed one per line like gofmt -l.
+func readmeLinks() error {
+	data, err := os.ReadFile("README.md")
+	if err != nil {
+		return err
+	}
+	var broken []string
+	for _, m := range mdLink.FindAllStringSubmatch(string(data), -1) {
+		target := strings.TrimSpace(m[1])
+		if target == "" || strings.HasPrefix(target, "#") ||
+			strings.HasPrefix(target, "http:") || strings.HasPrefix(target, "https:") ||
+			strings.HasPrefix(target, "//") || strings.HasPrefix(target, "mailto:") {
+			continue // external or in-page: not this repo's problem to resolve
+		}
+		path := target
+		if i := strings.IndexByte(path, '#'); i >= 0 {
+			path = path[:i] // strip #anchor
+		}
+		if i := strings.IndexByte(path, ':'); i >= 0 {
+			path = path[:i] // strip :line suffix on a code link
+		}
+		if _, err := os.Stat(path); err != nil {
+			broken = append(broken, target)
+		}
+	}
+	if len(broken) > 0 {
+		sort.Strings(broken)
+		return fmt.Errorf("README.md links to %d missing path(s):\n%s",
+			len(broken), strings.Join(broken, "\n"))
+	}
+	return nil
 }
 
 // desktopProductLanguage guards the M6.14 sweep: "Host" is retired product
