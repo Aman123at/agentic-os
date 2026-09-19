@@ -209,6 +209,7 @@ export default function Terminal() {
             >
               <span className="term__tab-icon">{t.agent ? "👁️" : "⌨️"}</span>
               <span className="term__tab-name">{t.title}</span>
+              {t.dead && <span className="term__tab-ended">ended</span>}
               <button
                 className="term__tab-close"
                 title="Close tab"

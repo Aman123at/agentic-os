@@ -1455,8 +1455,19 @@ button.stack__item:hover {
   color: var(--text);
 }
 .term__tab--dead .term__tab-name {
-  text-decoration: line-through;
   opacity: 0.6;
+}
+.term__tab-ended {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .term__tab-icon {
   font-size: 11px;
