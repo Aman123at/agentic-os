@@ -53,7 +53,7 @@ func rootCmd() *cobra.Command {
 	root.SetVersionTemplate("aos {{.Version}}\n")
 	root.AddCommand(runCmd(), tasksCmd(), showCmd(), followUpCmd(), resumeCmd(), replyCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
 		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), softwareCmd(), checkpointCmd(), serviceCmd(), memoryCmd(),
-		auditCmd(), doctorCmd(), configCmd(), daemonCmd(), statusCmd(), modeCmd(), browserCmd())
+		auditCmd(), doctorCmd(), configCmd(), daemonCmd(), statusCmd(), modeCmd(), browserCmd(), uninstallCmd())
 	return root
 }
 

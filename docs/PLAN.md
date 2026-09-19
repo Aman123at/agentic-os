@@ -1454,6 +1454,23 @@ are load-bearing rather than tidy:
     `aos uninstall` leaves data, `--purge` removes it. *Tests:* `uninstall_test.go`
     against a temp root — units and binary gone, data kept without `--purge`.
 
+    > **Built (M6.19).** `internal/cli/uninstall.go` is install.sh run backwards.
+    > It stops and disables the unit, deletes `/etc/systemd/system/aos.service`,
+    > `daemon-reload`s, then removes `aosd`, the `aos` link and `/usr/local/lib/aos`
+    > (the rm shim with it); `--purge` additionally `userdel`s the account and
+    > removes its sudoers grant, `/etc/aos`, `/var/lib/aos` and `/home/aos`. Like
+    > install.sh it is root- and systemd-only (a missing `systemctl` is the same
+    > refusal, pointing at `docker compose down`), and it mirrors the `DRY_RUN`
+    > rehearsal: the mutating steps sit behind `--yes`, so bare `aos uninstall`
+    > (or with `--purge`) prints exactly what it would remove and touches nothing.
+    > Removal is idempotent — an already-absent path reports `absent`, never an
+    > error — so it survives a re-run or a partial install. The paths mirror
+    > install.sh's constants; the system operations (systemd, `userdel`) are struct
+    > fields so `uninstall_test.go` drives file removal against a temp root without
+    > touching the host: it seeds the install layout, asserts a plain uninstall
+    > takes the unit and binary but keeps the config, state and home, that `--purge`
+    > takes all of it plus the user, and that a second run is still clean.
+
 20. **Make the repository public** — a decision, not code, but ordered *ahead of
     the release stage running*, because two sub-tasks are inert while it is private:
     `raw.githubusercontent.com/…/install.sh` and `/releases/latest/download/…` both
