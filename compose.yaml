@@ -7,11 +7,9 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      # One runtime image carries both Modes (M6.10); Mode is a config.yml key.
+      # One runtime image carries both Modes (M6.10) and no baked-in browser
+      # (M6.11); Mode is a config.yml key and the Browser is installed on demand.
       target: aos
-      args:
-        # The Browser app, ui Mode only (PLAN.md M5.2).
-        INCLUDE_BROWSER: ${INCLUDE_BROWSER:-false}
     image: agentic-os
     init: true
     hostname: aos
@@ -22,7 +20,6 @@ services:
     # environment of every process. The key arrives only as a secret file.
     environment:
       AOS_MODE: ${AOS_MODE:-ui}
-      INCLUDE_BROWSER: ${INCLUDE_BROWSER:-false}
       AOS_BIND: ${AOS_BIND:-127.0.0.1}
       AOS_PORT: ${AOS_PORT:-7700}
       OPENAI_MODEL: ${OPENAI_MODEL:-}

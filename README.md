@@ -13,7 +13,7 @@ docker compose up --build
 
 - `cli` Mode: set `AOS_MODE=cli` in `.env`, then run `docker compose exec aos aos`.
 - `ui` Mode: open http://localhost:7700.
-- Browser (optional, `ui` Mode): set `INCLUDE_BROWSER=true` in `.env` and run `docker compose up --build`. A 🌐 Browser is then pinned in the Dock, and Agents can use it while you watch ("open the browser and go to github"). It adds about 250 MB to the image.
+- Browser (optional, `ui` Mode): run `docker compose exec aos aos browser install` (natively, `sudo aos browser install`). It fetches Chromium's headless shell on demand — the image no longer bakes it in — and a 🌐 Browser is then pinned in the Dock, so Agents can use it while you watch ("open the browser and go to github"). `aos browser remove` reverses it.
 
 `OPENAI_API_KEY` must exist in `.env`, even if empty. Without it, `docker compose up` stops with "required by secret … is not set".
 

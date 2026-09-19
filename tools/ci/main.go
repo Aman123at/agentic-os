@@ -24,11 +24,12 @@ import (
 )
 
 // Image size targets (PLAN.md §16): unpacked MB per image, compressed MB per
-// image. One runtime image carries both Modes now (M6.10); `browser` is that
-// image built with INCLUDE_BROWSER=true (M5.2).
-var sizeTargets = map[string]int{"default": 540, "browser": 820}
+// image. One runtime image carries both Modes (M6.10) and no baked-in browser
+// (M6.11) — `sudo aos browser install` fetches it on demand — so there is a
+// single build to measure.
+var sizeTargets = map[string]int{"default": 540}
 
-var compressedTargets = map[string]int{"default": 180, "browser": 300}
+var compressedTargets = map[string]int{"default": 180}
 
 // images are the builds the image stage measures.
 var images = []struct {
@@ -36,7 +37,6 @@ var images = []struct {
 	args              []string
 }{
 	{"default", "aos", "agentic-os", nil},
-	{"browser", "aos", "agentic-os:browser", []string{"--build-arg", "INCLUDE_BROWSER=true"}},
 }
 
 // bundleBudgetKB is the Desktop's initial bundle target, gzipped (PLAN.md §16).
@@ -405,13 +405,14 @@ func image() error {
 		if mb >= sizeTargets[img.name] || compressed >= compressedTargets[img.name] {
 			return fmt.Errorf("%s image is over its size target", img.name)
 		}
-		// The browser is opt-in: only the INCLUDE_BROWSER build may carry it.
+		// The browser is never baked in now (M6.11): the image must not carry it;
+		// `sudo aos browser install` fetches it at runtime.
 		out, err = output("docker", "run", "--rm", "--entrypoint", "sh", img.tag, "-c", "test -e /opt/aos-browser/chrome && echo yes || echo no")
 		if err != nil {
 			return err
 		}
-		if want := map[bool]string{true: "yes", false: "no"}[img.args != nil]; strings.TrimSpace(out) != want {
-			return fmt.Errorf("%s image: browser present = %s, want %s", img.name, strings.TrimSpace(out), want)
+		if strings.TrimSpace(out) != "no" {
+			return fmt.Errorf("%s image: browser present = %s, want no", img.name, strings.TrimSpace(out))
 		}
 	}
 	return nil

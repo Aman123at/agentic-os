@@ -48,7 +48,7 @@ func rootCmd() *cobra.Command {
 	}
 	root.AddCommand(runCmd(), tasksCmd(), showCmd(), followUpCmd(), resumeCmd(), replyCmd(), cancelCmd(), stopCmd(), approveCmd(true), approveCmd(false),
 		attachCmd(), trashCmd(), protectCmd(true), protectCmd(false), softwareCmd(), checkpointCmd(), serviceCmd(), memoryCmd(),
-		auditCmd(), doctorCmd(), configCmd(), daemonCmd(), statusCmd(), modeCmd())
+		auditCmd(), doctorCmd(), configCmd(), daemonCmd(), statusCmd(), modeCmd(), browserCmd())
 	return root
 }
 

@@ -1247,6 +1247,16 @@ are load-bearing rather than tidy:
     rejected by the sha256. *Tests:* `browser_install_test.go` — sha256 mismatch
     refused, `DT_NEEDED` check against a fake `ldconfig`, free-space refusal,
     write-back; not in the Ledger.
+    > **Built (M6.11).** `internal/browser/install.go` does the download, sha256,
+    > `debug/elf` DT_NEEDED scan against `ldconfig -p`, free-space refusal, and the
+    > staging-then-`rename`; `aos browser install`/`remove` (`internal/cli/browser.go`)
+    > write the new `include_browser` startup key through aosd and restart, and stay
+    > out of the Ledger by calling `browser.Install`/`Remove` directly. The image
+    > drops the `browser-dist` stage and the `INCLUDE_BROWSER` fork for one runtime
+    > stage; `tools/ci` now asserts the image carries **no** browser. Tests run on
+    > this Mac against a hand-built ELF and an `httptest` server; the on-VPS checks
+    > (a real install/launch, a genuinely missing lib, Restore leaving it alone) are
+    > Aman's.
 
 #### Product language
 

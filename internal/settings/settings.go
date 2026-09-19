@@ -179,6 +179,16 @@ var startupFields = []startupField{
 			}
 			return c.Filesystem
 		}},
+	{key: "include_browser", env: "INCLUDE_BROWSER",
+		doc: "Whether the Browser app is available (ui Mode only). `sudo aos browser install` fetches Chromium's headless shell and sets this; `aos browser remove` clears it (M6.11, ADR-0008).",
+		validate: func(s string) error {
+			if s == "true" || s == "false" {
+				return nil
+			}
+			return errors.New("include_browser is true or false")
+		},
+		apply:   func(c *config.Config, s string) error { c.IncludeBrowser = s == "true"; return nil },
+		current: func(c config.Config) string { return strconv.FormatBool(c.IncludeBrowser) }},
 }
 
 func intIn(lo, hi int, what string, put func(*Values, int)) func(*Values, string) error {

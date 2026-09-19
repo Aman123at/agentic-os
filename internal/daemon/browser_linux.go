@@ -21,7 +21,7 @@ func (d *Daemon) browserStatus() (ok bool, why string) {
 		return false, ""
 	}
 	if _, err := os.Stat(browser.Binary); err != nil {
-		return false, "INCLUDE_BROWSER=true, but this image was built without the browser. Rebuild it: docker compose up --build"
+		return false, "the Browser is turned on, but its headless shell isn't installed. Install it: sudo aos browser install"
 	}
 	return true, ""
 }
