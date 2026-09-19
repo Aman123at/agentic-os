@@ -21,14 +21,14 @@ binary for your architecture and nothing else.
 ## Install
 
 ```sh
-curl -fsSL https://amantiwari.co.in/agentic-os/install.sh | sudo sh
+curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
 ```
 
 If you would rather read a script before running it as root — and you should — download it,
 read it, then run it:
 
 ```sh
-curl -fsSLO https://amantiwari.co.in/agentic-os/install.sh
+curl -fsSLO https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh
 less install.sh
 sudo sh install.sh
 ```

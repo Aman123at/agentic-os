@@ -268,7 +268,7 @@ install_unit() {
 		cat > "$UNIT" <<-'INI'
 		[Unit]
 		Description=Agentic OS
-		Documentation=https://amantiwari.co.in/agentic-os/
+		Documentation=https://agenticos.amantiwari.co.in/
 		Wants=network-online.target
 		After=network-online.target
 
