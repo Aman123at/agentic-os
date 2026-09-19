@@ -78,6 +78,44 @@ func TestPrepareHomeRefusesAHomeItDidNotCreate(t *testing.T) {
 	}
 }
 
+// TestPrepareHomeAdoptsSkelInItsOwnHome covers the installer↔daemon contract:
+// `useradd --create-home` leaves stock skel dotfiles (.bashrc, .profile,
+// .bash_logout) in /home/aos, and the installer drops the .aos-home marker to
+// say the home is AOS's own. With the marker present PrepareHome must absorb
+// those dotfiles into Protected behind its own symlinks rather than refuse —
+// the failure that kept aosd from starting on a fresh VPS. Needs root (chown).
+func TestPrepareHomeAdoptsSkelInItsOwnHome(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("PrepareHome chowns to root; run as root")
+	}
+	root := t.TempDir()
+	l := Layout{Home: filepath.Join(root, "home", "aos"), Protected: filepath.Join(root, "home", ".aos-protected")}
+	if err := os.MkdirAll(l.Home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// A stock skel dotfile useradd --create-home copied in, plus the marker.
+	skel := filepath.Join(l.Home, ".bashrc")
+	if err := os.WriteFile(skel, []byte("# stock skel bashrc"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(l.Home, ".aos-home"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := PrepareHome(l, 0, 0); err != nil {
+		t.Fatalf("PrepareHome refused its own home (marker present): %v", err)
+	}
+	// .bashrc is now a symlink into Protected, and the content moved with it.
+	fi, err := os.Lstat(skel)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("~/.bashrc is not AOS's own symlink: mode %v, err %v", fi.Mode(), err)
+	}
+	got, err := os.ReadFile(filepath.Join(l.Protected, "bashrc"))
+	if err != nil || string(got) != "# stock skel bashrc" {
+		t.Errorf("skel .bashrc was not adopted into Protected: %q, %v", got, err)
+	}
+}
+
 func anyContains(notes []string, sub string) bool {
 	for _, n := range notes {
 		if strings.Contains(n, sub) {

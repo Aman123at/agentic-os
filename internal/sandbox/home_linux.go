@@ -27,11 +27,16 @@ func PrepareHome(l Layout, uid, gid int) (notes []string, err error) {
 	// With the filesystem widened to the whole VPS (M6.8, ADR-0004), aosd must never
 	// relocate a real dotfile in a home it does not own — pointed at a live
 	// /home/ubuntu the adopt() below would move the ~/.ssh/authorized_keys that is
-	// the only way into the server. A Protected dotfile that is already AOS's own
-	// symlink is safe; a real file or a foreign symlink under one of those names is
-	// not, so refuse the whole home rather than touch it.
-	if link, ok := unownedDotfile(l); ok {
-		return nil, fmt.Errorf("refusing to prepare %s: %s is not one of AOS's own links, so this looks like a home AOS did not create; relocating it could move another user's ~/.ssh/authorized_keys", l.Home, link)
+	// the only way into the server. The installer drops a marker in the home it
+	// creates for AOS (install.sh create_user), and only there: its presence is
+	// what says this home is AOS's own, so absorbing the stock skel dotfiles that
+	// `useradd --create-home` left is exactly right. Without the marker a real file
+	// or a foreign symlink under a Protected name means a home AOS did not create,
+	// so refuse the whole home rather than touch it.
+	if !ownsHome(l) {
+		if link, ok := unownedDotfile(l); ok {
+			return nil, fmt.Errorf("refusing to prepare %s: %s is not one of AOS's own links and %s is absent, so this looks like a home AOS did not create; relocating it could move another user's ~/.ssh/authorized_keys", l.Home, link, homeMarker)
+		}
 	}
 	if err := os.MkdirAll(l.Protected, 0o755); err != nil {
 		return nil, err
@@ -69,6 +74,22 @@ func PrepareHome(l Layout, uid, gid int) (notes []string, err error) {
 		notes = append(notes, fmt.Sprintf("removed the retired Shared Folder link %s", shared))
 	}
 	return notes, setOwner(l.Home, 0, gid, 0o775|os.ModeSticky)
+}
+
+// homeMarker is the file the installer drops in the home it creates for AOS
+// (install.sh create_user, "the marker is what tells aosd this home is its own").
+// It is what distinguishes AOS's own home — where the stock skel dotfiles are
+// AOS's to absorb into Protected — from a stranger's home on the widened
+// filesystem, where a real ~/.ssh must never be relocated (M6.8, ADR-0004).
+const homeMarker = ".aos-home"
+
+// ownsHome reports whether Home carries the marker the installer drops to
+// declare the home AOS's own. Only root writes it, and PrepareHome only ever
+// runs against the configured Home, so its presence is a trustworthy signal
+// that the Protected dotfiles here are AOS's to manage.
+func ownsHome(l Layout) bool {
+	_, err := os.Lstat(filepath.Join(l.Home, homeMarker))
+	return err == nil
 }
 
 // unownedDotfile returns the first Protected dotfile in Home that exists but is
