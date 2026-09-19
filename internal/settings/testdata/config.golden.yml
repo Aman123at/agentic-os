@@ -31,3 +31,5 @@ require_landlock: false
 filesystem: home
 # Whether the Browser app is available (ui Mode only). `sudo aos browser install` fetches Chromium's headless shell and sets this; `aos browser remove` clears it (M6.11, ADR-0008). (startup-only)
 include_browser: false
+# Whether the Machine runs in Root Mode: the Root Realm, where Agents, the Terminal and Finder act as root and Protected Paths are not enforced (M7). Never set here directly — `aos root on` / `aos root off` (or the System Settings switch) change it behind a warning and a password, and restart AOS into the new Realm. (startup-only)
+root_mode: false

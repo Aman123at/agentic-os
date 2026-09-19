@@ -42,6 +42,14 @@ _Avoid_: system info, environment summary
 The way a user interacts with AOS, set by `mode` in the Configuration and changed with `aos mode`: `cli` (terminal only, with nothing listening on the network) or `ui` (terminal plus the Desktop). One binary carries both.
 _Avoid_: flavour, variant, edition, image (Mode is not a property of a build)
 
+**Realm**:
+Which of the two ways the Machine is running: the **Standard** Realm or the **Root** Realm. The Machine runs one at a time, chosen at start from `root_mode` in the Configuration. Each Realm keeps its own history — Tasks, Audit Log, Memory, Notifications, Services, window layout and Browser profile — so nothing done in one is visible from the other. The Account (username and password) is shared.
+_Avoid_: workspace, profile, context, session
+
+**Root Mode** / **Standard Mode**:
+Running in the Root Realm or the Standard Realm. In **Standard Mode** (the ordinary one) Agents, the Terminal and Finder act as the unprivileged `aos` user, confined by Landlock, and Protected Paths are enforced. In **Root Mode** they act as root: `sudo` is available, every file is unlocked and Protected Paths are not enforced. Switching between them shows a warning, asks for the password and restarts AOS into the new Realm. Root Mode's isolation from Standard history is a privacy boundary, not a security boundary against a root Agent.
+_Avoid_: admin mode, superuser mode, god mode, sudo mode, incognito
+
 **Desktop**:
 The macOS-style graphical interface for the Machine, built as a web app and viewed in the browser. It runs only its own built-in apps, not Linux GUI programs.
 _Avoid_: GUI, VNC, remote desktop, UI (when you mean the Desktop specifically)

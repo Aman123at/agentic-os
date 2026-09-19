@@ -42,6 +42,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/policy"
 	"github.com/Aman123at/agentic-os/internal/profile"
 	"github.com/Aman123at/agentic-os/internal/proxy"
+	"github.com/Aman123at/agentic-os/internal/realm"
 	"github.com/Aman123at/agentic-os/internal/sandbox"
 	"github.com/Aman123at/agentic-os/internal/service"
 	"github.com/Aman123at/agentic-os/internal/session"
@@ -85,6 +86,11 @@ type Daemon struct {
 	uid, gid uint32
 	abi      int
 	exe      string
+	// realm is which Realm this run serves (Standard or Root), resolved once from
+	// config.yml's root_mode after settings.Open (M7.1). bootID is a random id
+	// fixed for this run, new on every start, so a restart can be detected (M7.3).
+	realm  realm.Realm
+	bootID string
 
 	db       *store.DB
 	bus      *events.Bus
@@ -118,7 +124,7 @@ type Daemon struct {
 
 // Run starts aosd and serves until ctx ends.
 func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
-	d := &Daemon{cfg: cfg, layout: sandbox.DefaultLayout(), abi: sandbox.ABI(), git: map[string]map[string]bool{}}
+	d := &Daemon{cfg: cfg, layout: sandbox.DefaultLayout(), abi: sandbox.ABI(), git: map[string]map[string]bool{}, bootID: newBootID()}
 	d.sampler = &sysinfo.Sampler{Disks: []string{d.layout.Home, StateDir}}
 	if err := d.init(); err != nil {
 		return err
@@ -144,6 +150,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	if err != nil {
 		return fmt.Errorf("loading the configuration: %w", err)
 	}
+	// The Realm is resolved once, now that settings.Open has overlaid root_mode
+	// onto d.cfg (M7.1). Everything that needs it takes this value; no other
+	// package reads the key.
+	d.realm = realm.Of(d.cfg.RootMode)
 	// A reasoning effort the chosen model does not accept is an HTTP 400, so
 	// settings validates the pair against the catalogue (M6.16).
 	d.settings.Efforts = d.models.Efforts
@@ -684,7 +694,7 @@ func (d *Daemon) info() *aosv1.InfoResponse {
 	browserOK, browserWhy := d.browserStatus()
 	return &aosv1.InfoResponse{Browser: browserOK, BrowserUnavailable: browserWhy, Mode: d.cfg.Mode, Version: Version, LandlockAbi: int32(d.abi), ApiKey: key, ApiKeyHint: hint, ApiKeySource: keySource, Model: v.Model, Autonomy: autonomy,
 		MaxTasks: int32(v.MaxTasks), MaxRetries: int32(v.MaxRetries), Today: today, PricesKnown: d.pricesKnown(v.Model), Replay: d.software.ReplayStatus(),
-		TaskCostLimitUsd: v.TaskCostLimit, DailyCostLimitUsd: v.DailyCostLimit}
+		TaskCostLimitUsd: v.TaskCostLimit, DailyCostLimitUsd: v.DailyCostLimit, RootMode: d.realm.IsRoot(), BootId: d.bootID}
 }
 
 // pricesKnown reports whether prices.yaml prices model.

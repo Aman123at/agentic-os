@@ -23,6 +23,11 @@ type Config struct {
 	// to /home/aos (the Compose default), "host" widens the Writable set to all of
 	// `/` minus the Protected list on a native install.
 	Filesystem string
+	// RootMode is set when the Machine boots into the Root Realm (Root Mode, M7):
+	// Agents, the Terminal and Finder act as root and Protected Paths are not
+	// enforced. Startup-only, from `root_mode:` in config.yml; the Daemon resolves
+	// it once into an internal/realm.Realm and no other package reads it directly.
+	RootMode bool
 	// ConfigPath is /etc/aos/config.yml, the single source of truth for every
 	// non-secret setting (ADR-0010). AOS_CONFIG overrides it (tests, dev).
 	ConfigPath      string
@@ -130,6 +135,13 @@ func FromEnv(getenv func(string) string) (Config, error) {
 	case "false", "0", "no":
 	default:
 		errs = append(errs, fmt.Sprintf("AOS_REQUIRE_LANDLOCK=%q must be true or false", v))
+	}
+	switch v := strings.ToLower(str("AOS_ROOT_MODE", "false")); v {
+	case "true", "1", "yes":
+		c.RootMode = true
+	case "false", "0", "no":
+	default:
+		errs = append(errs, fmt.Sprintf("AOS_ROOT_MODE=%q must be true or false", v))
 	}
 	// INCLUDE_BROWSER is a build argument too, where only true and false work, so
 	// it takes exactly those words.

@@ -7129,8 +7129,14 @@ type InfoResponse struct {
 	// Why the Browser can't run although INCLUDE_BROWSER=true, such as an image
 	// built before it was set; "" otherwise.
 	BrowserUnavailable string `protobuf:"bytes,17,opt,name=browser_unavailable,json=browserUnavailable,proto3" json:"browser_unavailable,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	// Whether the Machine is running in Root Mode (the Root Realm, M7). The
+	// Desktop shows the ROOT badge and the CLI prints the Realm from this.
+	RootMode bool `protobuf:"varint,18,opt,name=root_mode,json=rootMode,proto3" json:"root_mode,omitempty"`
+	// A random id fixed for this run of aosd, new on every start. A restart
+	// (M7.3) is confirmed by watching this change.
+	BootId        string `protobuf:"bytes,19,opt,name=boot_id,json=bootId,proto3" json:"boot_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *InfoResponse) Reset() {
@@ -7278,6 +7284,20 @@ func (x *InfoResponse) GetBrowser() bool {
 func (x *InfoResponse) GetBrowserUnavailable() string {
 	if x != nil {
 		return x.BrowserUnavailable
+	}
+	return ""
+}
+
+func (x *InfoResponse) GetRootMode() bool {
+	if x != nil {
+		return x.RootMode
+	}
+	return false
+}
+
+func (x *InfoResponse) GetBootId() string {
+	if x != nil {
+		return x.BootId
 	}
 	return ""
 }
@@ -7846,7 +7866,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"DailyUsage\x12\x10\n" +
 	"\x03day\x18\x01 \x01(\tR\x03day\x12#\n" +
 	"\x05usage\x18\x02 \x01(\v2\r.aos.v1.UsageR\x05usage\"\r\n" +
-	"\vInfoRequest\"\xe3\x04\n" +
+	"\vInfoRequest\"\x99\x05\n" +
 	"\fInfoResponse\x12\x12\n" +
 	"\x04mode\x18\x01 \x01(\tR\x04mode\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12!\n" +
@@ -7867,7 +7887,9 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"apiKeyHint\x12$\n" +
 	"\x0eapi_key_source\x18\x0f \x01(\tR\fapiKeySource\x12\x18\n" +
 	"\abrowser\x18\x10 \x01(\bR\abrowser\x12/\n" +
-	"\x13browser_unavailable\x18\x11 \x01(\tR\x12browserUnavailable\"Z\n" +
+	"\x13browser_unavailable\x18\x11 \x01(\tR\x12browserUnavailable\x12\x1b\n" +
+	"\troot_mode\x18\x12 \x01(\bR\brootMode\x12\x17\n" +
+	"\aboot_id\x18\x13 \x01(\tR\x06bootId\"Z\n" +
 	"\fAuditRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x14\n" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x1b\n" +

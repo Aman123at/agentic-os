@@ -12,4 +12,4 @@ package daemon
 // clean tag (v0.1.0 → 0.1.0). version_linux_test.go ties the -m<n> suffix to the
 // plan's newest milestone and keeps the base a clean semver, so the two schemes
 // stay reconciled.
-var Version = "0.1.0-m5"
+var Version = "0.1.0-m6"

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
+	"github.com/Aman123at/agentic-os/internal/realm"
 )
 
 // daemonCmd controls the systemd unit that runs aosd on a native install
@@ -117,6 +118,7 @@ func statusCmd() *cobra.Command {
 			i := info.Msg
 			fmt.Fprintf(w, "Health:  ok (aosd %s responding on the control socket)\n", i.Version)
 			fmt.Fprintf(w, "Mode:    %s\n", i.Mode)
+			fmt.Fprintf(w, "Realm:   %s\n", realm.Of(i.RootMode))
 			fmt.Fprintf(w, "Port:    %s\n", port)
 			fmt.Fprintf(w, "Model:   %s\n", i.Model)
 			printUnitState(w)

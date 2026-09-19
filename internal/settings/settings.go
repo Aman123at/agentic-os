@@ -189,7 +189,26 @@ var startupFields = []startupField{
 		},
 		apply:   func(c *config.Config, s string) error { c.IncludeBrowser = s == "true"; return nil },
 		current: func(c config.Config) string { return strconv.FormatBool(c.IncludeBrowser) }},
+	{key: "root_mode", env: "AOS_ROOT_MODE",
+		doc: "Whether the Machine runs in Root Mode: the Root Realm, where Agents, the Terminal and Finder act as root and Protected Paths are not enforced (M7). Never set here directly — `aos root on` / `aos root off` (or the System Settings switch) change it behind a warning and a password, and restart AOS into the new Realm.",
+		validate: func(s string) error {
+			if s == "true" || s == "false" {
+				return nil
+			}
+			return errors.New("root_mode is true or false")
+		},
+		apply:   func(c *config.Config, s string) error { c.RootMode = s == "true"; return nil },
+		current: func(c config.Config) string { return strconv.FormatBool(c.RootMode) }},
 }
+
+// RootModeKey is the config key that selects the Realm. It is startup-only like
+// the others, but the generic Set refuses it: switching Realms is a guarded
+// operation that restarts AOS (M7.7, M7.11), not an ordinary setting change.
+const RootModeKey = "root_mode"
+
+// ErrRootModeNotHere is returned when something tries to change root_mode through
+// the generic settings path instead of `aos root on|off`.
+var ErrRootModeNotHere = errors.New("root_mode is not changed here; use `aos root on` or `aos root off` (or the System Settings switch), which show a warning, ask for the password and restart AOS into the new Realm")
 
 func intIn(lo, hi int, what string, put func(*Values, int)) func(*Values, string) error {
 	return func(v *Values, s string) error {
@@ -469,6 +488,9 @@ func (s *Store) describeStartup(sf startupField) Setting {
 // pending a restart.
 func (s *Store) Set(key, value string) (Setting, error) {
 	value = strings.TrimSpace(value)
+	if key == RootModeKey {
+		return Setting{}, ErrRootModeNotHere
+	}
 	if f, ok := lookup(key); ok {
 		return s.setRuntime(f, key, value)
 	}

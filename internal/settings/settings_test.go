@@ -259,6 +259,37 @@ func TestStartupKeyIsPendingUntilRestart(t *testing.T) {
 	}
 }
 
+// root_mode is a startup-only key, but the generic Set refuses it: switching
+// Realms restarts AOS behind a warning and a password (M7.7, M7.11), so
+// `aos config set root_mode true` must point the user at `aos root on` rather
+// than flip the Realm as an ordinary setting.
+func TestRootModeCannotBeSetThroughConfig(t *testing.T) {
+	s := open(t, filepath.Join(t.TempDir(), "config.yml"))
+	if _, err := s.Set("root_mode", "true"); !errors.Is(err, ErrRootModeNotHere) {
+		t.Fatalf("Set(root_mode) error = %v, want ErrRootModeNotHere", err)
+	}
+	if !strings.Contains(ErrRootModeNotHere.Error(), "aos root on") {
+		t.Errorf("the refusal should point at `aos root on`: %q", ErrRootModeNotHere)
+	}
+	// It is startup-only and reads from config.yml like the others: a file that
+	// carries root_mode: true boots into Root and reports it no longer pending.
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(path, []byte("root_mode: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := newCfg()
+	again, err := Open(path, base, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RootMode {
+		t.Error("root_mode: true in the file did not apply to cfg.RootMode")
+	}
+	if st := find(t, again, "root_mode"); st.Value != "true" || st.PendingRestart {
+		t.Errorf("root_mode after a restart into Root: %+v, want value true and not pending", st)
+	}
+}
+
 // The generated file is self-documenting and stable; testdata/config.golden.yml
 // is what a fresh start writes from the built-in defaults.
 func TestGeneratedFileMatchesTheGolden(t *testing.T) {

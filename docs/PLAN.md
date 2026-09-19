@@ -1512,6 +1512,271 @@ green on this Mac (unit, unit-linux, the fake-provider Playwright gate, the
 installer's `DRY_RUN` rehearsal, the reference-drift check). VPS-only measurements
 (§16 targets, `ip_unprivileged_port_start`, re-plan cost) are reported by Aman.
 
+### M7 — Root Mode
+
+*Approved 2026-09-20. M7.1 built; M7.2 onward pending.*
+
+Today every Agent, the Terminal and Finder act as `aos`, confined by Landlock and
+`no_new_privs` (§7.1–§7.4): no `sudo` for Agents, Protected Paths need Approval,
+locked paths stay locked. **Root Mode** is a second way to run the whole Machine
+in which Agents, the Terminal and Finder act as **root**: Agents can run anything
+that needs `sudo`, every file and folder is unlocked, and Protected Paths are not
+enforced.
+
+Root Mode is a separate **Realm**. Its chats (Tasks), Audit Log, Memory,
+Notifications, Services, window layout and Browser profile are kept apart from
+the normal (**Standard**) Realm's: in Standard Mode nothing done in Root Mode is
+visible, and the other way round. It is *like* incognito but not the same —
+Root Mode's history is kept across restarts (it can be cleared on purpose,
+M7.12), and what it did to the server's files and packages is real and stays.
+
+The Machine runs one Realm at a time. The Realm is chosen at start from
+`root_mode:` in `config.yml`, so every switch — from System Settings or
+`aos root on|off` — **restarts `aosd` and reloads the Desktop**. Switching into
+Root Mode shows a warning of its consequences, needs an explicit "I understand",
+and asks for the Desktop account's password. See **ADR-0011** (written in M7.1).
+
+**What "isolated" means, said plainly.** Each Realm has its own database file,
+and the API only ever serves the Realm in force, so the Desktop and the CLI
+*cannot* show the other Realm's history. Root Mode Agents are also kept out of
+AOS's own state (`/var/lib/aos`, `/etc/aos`) by Landlock, so a root Agent does
+not stumble into Standard history or the API key. But an Agent running as root
+can, if it really tries, get around anything on the machine — including AOS
+itself and its own Approvals. Root Mode's isolation is a **privacy boundary
+between the two histories, not a security boundary against a root Agent**, and
+the warning modal says so.
+
+**Order of work.** Numbered in build order. Two orderings are load-bearing:
+
+- **Isolation (M7.2) and root confinement (M7.4–M7.5) land before the switch
+  (M7.7, M7.9).** Otherwise there is a commit where turning Root Mode on writes
+  root actions into the Standard history, or runs a root Agent with AOS's keys
+  readable.
+- **The Restart operation (M7.3) lands before the switch**, because the switch is
+  "write the key, then restart" and must reuse it rather than grow its own.
+
+#### Foundation
+
+1. **The Realm, the `root_mode:` key, ADR-0011.** A startup-only key
+   `root_mode: false` in `config.yml` (ADR-0010: accepted, written, *(pending
+   restart)* until the restart). A small `internal/realm` type (`Standard`,
+   `Root`) that the Daemon resolves once at start and hands to everything that
+   needs it — no package reads the key itself. `SystemService.Info` gains
+   `root_mode` and a random `boot_id` (new on every start, used by M7.3 to know a
+   restart really happened). `aos status` prints the Realm. ADR-0011 records the
+   decision; CONTEXT.md gains *Root Mode*, *Standard Mode*, *Realm*. Adding this
+   `### M7` heading requires bumping `Version` to `0.1.0-m6` in the same commit
+   (`version_linux_test.go`). *Acceptance:* `aos config set root_mode true` is
+   refused with a pointer to `aos root on` (M7.11); `aos status` shows
+   `Realm: standard`. *Tests:* settings golden + startup-only marking for
+   `root_mode`; `Info` carries `boot_id` that changes across two starts.
+
+2. **Realm-scoped state: one database file per Realm.** Standard keeps
+   `/var/lib/aos/aos.db` and `outputs/`; Root gets `/var/lib/aos/root/aos.db` and
+   `/var/lib/aos/root/outputs/` (root:root `0700`), created on first Root start
+   with the same embedded migrations. The Daemon opens **the Realm's DB for
+   everything** — `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`,
+   `memories`, `notifications`, `usage`, `ledger_*`, `checkpoints`, `services`,
+   `desktop_state` — and **always the Standard DB for the account** (`users`,
+   `refresh_tokens`), so one sign-in survives a switch. Two things are
+   deliberately shared: `protected_paths` (your locks describe files on one
+   machine; Root Mode just doesn't enforce them, M7.4) is read from the Standard
+   DB, and the **Cost Limit counts both Realms' spend** (it reads the other DB's
+   `usage` total read-only) so Root Mode can't be used to dodge it — only a
+   total, never a Task. A separate file rather than a `realm` column, because a
+   forgotten `WHERE realm = ?` in one query would leak history; with two files
+   there is no query that can. *Acceptance:* a chat started in Root Mode is
+   absent from Agent history, `aos continue`, Activity and the Audit Log after
+   switching back, and reappears after switching to Root again. *Tests:*
+   `daemon` wiring test — Realm DB vs account DB; `store` test — Root DB
+   migrates from empty; `usage` test — Cost Limit sums both files.
+
+3. **Restart as an operation.** New `SystemService.Restart` RPC (Desktop and
+   socket, never an Agent — the socket guard of §7.5 already refuses those;
+   audited). `aosd` replies first, then restarts itself through a `Restarter`:
+   under systemd `systemctl restart --no-block aos` (returns at once, so the
+   unit's own `KillMode=mixed` stop doesn't kill the caller mid-job); under
+   Compose it drains and exits, and `compose.yaml` gains
+   `restart: unless-stopped` so the container comes back. The usual drain
+   (M6.2) runs first, so running Tasks stop cleanly and are marked
+   *interrupted*, not lost. `aos daemon restart` stays as is. *Acceptance:*
+   the RPC returns, `aosd` comes back with a new `boot_id` within the unit's
+   `RestartSec`, a running Task is recorded as interrupted. *Tests:*
+   `restart_test.go` — reply-before-restart ordering, systemd vs Compose
+   restarter chosen by install shape, a fake restarter; socket-guard refusal
+   for an Agent caller.
+
+#### Privilege
+
+4. **Root Mode Agents: root, unlocked, AOS state still hidden.** Agent Sessions,
+   `run_command`, background commands and the Files Tools helper run as **uid 0**
+   with `HOME=/root`, `USER=root`. `sudo` works (they are root already; `sudo -u
+   someone` works too). Landlock gets a third ruleset, `rootPolicy()`: **read and
+   write everything** except AOS's own state — `/var/lib/aos` and `/etc/aos`
+   Hidden, and `aosd`'s binary and unit read-only. `no_new_privs` is still set:
+   it costs a root process nothing, and it keeps the §7.5 socket guard
+   ("`NoNewPrivs: 1` = an Agent") true, so a root Agent is still refused on the
+   control socket. The policy check (§7.4) loses step 1 in Root Mode —
+   **Protected Paths, locks, `.env` and dirty-git rules are not enforced** —
+   while Risky Actions still follow the Autonomy level, so `confirm-risky`
+   still asks before `rm -rf` or a package removal (set Autonomy to `auto` for
+   none). *Acceptance:* in Root Mode an Agent runs `sudo apt-get install -y
+   cowsay` and `echo x > /etc/aos-test` without an Approval under `auto`, and is
+   refused reading `/var/lib/aos/aos.db`. *Tests:* `sandbox` — `rootPolicy()`
+   plan (asserted in Docker like M6.8); `policy` table test — Protected-Path
+   step skipped in Root, Risky step unchanged; `session` — uid/HOME/env for the
+   Root Realm.
+
+5. **Root Mode for the user's own surfaces.** The **Terminal**'s User Session
+   runs `bash -l` as root in `/root` (prompt `root@<host>:~#`, the standard
+   red-`#` root prompt). **Finder** and the Files API act as root: every folder
+   opens, 🔒 locks show as *not enforced in Root Mode*, and `/root` appears in
+   the sidebar. **Trash** uses root's home (`/root/.local/share/Trash`, the
+   M6.6 `st_dev` rule unchanged), so the Trash app shows only the Realm's
+   Trash. **Services** are Realm-scoped (they live in the Realm's DB, M7.2) and
+   run as root in Root Mode — so **leaving Root Mode stops every Service Root
+   Mode started**, and they come back only when Root Mode does; nothing root
+   keeps running behind a Standard Desktop. The **Browser** keeps its own
+   narrow ruleset (M6.7) but gets a per-Realm profile directory, or cookies and
+   logins would leak between Realms. *Acceptance:* Terminal `id` prints
+   `uid=0(root)` in Root Mode and `aos` in Standard; a Service started in Root
+   Mode is stopped after switching back. *Tests:* `session` — User Session
+   credentials per Realm; `service` — load only the Realm's definitions;
+   `browser` — profile path per Realm; `files` — root ops in Root Mode.
+
+6. **The Agent knows it is root.** The system prompt and Machine Profile
+   (M6.12) gain a Root Mode paragraph: you are root, `sudo` is unnecessary,
+   nothing is protected, prefer the smallest change, say before touching
+   system files. Memory is Realm-scoped (M7.2), so nothing learned in one Realm
+   is recalled in the other. *Tests:* prompt golden for both Realms.
+
+#### The switch
+
+7. **`SystemService.SetRootMode(enabled, password)`.** The only way to change
+   `root_mode:` — the generic `settings.Update` refuses the key.
+   - **Turning it on requires the Desktop account's password**, verified with
+     the same pbkdf2 check as sign-in (M6.3). Wrong password →
+     `Unauthenticated` with *attempts left*; **5 wrong in 15 minutes locks the
+     switch for 15 minutes** (`ResourceExhausted`, with the unlock time), kept
+     in memory and audited. Over the control socket (`sudo aos root on`) the
+     caller has already proven root, so no password is asked (M7.11).
+   - **Turning it off needs no password** (it lowers privilege), only the
+     confirm.
+   - **No switch while an Agent is working.** If any Task is Queued, Running or
+     AwaitingUser (§8.1) — in either direction of the switch — it is refused
+     with `FailedPrecondition` and the list of those Tasks (id, title, state),
+     before the password is even checked, so a wrong-password try is never
+     spent on a switch that couldn't happen. Nothing is interrupted: the user
+     lets them finish, or cancels them, and tries again. The check and the
+     key write happen under the Task queue's lock, and while the switch is
+     committing the queue refuses new Tasks, so a Task started a moment later
+     cannot slip in between the check and the restart. (Services are not
+     Tasks and do not block; M7.5 covers them.)
+   - On success: write the key, audit the switch **in the Realm it is made
+     from** (so Standard's log shows "entered Root Mode at 14:02", never what
+     happened inside), then Restart (M7.3). The first entry in the new Realm's
+     log records its start.
+   - Refused from an Agent (socket guard) and from a pre-password-change token
+     (M6.4).
+   *Acceptance:* right password switches and restarts; wrong password leaves
+   `config.yml` untouched and says how many tries are left; the sixth try is
+   locked out; with a Task Running or AwaitingUser the switch is refused and
+   names it, and succeeds once that Task finishes or is cancelled. *Tests:*
+   `api/system_test.go` — right/wrong/lockout/expiry, off-needs-no-password,
+   refused-while-active for each of Queued/Running/AwaitingUser (and not
+   spending a password attempt), a Task submitted during the commit is
+   refused, generic Update refusal, audit placement, Agent caller refused.
+
+#### Desktop
+
+8. **System Settings ▸ System pane, with Restart AOS.** A new *System* pane
+   (first in the list) holding the Root Mode switch (M7.9) and **Restart AOS**.
+   Restart confirms ("Running Tasks will stop and be marked interrupted"), calls
+   M7.3, then shows a full-screen **"Restarting AOS…"** overlay that polls
+   `Info` until `boot_id` changes and then reloads the page — the refresh token
+   in `localStorage` signs back in silently, and `sessionStorage` restores the
+   window layout (M6.5). A timeout after 60 s offers *Try again* and says
+   `sudo aos daemon logs`. *Acceptance:* Restart AOS from the Desktop comes back
+   to a signed-in Desktop with the same windows. *Tests:* Playwright against
+   the faked aosd — confirm, overlay, reload on a new `boot_id`, timeout path.
+
+9. **The Root Mode switch, the warning, the password.** A switch *Start in Root
+   Mode*, off by default. **If any Agent is still working** (a Task Queued,
+   Running or AwaitingUser), flipping it does not open the warning: the switch
+   springs back and a notice says *"An Agent is still running — Root Mode can't
+   be switched until it finishes or you cancel it"*, listing those Tasks with an
+   *Open* link to each in the Agent app. The same notice shows if a Task starts
+   while the modals are open (the server refuses, M7.7). The switch reads the
+   live Task list, not the boot-time `info` snapshot. Otherwise, flipping it on
+   opens, in order:
+   1. **A warning modal** (red): Agents and the Terminal will run as root with
+      full `sudo`; every file and folder is unlocked and Protected Paths are not
+      enforced; changes to the system **cannot be undone** by AOS (Trash and
+      Checkpoints don't cover what root does outside them); Root Mode keeps its
+      own chats and Audit Log, hidden from Standard Mode and vice versa; open
+      Terminal sessions and Services will stop and AOS will restart; a
+      root Agent can, in the end, get around AOS itself. *Continue* stays
+      disabled until *"I understand these actions cannot be undone"* is ticked.
+   2. **A password modal**: one password field, autofocused; wrong →
+      the field is cleared, *"Incorrect password — 3 attempts left"* shown
+      inline, the modal stays; locked out → the field is disabled with *"Too
+      many attempts — try again at 14:17"*; right → **"Switching to Root
+      Mode…"** overlay, then the M7.8 reconnect-and-reload.
+   Cancel anywhere leaves the switch off and nothing changed. Switching off is
+   one lighter confirm ("Root Mode Services will stop; AOS will restart"), no
+   password, under the same running-Agent rule. *Acceptance:* all of the above
+   by hand in the Desktop. *Tests:* Playwright — the running-Agent notice (no
+   modal opens, switch springs back), a Task starting mid-modal, the warning
+   gate, wrong/lockout/right password, cancel leaves `config.yml` untouched,
+   switch-off path.
+
+10. **Root Mode is visible everywhere.** A red **ROOT** badge in the menu bar
+    (click → System pane); a red accent strip on the Terminal and a *root*
+    title; a banner in the Agent app ("Root Mode — Agents run as root; this
+    history is separate"); the login screen and About This Machine say which
+    Realm is running. `desktop_state` is Realm-scoped (M7.2), so window layout
+    and open chats never cross; appearance (wallpaper, Glass, theme) is copied
+    once from Standard when the Root Realm is first created. *Tests:*
+    Playwright — badge and banner present iff `info.rootMode`.
+
+#### CLI, housekeeping, docs
+
+11. **The CLI follows the Realm.** `aos root` prints `on`/`off`; `aos root on`
+    prints the same warning as the modal, asks for `yes`, then calls M7.7 and
+    restarts (`--yes` for scripts); `aos root off` confirms and restarts. While
+    an Agent is working both refuse, list the active Tasks and exit non-zero
+    (`--yes` does not override it; cancel with `aos cancel <id>`). `aos
+    chat`, `aos run`, `aos continue`, `aos attach` and `aos status` only ever
+    see the Realm in force (they talk to the one `aosd`) and print a red
+    `ROOT MODE` line at the top when it is on. In `cli` Mode (no Desktop) this
+    is the only switch. *Tests:* `cli/root_test.go` — confirmation required,
+    `--yes`, refused-while-active output and exit code, config refusal
+    message; banner rendering.
+
+12. **Clear Root Mode history.** In the System pane, only while in Root Mode:
+    *Clear Root Mode history* (confirm, then Restart) deletes the Root DB and
+    its `outputs/`; the next Root start begins empty. What root did to the
+    server's files stays — said in the confirm. `aos root clear` does the same.
+    *Tests:* the Root DB and outputs are gone and recreated empty; refused from
+    Standard Mode.
+
+13. **Docs and the §7 security model.** §7.1's table gains a Root Mode row;
+    §7.2–§7.4 say what Root Mode switches off; §14 lists the second DB; a docs
+    site page *Root Mode* (what it does, what it isolates, what it cannot);
+    the command reference regenerated (M6.22 drift check). *Tests:* lint
+    (drift check, link check).
+
+**Accepted when:** on the VPS, Aman flips *Start in Root Mode*, reads the
+warning, gets a wrong password refused and the right one accepted; AOS restarts
+into Root Mode with the red badge; an Agent installs a package with `sudo` and
+writes under `/etc` without an Approval under `auto`; the Terminal's `id` says
+root; while a Task is running the switch is refused and names it, and works
+once it is cancelled; switching back shows none of Root Mode's chats or Audit
+entries (and the root Service stopped), and switching to Root again shows them
+all. Restart AOS
+from the System pane returns to a signed-in Desktop. `go run ./tools/ci` is green
+on this Mac.
+
 
 ## 19. Risks
 

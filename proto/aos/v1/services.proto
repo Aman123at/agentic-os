@@ -854,6 +854,12 @@ message InfoResponse {
   // Why the Browser can't run although INCLUDE_BROWSER=true, such as an image
   // built before it was set; "" otherwise.
   string browser_unavailable = 17;
+  // Whether the Machine is running in Root Mode (the Root Realm, M7). The
+  // Desktop shows the ROOT badge and the CLI prints the Realm from this.
+  bool root_mode = 18;
+  // A random id fixed for this run of aosd, new on every start. A restart
+  // (M7.3) is confirmed by watching this change.
+  string boot_id = 19;
 }
 
 message AuditRequest {
