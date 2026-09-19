@@ -1,8 +1,8 @@
 // The systemd unit for aosd on a native Linux install (ADR-0009, M6.2). This
 // file has no build constraint on purpose: `tools/ci lint` (which runs on the
 // macOS Host) compares Unit() against the committed deploy/systemd/aos.service
-// golden, so a drift between the two fails the build. install.sh (M6.18) ships
-// the golden file.
+// golden, so a drift between the two fails the build. install.sh (M6.17) installs
+// the golden file from the release tarball (built by the release stage, M6.18).
 package daemon
 
 // unitBinary is where the release tarball puts aosd (M6.18).

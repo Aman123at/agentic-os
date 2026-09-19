@@ -1403,6 +1403,18 @@ are load-bearing rather than tidy:
     pipe is a no-op. *Tests:* `DRY_RUN=1` rehearsal in `tools/ci` from any machine;
     `shellcheck` in `lint`.
 
+    > **Built (M6.17).** `install.sh` at the repository root — POSIX `sh`,
+    > `set -eu`, `main` on the last line. It reconciles the `tools/spikes/install/`
+    > prototype with the shipped product: the systemd unit is installed from the
+    > release tarball (byte-for-byte `daemon.Unit()`, not re-embedded), the config
+    > template carries only keys aosd accepts and writes `filesystem: host` (the
+    > native marker) — the prototype's `username`/`password`/`bind`/`port` would
+    > have made aosd refuse to start on an unknown key — and account creation runs
+    > `aos mode ui`, which mints the one-time password over the local control
+    > socket. `lint` runs `DRY_RUN=1 sh install.sh` (exit 0) and `shellcheck` over
+    > it. The tarball layout it fetches is the contract M6.18 must satisfy. The
+    > real `curl … | sh` on a VPS stays Aman's acceptance check.
+
 18. **Release engineering.** A hand-written `release` stage in `tools/ci` (not
     GoReleaser — the Dockerfile already compiles Go and GoReleaser would need a
     second toolchain that drifts) builds `linux/amd64` and `linux/arm64` tarballs

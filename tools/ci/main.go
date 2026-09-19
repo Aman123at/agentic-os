@@ -99,6 +99,12 @@ func lint() error {
 	if err := desktopProductLanguage(); err != nil {
 		return err
 	}
+	if err := installerRehearsal(); err != nil {
+		return err
+	}
+	if err := installerShellcheck(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -153,6 +159,33 @@ func desktopProductLanguage() error {
 	}
 	if len(hits) > 0 {
 		return fmt.Errorf("the retired product term \"Host\" is back in desktop/src (M6.14); say \"your computer\" or \"the browser\":\n%s", strings.Join(hits, "\n"))
+	}
+	return nil
+}
+
+// installerRehearsal runs install.sh with DRY_RUN=1 (M6.17) and asserts it
+// exits 0. Every mutating step goes through run() and every refusal through
+// fail(), so the dry run prints the whole plan and touches nothing — the one
+// way the installer is testable from a machine that is not the target VPS.
+func installerRehearsal() error {
+	cmd := exec.Command("sh", "install.sh")
+	cmd.Env = append(os.Environ(), "DRY_RUN=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("install.sh DRY_RUN=1 rehearsal failed: %w\n%s", err, out)
+	}
+	return nil
+}
+
+// installerShellcheck lints install.sh with shellcheck (M6.17). shellcheck is
+// present in the CI image but not on every developer's machine, so a missing
+// binary is a skip, not a failure — the CI run still enforces it.
+func installerShellcheck() error {
+	if _, err := exec.LookPath("shellcheck"); err != nil {
+		fmt.Println("    shellcheck not installed — skipping install.sh lint (CI runs it)")
+		return nil
+	}
+	if err := run("shellcheck", "install.sh"); err != nil {
+		return fmt.Errorf("shellcheck found problems in install.sh: %w", err)
 	}
 	return nil
 }
