@@ -28,6 +28,7 @@ func attachCmd() *cobra.Command {
 			c := newClient()
 			ctx, cancel := context.WithCancel(cmd.Context())
 			defer cancel()
+			printRealmBanner(ctx, c, os.Stderr)
 			conn, _, err := websocket.Dial(ctx, "ws://aosd/ws/session/"+args[0], &websocket.DialOptions{HTTPClient: c.http})
 			if err != nil {
 				return fmt.Errorf("attach %s: %w (is the Task running? aos tasks)", args[0], explain(err))

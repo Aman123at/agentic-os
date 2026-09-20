@@ -56,6 +56,7 @@ func followTask(parent context.Context, c *client, id string, interactive, asJSO
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	st := newStyles(isTTY(os.Stdout) && !asJSON)
+	printRealmBanner(ctx, c, os.Stderr)
 	if !asJSON {
 		fmt.Fprintf(os.Stderr, "%sTask %s%s\n", st.dim, id, st.reset)
 	}

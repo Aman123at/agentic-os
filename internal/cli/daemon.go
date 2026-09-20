@@ -116,6 +116,9 @@ func statusCmd() *cobra.Command {
 				return exitError{1}
 			}
 			i := info.Msg
+			if i.RootMode {
+				fmt.Fprintln(w, rootBannerLine(newStyles(isTTY(os.Stdout))))
+			}
 			fmt.Fprintf(w, "Health:  ok (aosd %s responding on the control socket)\n", i.Version)
 			fmt.Fprintf(w, "Mode:    %s\n", i.Mode)
 			fmt.Fprintf(w, "Realm:   %s\n", realm.Of(i.RootMode))

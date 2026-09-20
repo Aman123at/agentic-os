@@ -48,6 +48,9 @@ func chat(ctx context.Context) error {
 	out := &lineWriter{w: t}
 	fmt.Fprintf(out, "%sAgentic OS%s · %s · Autonomy %s · Ctrl-C cancels the running Task, Ctrl-D quits\n",
 		st.bold, st.reset, info.Msg.Model, autonomyName(info.Msg.Autonomy))
+	if info.Msg.RootMode {
+		fmt.Fprintln(out, rootBannerLine(st))
+	}
 	if info.Msg.ApiKey != "present" {
 		fmt.Fprintf(out, "%sNo OpenAI API key: set one in System Settings, or write it to /run/secrets/openai_api_key and run sudo aos daemon restart.%s\n", st.yellow, st.reset)
 	}
