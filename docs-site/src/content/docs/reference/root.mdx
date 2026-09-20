@@ -11,6 +11,20 @@ Show or switch Root Mode (on or off)
 aos root [on|off]
 ```
 
+### `aos root clear`
+
+Erase Root Mode's history — its Tasks, Audit Log, chats and outputs — and restart
+
+```
+aos root clear [flags]
+```
+
+Options:
+
+```
+      --yes   skip the confirmation (for scripts); it does not override the running-Agent check
+```
+
 ### `aos root off`
 
 Turn off Root Mode: leave the Root Realm and restart into Standard Mode

@@ -45,6 +45,7 @@ type Flow =
   | { kind: "warn" } // entering Root Mode: the red warning gate
   | { kind: "password" } // entering Root Mode: the password modal
   | { kind: "offConfirm" } // leaving Root Mode: one lighter confirm
+  | { kind: "clearConfirm" } // Root Mode only: erase Root's history
   | { kind: "restartConfirm" } // Restart AOS
   | { kind: "working"; label: string; fromBootId: string }; // the restart/switch overlay
 
@@ -67,6 +68,16 @@ export default function SystemPane() {
       return;
     }
     setFlow(goingTo ? { kind: "warn" } : { kind: "offConfirm" });
+  };
+
+  // beginClear opens the Clear Root Mode history confirm, unless an Agent is still
+  // working — the clear is refused mid-Task just as the switch is (M7.12).
+  const beginClear = () => {
+    if (blocking.length > 0) {
+      setFlow({ kind: "blocked", tasks: blocking, goingTo: rootMode });
+      return;
+    }
+    setFlow({ kind: "clearConfirm" });
   };
 
   const startWorking = (label: string) => setFlow({ kind: "working", label, fromBootId: info?.bootId ?? "" });
@@ -103,6 +114,26 @@ export default function SystemPane() {
         </div>
       </section>
 
+      {rootMode && (
+        <section className="set__group">
+          <div className="set__grouphead">Root Mode history</div>
+          <div className="set__row">
+            <div className="set__label">
+              <span className="set__name">Clear Root Mode history</span>
+              <span className="set__hint">
+                Erase Root Mode’s own Tasks, Audit Log, chats and command outputs, then restart into an empty Root Mode. What root did to the
+                server’s files stays.
+              </span>
+            </div>
+            <div className="set__control">
+              <button className="tasks__btn tasks__btn--danger" onClick={beginClear}>
+                Clear history
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="set__group">
         <div className="set__grouphead">Restart</div>
         <div className="set__row">
@@ -134,6 +165,13 @@ export default function SystemPane() {
           onCancel={() => setFlow({ kind: "idle" })}
           onSwitched={() => startWorking("Switching to Standard Mode…")}
           onBlocked={(tasks) => onServerBlocked(tasks, false)}
+        />
+      )}
+      {flow.kind === "clearConfirm" && (
+        <ClearConfirmModal
+          onCancel={() => setFlow({ kind: "idle" })}
+          onClearing={() => startWorking("Clearing Root Mode history…")}
+          onBlocked={(tasks) => onServerBlocked(tasks, rootMode)}
         />
       )}
       {flow.kind === "restartConfirm" && (
@@ -349,6 +387,62 @@ function OffConfirmModal({
         </button>
         <button className="tasks__btn tasks__btn--danger" disabled={busy} onClick={() => void off()}>
           Turn off Root Mode
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
+// ClearConfirmModal erases Root Mode's own history (M7.12): its Tasks, Audit Log,
+// chats and outputs, then a restart into an empty Root Mode. It names what stays —
+// what root did to the server's files is real — and, like the switch, surfaces a
+// Task that started meanwhile as the blocked notice.
+function ClearConfirmModal({
+  onCancel,
+  onClearing,
+  onBlocked,
+}: {
+  onCancel: () => void;
+  onClearing: () => void;
+  onBlocked: (tasks: TaskRef[]) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const clear = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await system.clearRootHistory({});
+      onClearing();
+    } catch (err) {
+      const blocked = ConnectError.from(err).findDetails(RootModeBlockedSchema)[0];
+      if (blocked) {
+        onBlocked(blocked.tasks);
+        return;
+      }
+      setError(friendlyError(err));
+      setBusy(false);
+    }
+  };
+  return (
+    <Overlay label="Clear Root Mode history">
+      <p className="auth__title rootmode__warntitle">Clear Root Mode history?</p>
+      <p className="boot__muted rootmode__confirmtext">
+        This erases Root Mode’s own Tasks, Audit Log, chats and command outputs, then restarts AOS into an empty Root Mode. What root already
+        did to the server’s files and packages is real and stays — only AOS’s record of it goes. This cannot be undone.
+      </p>
+      {error && (
+        <p className="tasks__error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="rootmode__actions">
+        <button className="tasks__btn" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="tasks__btn tasks__btn--danger" disabled={busy} onClick={() => void clear()}>
+          Clear history
         </button>
       </div>
     </Overlay>

@@ -25,15 +25,20 @@ type realmDirs struct {
 	Other string
 }
 
+// rootStateDir is the Root Realm's own subtree under base — its database and its
+// outputs together (base/root). Clearing Root Mode history (M7.12) removes this
+// whole directory; the next Root start recreates it empty.
+func rootStateDir(base string) string { return base + "/root" }
+
 // dirsFor returns the file layout for Realm r under base. Standard keeps
 // base/aos.db and base/outputs; Root gets base/root/aos.db and base/root/outputs
 // (root:root 0700), created on first Root start with the same embedded
 // migrations (M7.2).
 func dirsFor(base string, r realm.Realm) realmDirs {
 	account := base + "/aos.db"
+	root := rootStateDir(base)
 	if r.IsRoot() {
-		root := base + "/root"
 		return realmDirs{DB: root + "/aos.db", Account: account, Outputs: root + "/outputs", Other: account}
 	}
-	return realmDirs{DB: account, Account: account, Outputs: base + "/outputs", Other: base + "/root/aos.db"}
+	return realmDirs{DB: account, Account: account, Outputs: base + "/outputs", Other: root + "/aos.db"}
 }

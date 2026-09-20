@@ -273,9 +273,15 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
-		Sampler:       d.sampler,
-		Notifications: d.notify,
-		Browser:       d.browser,
+		// Clearing Root Mode history removes the Root Realm's whole subtree — its
+		// database and its outputs (M7.12). The RPC only calls this in Root Mode and
+		// under the queue gate, then restarts, so the next Root start recreates it
+		// empty; unlinking files aosd still holds open is fine on Linux — the drain's
+		// clean close writes into the unlinked inode, which then vanishes.
+		ClearRootHistory: func() error { return os.RemoveAll(rootStateDir(StateDir)) },
+		Sampler:          d.sampler,
+		Notifications:    d.notify,
+		Browser:          d.browser,
 	}
 	handler := srv.Handler()
 

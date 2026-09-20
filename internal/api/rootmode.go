@@ -178,6 +178,41 @@ func (sys systemService) checkRootPassword(ctx context.Context, password string)
 	return nil
 }
 
+// ClearRootHistory erases the Root Realm's own history (M7.12): its database and
+// its read_output blobs, so the next Root start begins empty. See services.proto
+// for the full contract. It runs only in Root Mode, and — like the switch — under
+// the Task queue's gate, so nothing is writing to the database as it is deleted.
+func (sys systemService) ClearRootHistory(ctx context.Context, _ *connect.Request[aosv1.ClearRootHistoryRequest]) (*connect.Response[aosv1.ClearRootHistoryResponse], error) {
+	switcher := sys.s.switcher()
+	if switcher == nil || sys.s.ClearRootHistory == nil || sys.s.Restart == nil {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("clearing Root Mode history is not available here"))
+	}
+	// Only Root Mode has a history of its own to clear; from Standard there is
+	// nothing of Root's to reach, so refuse before touching the queue.
+	if sys.s.Info == nil || !sys.s.Info().RootMode {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("Clear Root Mode history only works in Root Mode"))
+	}
+
+	actor := ActorFrom(ctx)
+	active, err := switcher.SwitchRealm(ctx, func() error {
+		// Record the clear in Root's own log. On success the delete takes this line
+		// with the rest; if the delete fails the line stays, so a clear that could
+		// not finish leaves a trace.
+		_ = sys.s.Audit.Record(ctx, audit.Entry{Tool: "clear_root_history", Result: "cleared Root Mode history", Decision: "allow", DecidedBy: actor, Actor: actor})
+		if err := sys.s.ClearRootHistory(); err != nil {
+			return err
+		}
+		return sys.s.Restart()
+	})
+	if err != nil {
+		return nil, connectError(err)
+	}
+	if len(active) > 0 {
+		return nil, rootModeBlockedError(active)
+	}
+	return connect.NewResponse(&aosv1.ClearRootHistoryResponse{}), nil
+}
+
 func rootModeBlockedError(active []*aosv1.Task) error {
 	detail := &aosv1.RootModeBlocked{}
 	for _, t := range active {

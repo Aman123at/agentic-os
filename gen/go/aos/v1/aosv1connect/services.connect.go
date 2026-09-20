@@ -215,6 +215,9 @@ const (
 	// SystemServiceSetRootModeProcedure is the fully-qualified name of the SystemService's SetRootMode
 	// RPC.
 	SystemServiceSetRootModeProcedure = "/aos.v1.SystemService/SetRootMode"
+	// SystemServiceClearRootHistoryProcedure is the fully-qualified name of the SystemService's
+	// ClearRootHistory RPC.
+	SystemServiceClearRootHistoryProcedure = "/aos.v1.SystemService/ClearRootHistory"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2246,6 +2249,19 @@ type SystemServiceClient interface {
 	// has already proven root, so no password is asked (M7.11); an Agent-confined
 	// caller is refused by the socket's §7.5 guard.
 	SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error)
+	// ClearRootHistory erases Root Mode's own history (M7.12): the Root database
+	// (its Tasks, Audit Log, chats and the rest) and its read_output blobs, so the
+	// next Root start begins empty. It runs only in Root Mode — refused with
+	// FailedPrecondition from Standard, where there is nothing of Root's to reach.
+	// Like the Realm switch it is refused while any Task is Queued, Running or
+	// AwaitingUser (FailedPrecondition, detail RootModeBlocked), so nothing is
+	// writing to the database as it is deleted. It audits the clear in Root's log
+	// (about to be erased) and restarts (M7.3) back into Root Mode, which recreates
+	// the empty database and outputs. What root already did to the server's files
+	// and packages is real and stays — only AOS's record of it is cleared. Over the
+	// control socket the caller has already proven root (§7.5); an Agent-confined
+	// caller is refused by the socket's guard.
+	ClearRootHistory(context.Context, *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error)
 }
 
 // NewSystemServiceClient constructs a client for the aos.v1.SystemService service. By default, it
@@ -2313,6 +2329,12 @@ func NewSystemServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(systemServiceMethods.ByName("SetRootMode")),
 			connect.WithClientOptions(opts...),
 		),
+		clearRootHistory: connect.NewClient[v1.ClearRootHistoryRequest, v1.ClearRootHistoryResponse](
+			httpClient,
+			baseURL+SystemServiceClearRootHistoryProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("ClearRootHistory")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -2327,6 +2349,7 @@ type systemServiceClient struct {
 	dismissNotification *connect.Client[v1.DismissNotificationRequest, v1.DismissNotificationResponse]
 	restart             *connect.Client[v1.RestartRequest, v1.RestartResponse]
 	setRootMode         *connect.Client[v1.SetRootModeRequest, v1.SetRootModeResponse]
+	clearRootHistory    *connect.Client[v1.ClearRootHistoryRequest, v1.ClearRootHistoryResponse]
 }
 
 // Info calls aos.v1.SystemService.Info.
@@ -2374,6 +2397,11 @@ func (c *systemServiceClient) SetRootMode(ctx context.Context, req *connect.Requ
 	return c.setRootMode.CallUnary(ctx, req)
 }
 
+// ClearRootHistory calls aos.v1.SystemService.ClearRootHistory.
+func (c *systemServiceClient) ClearRootHistory(ctx context.Context, req *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error) {
+	return c.clearRootHistory.CallUnary(ctx, req)
+}
+
 // SystemServiceHandler is an implementation of the aos.v1.SystemService service.
 type SystemServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
@@ -2411,6 +2439,19 @@ type SystemServiceHandler interface {
 	// has already proven root, so no password is asked (M7.11); an Agent-confined
 	// caller is refused by the socket's §7.5 guard.
 	SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error)
+	// ClearRootHistory erases Root Mode's own history (M7.12): the Root database
+	// (its Tasks, Audit Log, chats and the rest) and its read_output blobs, so the
+	// next Root start begins empty. It runs only in Root Mode — refused with
+	// FailedPrecondition from Standard, where there is nothing of Root's to reach.
+	// Like the Realm switch it is refused while any Task is Queued, Running or
+	// AwaitingUser (FailedPrecondition, detail RootModeBlocked), so nothing is
+	// writing to the database as it is deleted. It audits the clear in Root's log
+	// (about to be erased) and restarts (M7.3) back into Root Mode, which recreates
+	// the empty database and outputs. What root already did to the server's files
+	// and packages is real and stays — only AOS's record of it is cleared. Over the
+	// control socket the caller has already proven root (§7.5); an Agent-confined
+	// caller is refused by the socket's guard.
+	ClearRootHistory(context.Context, *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error)
 }
 
 // NewSystemServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2474,6 +2515,12 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(systemServiceMethods.ByName("SetRootMode")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemServiceClearRootHistoryHandler := connect.NewUnaryHandler(
+		SystemServiceClearRootHistoryProcedure,
+		svc.ClearRootHistory,
+		connect.WithSchema(systemServiceMethods.ByName("ClearRootHistory")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SystemService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemServiceInfoProcedure:
@@ -2494,6 +2541,8 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 			systemServiceRestartHandler.ServeHTTP(w, r)
 		case SystemServiceSetRootModeProcedure:
 			systemServiceSetRootModeHandler.ServeHTTP(w, r)
+		case SystemServiceClearRootHistoryProcedure:
+			systemServiceClearRootHistoryHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2537,4 +2586,8 @@ func (UnimplementedSystemServiceHandler) Restart(context.Context, *connect.Reque
 
 func (UnimplementedSystemServiceHandler) SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.SetRootMode is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) ClearRootHistory(context.Context, *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.ClearRootHistory is not implemented"))
 }

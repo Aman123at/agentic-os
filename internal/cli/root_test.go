@@ -18,9 +18,11 @@ import (
 // tests never touch (they panic if called, which would fail the test loudly).
 type fakeSystem struct {
 	aosv1connect.SystemServiceClient
-	rootMode bool
-	setErr   error
-	calls    []bool // one entry per SetRootMode call, its Enabled value
+	rootMode   bool
+	setErr     error
+	calls      []bool // one entry per SetRootMode call, its Enabled value
+	clearErr   error
+	clearCalls int // ClearRootHistory calls
 }
 
 func (f *fakeSystem) Info(context.Context, *connect.Request[aosv1.InfoRequest]) (*connect.Response[aosv1.InfoResponse], error) {
@@ -33,6 +35,14 @@ func (f *fakeSystem) SetRootMode(_ context.Context, req *connect.Request[aosv1.S
 		return nil, f.setErr
 	}
 	return connect.NewResponse(&aosv1.SetRootModeResponse{}), nil
+}
+
+func (f *fakeSystem) ClearRootHistory(context.Context, *connect.Request[aosv1.ClearRootHistoryRequest]) (*connect.Response[aosv1.ClearRootHistoryResponse], error) {
+	f.clearCalls++
+	if f.clearErr != nil {
+		return nil, f.clearErr
+	}
+	return connect.NewResponse(&aosv1.ClearRootHistoryResponse{}), nil
 }
 
 // TestSwitchRootNeedsAYes checks the confirmation gate: without --yes, anything
@@ -112,6 +122,83 @@ func TestSwitchRootRefusedWhileActive(t *testing.T) {
 	var exit exitError
 	if !errors.As(got, &exit) || exit.code == 0 {
 		t.Fatalf("switchRoot error = %v, want a non-zero exitError", got)
+	}
+	s := out.String()
+	for _, want := range []string{"task_42", "Reindex the archive", "aos cancel"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("blocked output missing %q:\n%s", want, s)
+		}
+	}
+}
+
+// TestClearRootNeedsAYes checks `aos root clear`'s confirmation gate: without
+// --yes, anything but `yes` cancels and never reaches aosd; `yes` clears (M7.12).
+func TestClearRootNeedsAYes(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		typed     string
+		wantClear bool
+	}{
+		{"no cancels", "no\n", false},
+		{"empty cancels", "\n", false},
+		{"yes proceeds", "yes\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeSystem{}
+			var out strings.Builder
+			if err := clearRoot(context.Background(), strings.NewReader(tc.typed), &out, &client{system: f}, false); err != nil {
+				t.Fatalf("clearRoot: %v", err)
+			}
+			if got := f.clearCalls == 1; got != tc.wantClear {
+				t.Fatalf("ClearRootHistory called %d time(s), want called=%v", f.clearCalls, tc.wantClear)
+			}
+			if tc.wantClear {
+				if !strings.Contains(out.String(), "Clearing Root Mode history and restarting") {
+					t.Errorf("no restart message: %q", out.String())
+				}
+			} else if !strings.Contains(out.String(), "Cancelled") {
+				t.Errorf("no cancel message: %q", out.String())
+			}
+			// The warning names what stays, always.
+			if !strings.Contains(out.String(), "is real and stays") {
+				t.Errorf("warning not printed: %q", out.String())
+			}
+		})
+	}
+}
+
+// TestClearRootYesSkipsTheConfirm checks --yes: the clear goes straight through
+// without reading stdin, for scripts (M7.12).
+func TestClearRootYesSkipsTheConfirm(t *testing.T) {
+	f := &fakeSystem{}
+	var out strings.Builder
+	if err := clearRoot(context.Background(), failReader{t}, &out, &client{system: f}, true); err != nil {
+		t.Fatalf("clearRoot: %v", err)
+	}
+	if f.clearCalls != 1 {
+		t.Fatalf("ClearRootHistory calls = %d, want one", f.clearCalls)
+	}
+}
+
+// TestClearRootRefusedWhileActive checks the running-Agent gate on the clear: a
+// refusal carrying RootModeBlocked prints the Task and exits non-zero (M7.12).
+func TestClearRootRefusedWhileActive(t *testing.T) {
+	blocked := connect.NewError(connect.CodeFailedPrecondition, errors.New("an Agent is still working"))
+	detail, err := connect.NewErrorDetail(&aosv1.RootModeBlocked{
+		Tasks: []*aosv1.BlockingTask{{Id: "task_42", Title: "Reindex the archive", State: aosv1.TaskState_TASK_STATE_RUNNING}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked.AddDetail(detail)
+
+	f := &fakeSystem{clearErr: blocked}
+	var out strings.Builder
+	got := clearRoot(context.Background(), strings.NewReader(""), &out, &client{system: f}, true)
+
+	var exit exitError
+	if !errors.As(got, &exit) || exit.code == 0 {
+		t.Fatalf("clearRoot error = %v, want a non-zero exitError", got)
 	}
 	s := out.String()
 	for _, want := range []string{"task_42", "Reindex the archive", "aos cancel"} {

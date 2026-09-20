@@ -237,3 +237,49 @@ test("Root Mode: switching off needs one confirm and no password", async ({ page
   await expect.poll(() => page.evaluate(() => (window as unknown as { __nav?: string }).__nav)).toBeUndefined();
   await expect(page.locator(".desktop")).toBeVisible({ timeout: 20_000 });
 });
+
+test("Clear Root Mode history: only in Root Mode, confirms, overlays and reloads", async ({ page }) => {
+  // Standard Mode has nothing of Root's, so the section is not offered (M7.12).
+  const standard = await systemPane(page);
+  await expect(standard.getByRole("button", { name: "Clear history" })).toHaveCount(0);
+
+  // Report Root Mode as on; the section appears and the clear runs, flipping
+  // boot_id so the overlay's poll sees the restart.
+  let cleared = false;
+  await rewriteInfo(page, () => (cleared ? "boot-fresh-root" : "boot-root"), () => true);
+  await page.route("**/aos.v1.SystemService/ClearRootHistory", async (route) => {
+    cleared = true;
+    await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
+  });
+
+  const win = await systemPane(page);
+  await page.evaluate(() => ((window as unknown as { __nav?: string }).__nav = "before"));
+  await win.getByRole("button", { name: "Clear history" }).click();
+
+  const confirm = page.getByRole("dialog", { name: "Clear Root Mode history" });
+  await expect(confirm).toBeVisible();
+  await expect(confirm).toContainText("is real and stays");
+  await confirm.getByRole("button", { name: "Clear history" }).click();
+
+  await expect(page.getByRole("dialog", { name: "Clearing Root Mode history…" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __nav?: string }).__nav)).toBeUndefined();
+  await expect(page.locator(".desktop")).toBeVisible({ timeout: 20_000 });
+});
+
+test("Clear Root Mode history: a running Agent is surfaced as the notice", async ({ page }) => {
+  await rewriteInfo(page, () => "boot-root", () => true);
+  await page.route("**/aos.v1.SystemService/ClearRootHistory", async (route) => {
+    await connectError(route, 412, "failed_precondition", "an Agent is still working", [
+      detail(RootModeBlockedSchema, { tasks: [{ id: "t_busy", title: "Reindex the archive", state: TaskState.RUNNING }] }),
+    ]);
+  });
+
+  const win = await systemPane(page);
+  await win.getByRole("button", { name: "Clear history" }).click();
+  await page.getByRole("dialog", { name: "Clear Root Mode history" }).getByRole("button", { name: "Clear history" }).click();
+
+  const notice = page.getByTestId("rootmode-blocked");
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("Reindex the archive");
+  await expect(notice).toContainText("Running");
+});

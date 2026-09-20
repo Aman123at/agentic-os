@@ -39,8 +39,55 @@ func rootCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.AddCommand(rootSwitchCmd(true), rootSwitchCmd(false))
+	cmd.AddCommand(rootSwitchCmd(true), rootSwitchCmd(false), rootClearCmd())
 	return cmd
+}
+
+// rootClearCmd builds `aos root clear` (PLAN.md §18 M7.12): it erases Root Mode's
+// own history — the Root database and its command outputs — and restarts back
+// into Root Mode empty. It is the CLI's door to the same operation as the System
+// pane's Clear Root Mode history, and works only while in Root Mode.
+func rootClearCmd() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Erase Root Mode's history — its Tasks, Audit Log, chats and outputs — and restart",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return clearRoot(cmd.Context(), cmd.InOrStdin(), cmd.OutOrStdout(), newClient(), yes)
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation (for scripts); it does not override the running-Agent check")
+	return cmd
+}
+
+// clearRoot prints the warning, asks for `yes` unless --yes, then calls
+// ClearRootHistory (M7.12). A clear refused because an Agent is still working
+// prints the blocking Tasks and exits non-zero; from Standard Mode the server
+// refuses it and the message is shown.
+func clearRoot(ctx context.Context, in io.Reader, out io.Writer, c *client, yes bool) error {
+	fmt.Fprint(out, clearRootWarning)
+	if !yes {
+		fmt.Fprint(out, "Type yes to clear Root Mode history: ")
+		line, err := bufio.NewReader(in).ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		if strings.TrimSpace(line) != "yes" {
+			fmt.Fprintln(out, "Cancelled — nothing changed.")
+			return nil
+		}
+	}
+	_, err := c.system.ClearRootHistory(ctx, connect.NewRequest(&aosv1.ClearRootHistoryRequest{}))
+	if err != nil {
+		if b := blockedDetail(err); b != nil {
+			printBlocked(out, b)
+			return exitError{1}
+		}
+		return explain(err)
+	}
+	fmt.Fprintln(out, "Clearing Root Mode history and restarting AOS…")
+	return nil
 }
 
 // rootSwitchCmd builds `aos root on` or `aos root off`.
@@ -182,5 +229,16 @@ const rootOffWarning = `Turn off Root Mode?
 
   Root Mode Services will stop; AOS will restart into Standard Mode. What root
   already did to the server's files and packages is real and stays.
+
+`
+
+// clearRootWarning mirrors the Desktop's Clear Root Mode history confirm (M7.12):
+// it names what goes and what stays.
+const clearRootWarning = `Clear Root Mode history?
+
+  This erases Root Mode's own record — its Tasks, Audit Log, chats and command
+  outputs — and restarts AOS into an empty Root Mode. What root already did to
+  the server's files and packages is real and stays; only AOS's record of it
+  goes. This cannot be undone.
 
 `

@@ -103,6 +103,10 @@ type Server struct {
 	// Restart restarts aosd out of band after the RPC replies (M7.3); nil means
 	// restart is not available (e.g. a foreground run with no supervisor).
 	Restart func() error
+	// ClearRootHistory deletes the Root Realm's database and its read_output blobs
+	// (M7.12), so the next Root start begins empty; nil means it is not available.
+	// The RPC only calls it while in Root Mode, after its Task gate, and restarts.
+	ClearRootHistory func() error
 	// Browser is the Browser app's page; nil when it isn't included.
 	Browser *browser.Manager
 	// Assets is the Desktop (ui Mode); nil serves a short note.

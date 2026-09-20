@@ -46,6 +46,7 @@ type rootRig struct {
 	log      *audit.Log
 	cfgPath  string
 	restarts *int
+	cleared  *int
 	clock    *time.Time
 	rootMode *bool
 }
@@ -71,16 +72,23 @@ func newRootRig(t *testing.T) *rootRig {
 	sw := &fakeSwitcher{}
 	log := &audit.Log{DB: db}
 	restarts := 0
+	cleared := 0
 	rootMode := false
 	clock := testClock
 	s := &Server{
 		Auth: auth, Audit: log, Settings: st, realmSwitch: sw,
-		Info:    func() *aosv1.InfoResponse { return &aosv1.InfoResponse{RootMode: rootMode} },
-		Restart: func() error { restarts++; return nil },
-		Now:     func() time.Time { return clock },
+		Info:             func() *aosv1.InfoResponse { return &aosv1.InfoResponse{RootMode: rootMode} },
+		Restart:          func() error { restarts++; return nil },
+		ClearRootHistory: func() error { cleared++; return nil },
+		Now:              func() time.Time { return clock },
 	}
 	return &rootRig{sys: systemService{s}, sw: sw, st: st, log: log, cfgPath: cfgPath,
-		restarts: &restarts, clock: &clock, rootMode: &rootMode}
+		restarts: &restarts, cleared: &cleared, clock: &clock, rootMode: &rootMode}
+}
+
+func (r *rootRig) clear(ctx context.Context) error {
+	_, err := r.sys.ClearRootHistory(ctx, connect.NewRequest(&aosv1.ClearRootHistoryRequest{}))
+	return err
 }
 
 func (r *rootRig) set(ctx context.Context, enabled bool, password string) error {
@@ -272,6 +280,70 @@ func TestGenericUpdateRefusesRootMode(t *testing.T) {
 	}
 	if got := r.savedRootMode(t); got != "false" {
 		t.Errorf("root_mode = %q after a refused Update, want it untouched", got)
+	}
+}
+
+// TestClearRootHistoryInRootModeClearsAndRestarts is the M7.12 happy path: in Root
+// Mode, ClearRootHistory deletes the Root Realm's files, audits the clear and
+// restarts back into an empty Root Mode.
+func TestClearRootHistoryInRootModeClearsAndRestarts(t *testing.T) {
+	r := newRootRig(t)
+	*r.rootMode = true
+	if err := r.clear(desktopCtx); err != nil {
+		t.Fatalf("ClearRootHistory: %v", err)
+	}
+	if *r.cleared != 1 {
+		t.Errorf("cleared %d time(s), want once", *r.cleared)
+	}
+	if *r.restarts != 1 {
+		t.Errorf("restarted %d time(s), want once", *r.restarts)
+	}
+	entries, err := r.log.List(context.Background(), "", 10, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, e := range entries {
+		if e.Tool == "clear_root_history" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the clear was not audited: %+v", entries)
+	}
+}
+
+// TestClearRootHistoryRefusedFromStandard: from Standard there is nothing of
+// Root's to clear, so it is refused before the queue is touched (M7.12).
+func TestClearRootHistoryRefusedFromStandard(t *testing.T) {
+	r := newRootRig(t) // rootMode stays false
+	if err := r.clear(desktopCtx); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("clear from Standard: %v, want FailedPrecondition", err)
+	}
+	if *r.cleared != 0 || *r.restarts != 0 {
+		t.Errorf("cleared (%d) or restarted (%d) from Standard Mode", *r.cleared, *r.restarts)
+	}
+	if r.sw.commits != 0 {
+		t.Errorf("the queue gate ran (%d) from Standard Mode", r.sw.commits)
+	}
+}
+
+// TestClearRootHistoryRefusedWhileActive: a running Agent refuses the clear the
+// same way a switch is refused, naming the Task and touching nothing (M7.12).
+func TestClearRootHistoryRefusedWhileActive(t *testing.T) {
+	r := newRootRig(t)
+	*r.rootMode = true
+	r.sw.active = []*aosv1.Task{{Id: "t_9", Title: "reindex", State: aosv1.TaskState_TASK_STATE_RUNNING}}
+
+	err := r.clear(desktopCtx)
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("clear while active: %v, want FailedPrecondition", err)
+	}
+	if blocked := blockedTasks(t, err); len(blocked) != 1 || blocked[0].Id != "t_9" {
+		t.Fatalf("blocked detail = %+v, want the active Task", blocked)
+	}
+	if *r.cleared != 0 || *r.restarts != 0 {
+		t.Errorf("cleared (%d) or restarted (%d) while a Task was active", *r.cleared, *r.restarts)
 	}
 }
 
