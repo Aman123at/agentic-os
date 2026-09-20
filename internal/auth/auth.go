@@ -366,6 +366,23 @@ func (m *Model) SignIn(ctx context.Context, username, password string) (access, 
 	return access, refresh, mustCode != 0, nil
 }
 
+// VerifyPassword reports whether password matches the one account's, with the
+// same constant-time pbkdf2 check as sign-in (M6.3). It is the gate on the Root
+// Mode switch (M7.7), which re-proves the person at the keyboard before raising
+// privilege. With no account yet it runs a throwaway verify and returns false,
+// so a missing account and a wrong password take the same time.
+func (m *Model) VerifyPassword(ctx context.Context, password string) (bool, error) {
+	var hash string
+	switch err := m.DB.Read().QueryRowContext(ctx, `SELECT pw_hash FROM users LIMIT 1`).Scan(&hash); {
+	case errors.Is(err, sql.ErrNoRows):
+		verifyPassword("pbkdf2-sha256$1$AA$AA", password)
+		return false, nil
+	case err != nil:
+		return false, err
+	}
+	return verifyPassword(hash, password), nil
+}
+
 // MustChange reports whether the one account still holds a system-generated
 // password. The Refresh handler reads it so a reload during the forced first
 // change lands back on the change screen rather than slipping past it into the

@@ -290,6 +290,31 @@ func TestRootModeCannotBeSetThroughConfig(t *testing.T) {
 	}
 }
 
+// SetRootMode is the one path that changes root_mode (the guarded switch, M7.7):
+// it writes the key that the generic Set refuses, so the next restart enters the
+// new Realm.
+func TestSetRootModeWritesTheKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yml")
+	s := open(t, path)
+	if st := find(t, s, "root_mode"); st.Value != "false" {
+		t.Fatalf("root_mode starts at %q, want false", st.Value)
+	}
+	if err := s.SetRootMode(true); err != nil {
+		t.Fatal(err)
+	}
+	if st := find(t, s, "root_mode"); st.Value != "true" || !st.PendingRestart {
+		t.Errorf("after SetRootMode(true): %+v, want value true and pending a restart", st)
+	}
+	// It is durable: a reopen reads Root Mode from the file.
+	cfg := newCfg()
+	if _, err := Open(path, base, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.RootMode {
+		t.Error("SetRootMode(true) did not persist to config.yml")
+	}
+}
+
 // The generated file is self-documenting and stable; testdata/config.golden.yml
 // is what a fresh start writes from the built-in defaults.
 func TestGeneratedFileMatchesTheGolden(t *testing.T) {

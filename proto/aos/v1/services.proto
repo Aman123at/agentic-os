@@ -752,10 +752,58 @@ service SystemService {
   // guard already refuses Agent-confined callers. The client confirms the
   // restart by watching Info's boot_id change.
   rpc Restart(RestartRequest) returns (RestartResponse);
+  // SetRootMode turns Root Mode on or off (M7.7) — the only way to change the
+  // root_mode key, which SettingsService.Update refuses. Turning it on needs the
+  // Desktop account's password (verified like sign-in, M6.3); turning it off
+  // needs none, since it lowers privilege. It is refused while any Task is
+  // Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
+  // before the password is even checked, so a wrong-password try is never spent
+  // on a switch that cannot happen. A wrong password is Unauthenticated (detail
+  // RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
+  // the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
+  // unlock time). On success it audits the switch in the Realm it is made from
+  // and restarts (M7.3) into the new Realm. Over the control socket the caller
+  // has already proven root, so no password is asked (M7.11); an Agent-confined
+  // caller is refused by the socket's §7.5 guard.
+  rpc SetRootMode(SetRootModeRequest) returns (SetRootModeResponse);
 }
 
 message RestartRequest {}
 message RestartResponse {}
+
+message SetRootModeRequest {
+  // The Realm to switch to: true enters Root Mode, false leaves it.
+  bool enabled = 1;
+  // The Desktop account's password, required only when entering Root Mode over
+  // the network; ignored when leaving, and unused over the control socket.
+  string password = 2;
+}
+message SetRootModeResponse {}
+
+// RootModeBlocked is the FailedPrecondition detail on SetRootMode: the Tasks that
+// must finish or be cancelled before the Realm can be switched.
+message RootModeBlocked {
+  repeated BlockingTask tasks = 1;
+}
+
+// BlockingTask names one Task that blocks a Realm switch, enough for the Desktop
+// to show it with an Open link (M7.9).
+message BlockingTask {
+  string id = 1;
+  string title = 2;
+  TaskState state = 3;
+}
+
+// RootModeAttempt is the Unauthenticated detail after a wrong Root Mode password.
+message RootModeAttempt {
+  int32 attempts_left = 1;
+}
+
+// RootModeLockout is the ResourceExhausted detail when too many wrong passwords
+// have locked the Root Mode switch.
+message RootModeLockout {
+  google.protobuf.Timestamp until = 1;
+}
 
 message ListNotificationsRequest {}
 message ListNotificationsResponse {

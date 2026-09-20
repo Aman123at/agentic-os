@@ -212,6 +212,9 @@ const (
 	SystemServiceDismissNotificationProcedure = "/aos.v1.SystemService/DismissNotification"
 	// SystemServiceRestartProcedure is the fully-qualified name of the SystemService's Restart RPC.
 	SystemServiceRestartProcedure = "/aos.v1.SystemService/Restart"
+	// SystemServiceSetRootModeProcedure is the fully-qualified name of the SystemService's SetRootMode
+	// RPC.
+	SystemServiceSetRootModeProcedure = "/aos.v1.SystemService/SetRootMode"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2229,6 +2232,20 @@ type SystemServiceClient interface {
 	// guard already refuses Agent-confined callers. The client confirms the
 	// restart by watching Info's boot_id change.
 	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
+	// SetRootMode turns Root Mode on or off (M7.7) — the only way to change the
+	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
+	// Desktop account's password (verified like sign-in, M6.3); turning it off
+	// needs none, since it lowers privilege. It is refused while any Task is
+	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
+	// before the password is even checked, so a wrong-password try is never spent
+	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
+	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
+	// unlock time). On success it audits the switch in the Realm it is made from
+	// and restarts (M7.3) into the new Realm. Over the control socket the caller
+	// has already proven root, so no password is asked (M7.11); an Agent-confined
+	// caller is refused by the socket's §7.5 guard.
+	SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error)
 }
 
 // NewSystemServiceClient constructs a client for the aos.v1.SystemService service. By default, it
@@ -2290,6 +2307,12 @@ func NewSystemServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(systemServiceMethods.ByName("Restart")),
 			connect.WithClientOptions(opts...),
 		),
+		setRootMode: connect.NewClient[v1.SetRootModeRequest, v1.SetRootModeResponse](
+			httpClient,
+			baseURL+SystemServiceSetRootModeProcedure,
+			connect.WithSchema(systemServiceMethods.ByName("SetRootMode")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -2303,6 +2326,7 @@ type systemServiceClient struct {
 	listNotifications   *connect.Client[v1.ListNotificationsRequest, v1.ListNotificationsResponse]
 	dismissNotification *connect.Client[v1.DismissNotificationRequest, v1.DismissNotificationResponse]
 	restart             *connect.Client[v1.RestartRequest, v1.RestartResponse]
+	setRootMode         *connect.Client[v1.SetRootModeRequest, v1.SetRootModeResponse]
 }
 
 // Info calls aos.v1.SystemService.Info.
@@ -2345,6 +2369,11 @@ func (c *systemServiceClient) Restart(ctx context.Context, req *connect.Request[
 	return c.restart.CallUnary(ctx, req)
 }
 
+// SetRootMode calls aos.v1.SystemService.SetRootMode.
+func (c *systemServiceClient) SetRootMode(ctx context.Context, req *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error) {
+	return c.setRootMode.CallUnary(ctx, req)
+}
+
 // SystemServiceHandler is an implementation of the aos.v1.SystemService service.
 type SystemServiceHandler interface {
 	Info(context.Context, *connect.Request[v1.InfoRequest]) (*connect.Response[v1.InfoResponse], error)
@@ -2368,6 +2397,20 @@ type SystemServiceHandler interface {
 	// guard already refuses Agent-confined callers. The client confirms the
 	// restart by watching Info's boot_id change.
 	Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error)
+	// SetRootMode turns Root Mode on or off (M7.7) — the only way to change the
+	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
+	// Desktop account's password (verified like sign-in, M6.3); turning it off
+	// needs none, since it lowers privilege. It is refused while any Task is
+	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
+	// before the password is even checked, so a wrong-password try is never spent
+	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
+	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
+	// unlock time). On success it audits the switch in the Realm it is made from
+	// and restarts (M7.3) into the new Realm. Over the control socket the caller
+	// has already proven root, so no password is asked (M7.11); an Agent-confined
+	// caller is refused by the socket's §7.5 guard.
+	SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error)
 }
 
 // NewSystemServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -2425,6 +2468,12 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(systemServiceMethods.ByName("Restart")),
 		connect.WithHandlerOptions(opts...),
 	)
+	systemServiceSetRootModeHandler := connect.NewUnaryHandler(
+		SystemServiceSetRootModeProcedure,
+		svc.SetRootMode,
+		connect.WithSchema(systemServiceMethods.ByName("SetRootMode")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.SystemService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SystemServiceInfoProcedure:
@@ -2443,6 +2492,8 @@ func NewSystemServiceHandler(svc SystemServiceHandler, opts ...connect.HandlerOp
 			systemServiceDismissNotificationHandler.ServeHTTP(w, r)
 		case SystemServiceRestartProcedure:
 			systemServiceRestartHandler.ServeHTTP(w, r)
+		case SystemServiceSetRootModeProcedure:
+			systemServiceSetRootModeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2482,4 +2533,8 @@ func (UnimplementedSystemServiceHandler) DismissNotification(context.Context, *c
 
 func (UnimplementedSystemServiceHandler) Restart(context.Context, *connect.Request[v1.RestartRequest]) (*connect.Response[v1.RestartResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.Restart is not implemented"))
+}
+
+func (UnimplementedSystemServiceHandler) SetRootMode(context.Context, *connect.Request[v1.SetRootModeRequest]) (*connect.Response[v1.SetRootModeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.SetRootMode is not implemented"))
 }

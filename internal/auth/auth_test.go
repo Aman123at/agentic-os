@@ -58,6 +58,25 @@ func TestPasswordsAreHashedAndVerifiedThroughSignIn(t *testing.T) {
 	}
 }
 
+// TestVerifyPasswordGatesTheRootModeSwitch: VerifyPassword (M7.7) accepts the
+// one account's password and rejects a wrong one, and answers false with no
+// account rather than erroring.
+func TestVerifyPasswordGatesTheRootModeSwitch(t *testing.T) {
+	m, _ := newModel(t)
+	ctx := context.Background()
+
+	if ok, err := m.VerifyPassword(ctx, "anything"); err != nil || ok {
+		t.Fatalf("with no account: ok=%v err=%v, want false/nil", ok, err)
+	}
+	mustSetPassword(t, m, "aman", "a-strong-password")
+	if ok, err := m.VerifyPassword(ctx, "a-strong-password"); err != nil || !ok {
+		t.Errorf("right password: ok=%v err=%v, want true/nil", ok, err)
+	}
+	if ok, err := m.VerifyPassword(ctx, "wrong-password"); err != nil || ok {
+		t.Errorf("wrong password: ok=%v err=%v, want false/nil", ok, err)
+	}
+}
+
 func TestRefreshRotatesTheToken(t *testing.T) {
 	m, _ := newModel(t)
 	ctx := context.Background()

@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"connectrpc.com/connect"
@@ -106,6 +107,14 @@ type Server struct {
 	Browser *browser.Manager
 	// Assets is the Desktop (ui Mode); nil serves a short note.
 	Assets fs.FS
+	// Now is the clock for the Root Mode switch's lockout (M7.7); nil means time.Now.
+	Now func() time.Time
+
+	rootGateOnce sync.Once
+	rootGate     *rootModeGate
+	// realmSwitch overrides Tasks as the Root Mode switch's queue gate; tests set
+	// it, production uses Tasks (M7.7).
+	realmSwitch realmSwitcher
 }
 
 // Handler returns every route; wrap it with Auth.TCP or Auth.Socket.

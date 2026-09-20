@@ -79,6 +79,10 @@ type Manager struct {
 	running map[string]*run
 	waiting map[string]*waiter   // by Approval id
 	asking  map[string]*question // by Task id
+	// switching latches the queue closed while a Root Mode switch commits: new
+	// Tasks are refused with ErrSwitching, so none can slip in between the
+	// no-active-Task check and the restart into the new Realm (M7.7).
+	switching bool
 }
 
 // waiter is an Approval a running Task waits for.
@@ -96,6 +100,11 @@ type question struct {
 
 // ErrNobodyToAsk is returned when a Task that nobody watches needs a reply.
 var ErrNobodyToAsk = errors.New("nobody is available to reply")
+
+// ErrSwitching is returned when a Task is submitted while a Root Mode switch is
+// committing (M7.7): the queue is latched shut until AOS restarts into the new
+// Realm.
+var ErrSwitching = errors.New("AOS is switching Realm; try again once it has restarted")
 
 // New starts a Manager.
 func New(cfg Config) (*Manager, error) {
@@ -194,6 +203,16 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 		start = []llm.Item{llm.DeveloperMessage(c), llm.UserMessage(prompt)}
 	}
 	items, _ := json.Marshal(start)
+	// The switching check, the DB insert and the enqueue are one critical section
+	// against a Root Mode switch: either this Task is fully queued before the
+	// switch reads the active list (so the switch is refused), or the switch has
+	// latched the queue and this returns ErrSwitching before writing anything —
+	// never a Task left QUEUED in the DB that would run after the restart (M7.7).
+	m.mu.Lock()
+	if m.switching {
+		m.mu.Unlock()
+		return nil, ErrSwitching
+	}
 	err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error {
 		if err := insertTask(ctx, tx, t); err != nil {
 			return err
@@ -201,13 +220,13 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 		return insertStep(ctx, tx, step, string(items))
 	})
 	if err != nil {
+		m.mu.Unlock()
 		return nil, err
 	}
-	m.publishTask(t)
-	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TaskStep{TaskStep: &aosv1.TaskStepChanged{Step: step}}})
-	m.mu.Lock()
 	m.queue = append(m.queue, t.Id)
 	m.mu.Unlock()
+	m.publishTask(t)
+	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TaskStep{TaskStep: &aosv1.TaskStepChanged{Step: step}}})
 	m.schedule()
 	return t, nil
 }
@@ -319,6 +338,10 @@ func (r *run) userMessages() []string {
 // requeue records the step that continues a finished Task and queues it again.
 func (m *Manager) requeue(ctx context.Context, t *aosv1.Task, interactive bool, step *aosv1.TaskStep, items []llm.Item) (*aosv1.Task, error) {
 	m.mu.Lock()
+	if m.switching {
+		m.mu.Unlock()
+		return nil, ErrSwitching
+	}
 	if _, ok := m.running[t.Id]; ok || slices.Contains(m.queue, t.Id) {
 		m.mu.Unlock()
 		return nil, fmt.Errorf("task %s is already continuing", t.Id)
@@ -370,6 +393,49 @@ func (m *Manager) List(ctx context.Context, limit int) ([]*aosv1.Task, error) {
 		limit = 50
 	}
 	return listTasks(ctx, m.cfg.DB.Read(), "", limit)
+}
+
+// SwitchRealm commits a Root Mode switch atomically with the Task queue (M7.7).
+// It first checks, under the queue lock, whether any Task is active (Queued,
+// Running or AwaitingUser). If some are, it returns them and does not call
+// commit — so a wrong-password attempt is never spent on a switch that cannot
+// happen. If none are, it latches the queue shut (new Tasks are refused with
+// ErrSwitching) and calls commit, which verifies the password, writes the
+// root_mode key and triggers the restart; the latch stays shut through the
+// restart, so no Task can slip in between the check and the new Realm. If commit
+// fails the latch is released and its error is returned.
+func (m *Manager) SwitchRealm(ctx context.Context, commit func() error) (active []*aosv1.Task, err error) {
+	m.mu.Lock()
+	active, err = activeTasks(ctx, m.cfg.DB.Read())
+	switch {
+	case err != nil:
+		m.mu.Unlock()
+		return nil, err
+	case len(active) > 0:
+		m.mu.Unlock()
+		return active, nil
+	}
+	m.switching = true
+	m.mu.Unlock()
+
+	if err := commit(); err != nil {
+		m.mu.Lock()
+		m.switching = false
+		m.mu.Unlock()
+		return nil, err
+	}
+	return nil, nil
+}
+
+// activeTasks lists the Tasks that block a Realm switch: Queued, Running or
+// AwaitingUser. It reads the DB, the source of truth setState keeps current, so
+// it sees a Task inserted by a concurrent Create the moment that Create's own
+// queue-lock section has committed it.
+func activeTasks(ctx context.Context, db *sql.DB) ([]*aosv1.Task, error) {
+	return listTasks(ctx, db, "state IN (?, ?, ?)", 1000,
+		int32(aosv1.TaskState_TASK_STATE_QUEUED),
+		int32(aosv1.TaskState_TASK_STATE_RUNNING),
+		int32(aosv1.TaskState_TASK_STATE_AWAITING_USER))
 }
 
 // schedule starts queued Tasks while slots are free.

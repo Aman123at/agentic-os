@@ -3076,6 +3076,29 @@ button.stack__item:hover {
 .status__facts dt { color: var(--muted); }
 .status__facts dd { margin: 0; }
 
+/* System pane: the Root Mode switch, warning, password and the restart overlay
+   (PLAN.md §18 M7.8, M7.9). */
+.rootmode__switch--on { background: var(--danger); }
+.rootmode__notice {
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  border-radius: 10px;
+}
+.rootmode__noticetitle { margin: 0 0 8px; font-weight: 600; color: var(--danger); }
+.rootmode__tasks { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rootmode__task { display: flex; align-items: center; gap: 10px; }
+.rootmode__taskname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rootmode__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.rootmode__actions--center { justify-content: center; }
+.rootmode__modal { min-width: 22rem; max-width: 30rem; }
+.rootmode__warntitle { color: var(--danger); }
+.rootmode__warnlist { margin: 0 0 14px; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.rootmode__ack { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.rootmode__confirmtext { margin: -0.5rem 0 0.75rem; }
+.rootmode__pw { width: 100%; margin-bottom: 8px; }
+
 /* Liquid Glass (PLAN.md §4.3, §22, M4.6): an optional, more translucent look for
    the menu bar, Dock and panels, keyed off the data-glass root attribute that
    theme.ts sets. It makes the frosted panels thinner and boosts the backdrop

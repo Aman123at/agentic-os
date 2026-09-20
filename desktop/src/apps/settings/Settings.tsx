@@ -10,9 +10,11 @@ import KeyboardPane from "./KeyboardPane";
 import MemoryPane from "./MemoryPane";
 import ProtectedPaths from "./ProtectedPaths";
 import StatusPane from "./StatusPane";
+import SystemPane from "./SystemPane";
 import TrashPane from "./TrashPane";
 
 const PANES = [
+  { id: "system", name: "System", icon: "⚙️", Component: SystemPane },
   { id: "agent", name: "Agent", icon: "🤖", Component: AgentPane },
   { id: "apikey", name: "API key", icon: "🔑", Component: ApiKeyPane },
   { id: "protected", name: "Protected Paths", icon: "🛡️", Component: ProtectedPaths },

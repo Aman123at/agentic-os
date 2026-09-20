@@ -551,6 +551,16 @@ func (s *Store) setRuntime(f field, key, value string) (Setting, error) {
 	return st, nil
 }
 
+// SetRootMode writes the root_mode key, the one path that may change it — the
+// generic Set refuses it (ErrRootModeNotHere). It is a startup-only key, so the
+// new Realm takes effect on the restart the switch triggers (M7.7). Callers must
+// have proven the switch is allowed (the password and the no-active-Task check).
+func (s *Store) SetRootMode(enabled bool) error {
+	sf, _ := lookupStartup(RootModeKey)
+	_, err := s.setStartup(sf, RootModeKey, strconv.FormatBool(enabled))
+	return err
+}
+
 func (s *Store) setStartup(sf startupField, key, value string) (Setting, error) {
 	if value != "" {
 		if err := sf.validate(value); err != nil {
