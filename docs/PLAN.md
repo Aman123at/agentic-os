@@ -360,8 +360,11 @@ There is deliberately **no step limit**.
 | User Sessions (Desktop Terminal, `docker compose exec -u aos aos bash`) | `aos` | none | Yes, NOPASSWD |
 | Approved calls on Protected Paths (§7.4) | `aos` | Landlock + `no_new_privs`, widened to the approved paths for that one call | **No** |
 | Services | `aos` by default, root only via an approved Privileged Tool | Same confinement as whoever created them | as creator |
+| In **Root Mode** (M7, ADR-0011): Agent Sessions, User Sessions and Services | root | `rootPolicy()` — read/write everything except AOS's own state; `no_new_privs` still set | already root |
 
 A plain `docker compose exec aos …` runs as root (aosd is the container's main process, so the container's user is root). The `aos` CLI works either way.
+
+**Root Mode.** A second **Realm** in which Agents, the Terminal and Finder act as root (§18 M7, ADR-0011): the §7.4 policy check drops its Protected-Path step, so locks and Protected Paths are not enforced and every file is writable; only AOS's own state stays hidden (§7.2). Its history is a separate database (§14) that the API never serves from Standard Mode. This is a **privacy boundary between the two histories, not a security boundary against a root Agent** — a root Agent can get around anything on the machine, AOS included. The switch restarts the Machine and shows a warning that says exactly this.
 
 **M6.** On a native install `aosd` is run by systemd as root; the `aos` user is in sudoers with `NOPASSWD:ALL`, so a User Session — and the Desktop password behind it — is effectively root on the VPS. Kept deliberately (a single-user personal server), but said out loud (M6.17, ADR-0009). Agents stay confined: `no_new_privs` still blocks `sudo`, and the Landlock ruleset widens only to `/` minus the Protected list (M6.8, ADR-0004).
 
@@ -401,6 +404,8 @@ A plain `docker compose exec aos …` runs as root (aosd is the container's main
 
 **M6 (native install).** The Writable set widens from home to **`/` minus an explicit Protected list** (M6.8, ADR-0004): `/boot`, `/proc`, `/sys`, `/snap`, `/root`, other users' homes, and AOS's own binaries and systemd unit, with `/var/lib/aos` and `/etc/aos` Hidden and `/dev` still Writable. Agents already read all of `/`; only writing widens. The walk stays bounded because `carve` descends only into directories that contain an exclusion, so no exclusion may live under `/proc` or `/sys`. The Browser gets its own narrow ruleset rather than borrowing the Agent's (M6.7), or the widening would hand it write access to the server.
 
+**M7 (Root Mode).** A third ruleset, `rootPolicy()`, applies when the Machine runs the Root Realm (M7.4). Agents run as **uid 0** and may **read and write everything except AOS's own state** — `/var/lib/aos` and `/etc/aos` stay Hidden, and `aosd`'s binary and unit stay read-only — so a root Agent cannot stumble into Standard history or the API key. Home is not special: the Protected-dotfile symlinks are irrelevant (root resolves straight through them) and locked paths are not carved out. `no_new_privs` is still set, which costs a root process nothing and keeps the §7.5 socket guard's "`NoNewPrivs: 1` = an Agent" test true, so a root Agent is still refused on the control socket.
+
 ### 7.3 Protected Paths (built-in defaults, plus your own in System Settings)
 
 The built-in defaults below are read-only in System Settings — weakening `~/.ssh` and the like from a browser isn't worth the risk. You can add and remove your *own* locked paths there (and with 🔒 in Finder or `aos protect`).
@@ -418,6 +423,8 @@ The built-in defaults below are read-only in System Settings — weakening `~/.s
 - **Any `.env` file:** changing or deleting one needs Approval, when done through a Files Tool or a shell command the analysis recognises.
 - **Git working trees with changes the current Task did not make:** Approval is needed only to delete the tree or discard those changes (`git reset --hard`, `git clean`, `git checkout -- .`, `git restore .`, `git stash drop`). Edits do not need Approval.
 
+**In Root Mode (M7.4–M7.5), none of this is enforced:** every path is writable, the `.env` and dirty-git rules do not apply, and 🔒 locks show in Finder as *not enforced in Root Mode*. Only AOS's own state stays hidden, and that by Landlock (§7.2), not by this list.
+
 ### 7.4 Policy check for every Tool call
 
 1. **Touches a Protected Path?** Approval, at every Autonomy level. With nobody to ask (`aos run` without a TTY): deny.
@@ -430,6 +437,8 @@ The built-in defaults below are read-only in System Settings — weakening `~/.s
 4. **Is Landlock unavailable?** `auto` is treated as `confirm-risky`.
 
 Shell analysis is only an early warning so the Agent can ask first. Landlock is the actual enforcement.
+
+**In Root Mode (M7.4)**, step 1 is dropped — Protected Paths, locks, `.env` and dirty-git rules are not checked — while step 2 is unchanged, so Risky Actions still follow the Autonomy level and `confirm-risky` still asks before `rm -rf` or a package removal (set Autonomy to `auto` for none).
 
 **Running an approved call on a Protected Path**
 
@@ -686,6 +695,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
   - WAL mode, a single writer goroutine, migrations embedded in the binary.
   - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
 - **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
+- **Root Mode's Realm (M7.2)** is a second Realm with the same shape under `/var/lib/aos/root/` (mode 0700): its own `aos.db` and `outputs/`, created empty on the first Root start and never opened while in Standard Mode, so the two histories never mix. *Clear Root Mode history* (M7.12, `aos root clear`) deletes this subtree; the next Root start recreates it empty. What root already did to the server's files and packages is real and stays — only AOS's record of it is cleared.
 
 ## 15. Install shapes and clients
 
@@ -1514,7 +1524,7 @@ installer's `DRY_RUN` rehearsal, the reference-drift check). VPS-only measuremen
 
 ### M7 — Root Mode
 
-*Approved 2026-09-20. M7.1–M7.12 built; M7.13 onward pending.*
+*Approved 2026-09-20. M7.1–M7.13 built — M7 code-complete; VPS acceptance walkthrough pending (Aman).*
 
 Today every Agent, the Terminal and Finder act as `aos`, confined by Landlock and
 `no_new_privs` (§7.1–§7.4): no `sudo` for Agents, Protected Paths need Approval,

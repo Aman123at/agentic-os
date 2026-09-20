@@ -29,7 +29,7 @@ export default defineConfig({
       sidebar: [
         { label: "Start here", items: ["index", "start/install", "start/compose", "start/password-is-root", "start/sign-in"] },
         { label: "Configure", items: ["configure/config-file", "configure/models", "configure/nginx"] },
-        { label: "Use it", items: ["use/services", "use/browser", "use/restarts"] },
+        { label: "Use it", items: ["use/services", "use/browser", "use/restarts", "use/root-mode"] },
         { label: "Operate", items: ["operate/lost-password", "operate/upgrade", "operate/troubleshooting"] },
         { label: "Reference", items: [{ autogenerate: { directory: "reference" } }] },
       ],
