@@ -42,6 +42,9 @@ export default function Terminal() {
   const [busy, setBusy] = useState(false);
   const theme = useDesktop((s) => s.theme);
   const dark = resolvedTheme(theme) === "dark";
+  // In the Root Realm every User Session runs as root, so the Terminal wears a
+  // red accent strip that names it (M7.10).
+  const rootMode = useDesktop((s) => !!s.info?.rootMode);
   // The Sessions this window had, kept with the window and so restored with the
   // layout: a reload takes the same shells back instead of leaving them running
   // with no way to reach them (PLAN.md §10).
@@ -197,7 +200,8 @@ export default function Terminal() {
   }, []);
 
   return (
-    <div className="term" onClick={() => watch && setWatch(null)}>
+    <div className={`term${rootMode ? " term--root" : ""}`} onClick={() => watch && setWatch(null)}>
+      {rootMode && <div className="term__rootbar">⛔ root — this Terminal runs as root</div>}
       <div className="term__tabs">
         <div className="term__tabstrip">
           {tabs.map((t) => (

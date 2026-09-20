@@ -36,3 +36,20 @@ func TestTheHandlerServesThePageAndTheHealthCheck(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRealmProbeIsPublicAndReportsRootMode(t *testing.T) {
+	// The login card names the Realm before anyone signs in (M7.10), so /realm is
+	// open to an unauthenticated GET and reports the one boolean.
+	auth, _ := newAuth(t)
+	for _, root := range []bool{false, true} {
+		s := &Server{Auth: auth, Info: func() *aosv1.InfoResponse { return &aosv1.InfoResponse{RootMode: root} }}
+		h := auth.TCP(s.Handler())
+		rec := do(t, h, "GET", "/realm", nil) // no Authorization header
+		var body struct {
+			RootMode bool `json:"rootMode"`
+		}
+		if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &body) != nil || body.RootMode != root {
+			t.Fatalf("root=%v: status %d, body %q", root, rec.Code, rec.Body.String())
+		}
+	}
+}

@@ -34,6 +34,15 @@ export default function MenuBar() {
     };
   }, [aosMenu]);
   const conn = useDesktop((s) => s.conn);
+  // The ROOT badge (M7.10): shown only in the Root Realm, it opens the System
+  // pane, where Root Mode is switched off.
+  const rootMode = useDesktop((s) => !!s.info?.rootMode);
+  const setWinState = useDesktop((s) => s.setWinState);
+  const openSystemPane = () => {
+    openApp("settings");
+    const id = useDesktop.getState().focused;
+    if (id) setWinState(id, { pane: "system" });
+  };
   const toggleNotifCenter = useDesktop((s) => s.toggleNotifCenter);
   // The bell badge counts what wants the user: pending Approvals first.
   const pending = useDesktop((s) => Object.keys(s.approvals).length);
@@ -73,6 +82,11 @@ export default function MenuBar() {
         )}
       </div>
       <div className="menubar__right">
+        {rootMode && (
+          <button className="menubar__root" title="Root Mode — Agents and the Terminal run as root. Click for System settings." onClick={openSystemPane}>
+            ROOT
+          </button>
+        )}
         {replayActive(replay) && (
           <button className="menubar__replay" title="Re-applying the Install Ledger — click to see progress" onClick={() => openApp("software")}>
             <span className="menubar__replay-spin" aria-hidden="true">

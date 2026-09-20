@@ -6,6 +6,7 @@ package desktop
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -36,6 +37,32 @@ func (s *State) Get(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	return state, err
+}
+
+// Appearance returns the saved layout with only its appearance kept — the theme,
+// wallpaper, Liquid Glass and shortcuts — and the window layout dropped. It seeds
+// a freshly created Root Realm from Standard (M7.10): the look is copied once, but
+// the open windows and their chats never cross between Realms. An unparseable or
+// empty blob yields "", so a bad Standard state seeds nothing rather than
+// erroring. The blob is the client's own JSON (store.ts SavedLayout); the one key
+// this needs to know is "windows".
+func Appearance(state string) string {
+	if state == "" {
+		return ""
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(state), &m); err != nil {
+		return ""
+	}
+	delete(m, "windows")
+	if len(m) == 0 {
+		return ""
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }
 
 // Save replaces the saved layout.

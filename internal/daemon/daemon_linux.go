@@ -414,6 +414,23 @@ func (d *Daemon) init() error {
 			return err
 		}
 	}
+	// The first time a Root Realm starts its desktop_state is empty; seed its
+	// appearance (theme, wallpaper, Glass, shortcuts) from Standard so Root Mode
+	// opens looking like the Machine the user knows, while the window layout and
+	// open chats stay behind (M7.10). accountDB is Standard's database in Root.
+	if d.realm.IsRoot() && d.db != d.accountDB {
+		root := &desktop.State{DB: d.db}
+		if cur, gerr := root.Get(context.Background()); gerr == nil && cur == "" {
+			std := &desktop.State{DB: d.accountDB}
+			if from, gerr := std.Get(context.Background()); gerr == nil {
+				if look := desktop.Appearance(from); look != "" {
+					if serr := root.Save(context.Background(), look); serr != nil {
+						log.Printf("seeding Root Mode appearance: %v", serr)
+					}
+				}
+			}
+		}
+	}
 	key, err := sessionKey()
 	if err != nil {
 		return err

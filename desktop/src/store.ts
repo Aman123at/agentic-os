@@ -77,6 +77,10 @@ interface DesktopState {
   // kept, and signing in again resumes without a reload (PLAN.md §18 M6.5).
   expired: boolean;
   info?: InfoResponse;
+  // Whether aosd is running in the Root Realm, learned before sign-in from the
+  // public /realm probe so the login card can name the Realm (M7.10). Once
+  // signed in, info.rootMode is the authoritative source.
+  rootRealm: boolean;
   conn: ConnState;
   theme: ThemePref;
   wallpaper: WallpaperPref;
@@ -232,6 +236,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   error: "",
   authError: "",
   expired: false,
+  rootRealm: false,
   conn: "connecting",
   theme: "auto",
   wallpaper: "aurora",
@@ -254,6 +259,17 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   watchSession: "",
 
   boot: async () => {
+    // The Realm is public (M7.10): the login card names it before anyone signs
+    // in. A failure here is not fatal — the card simply omits the line.
+    try {
+      const resp = await fetch(`${window.location.origin}/realm`);
+      if (resp.ok) {
+        const body = (await resp.json()) as { rootMode?: boolean };
+        set({ rootRealm: !!body.rootMode });
+      }
+    } catch {
+      // Offline or an old aosd without /realm: leave rootRealm false.
+    }
     // Raise the expiry modal instead of bouncing to the login screen whenever a
     // live session lapses (PLAN.md §18 M6.5). Registered once, on first boot.
     session.onExpired(() => {

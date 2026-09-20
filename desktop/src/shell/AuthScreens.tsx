@@ -4,15 +4,18 @@
 // RPCs; the store holds the phase and the message they show.
 import { useState, type FormEvent } from "react";
 
-import { MIN_PASSWORD_LENGTH } from "../store";
+import { MIN_PASSWORD_LENGTH, useDesktop } from "../store";
 
 // AuthCard is the boot-card shell the screens share, so a login and the boot
-// splash look like one product.
+// splash look like one product. In the Root Realm it names the Realm, so the
+// person signing in knows which history and privilege they are entering (M7.10).
 function AuthCard({ title, children }: { title: string; children: React.ReactNode }) {
+  const rootRealm = useDesktop((s) => s.rootRealm);
   return (
     <main className="boot">
       <div className="boot__card auth__card">
         <h1 className="boot__logo">Agentic OS</h1>
+        {rootRealm && <p className="auth__realm">Root Mode</p>}
         <p className="auth__title">{title}</p>
         {children}
       </div>

@@ -141,6 +141,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /files/raw", s.rawFile)
 	mux.HandleFunc("POST /upload", s.upload)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok\n")) })
+	// The Realm is public so the login card can name it before anyone signs in
+	// (M7.10). Only the one boolean is exposed; everything else about the Machine
+	// stays behind authentication.
+	mux.HandleFunc("GET /realm", func(w http.ResponseWriter, _ *http.Request) {
+		root := false
+		if s.Info != nil {
+			root = s.Info().RootMode
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, "{\"rootMode\":%t}\n", root)
+	})
 	page := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("Agentic OS is running in cli Mode: docker compose exec aos aos\n"))
 	}))

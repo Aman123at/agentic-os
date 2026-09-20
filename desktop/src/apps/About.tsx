@@ -8,6 +8,8 @@ export default function About() {
       <div className="about__logo">🖥️</div>
       <h2 className="about__name">Agentic OS</h2>
       <dl className="about__facts">
+        <dt>Realm</dt>
+        <dd className={info?.rootMode ? "about__root" : undefined}>{info?.rootMode ? "Root Mode" : "Standard Mode"}</dd>
         <dt>Mode</dt>
         <dd>{info?.mode ?? "—"}</dd>
         <dt>Version</dt>

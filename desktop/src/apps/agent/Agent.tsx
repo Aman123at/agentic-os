@@ -4,6 +4,7 @@
 // it shows — and how wide its panes are — are kept with its window, so a reload
 // brings them back.
 import { useWinState } from "../../shell/win";
+import { useDesktop } from "../../store";
 import { Splitter } from "../../ui/Splitter";
 import AuditLog from "./AuditLog";
 import TasksView from "./TasksView";
@@ -21,9 +22,16 @@ export default function Agent() {
   const [view, setView] = useWinState("view", "tasks");
   const [navw, setNavw] = useWinState("navw", String(NAV.fallback));
   const width = Number(navw);
+  // In the Root Realm, Agents run as root and keep their own history, so the app
+  // wears a banner saying so (M7.10).
+  const rootMode = useDesktop((s) => !!s.info?.rootMode);
 
   return (
-    <div className="agent">
+    <div className="agent__wrap">
+      {rootMode && (
+        <div className="agent__rootbanner">Root Mode — Agents run as root; this history is separate</div>
+      )}
+      <div className="agent">
       <nav
         className={`agent__nav${width === 0 ? " agent__nav--off" : ""}`}
         style={{ width }}
@@ -53,6 +61,7 @@ export default function Agent() {
       />
       <div className="agent__main">
         {view === "audit" ? <AuditLog /> : view === "usage" ? <UsageView /> : <TasksView />}
+      </div>
       </div>
     </div>
   );
