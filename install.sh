@@ -216,6 +216,30 @@ create_user() {
 	fi
 }
 
+# install_packages adds what Code's search needs (PLAN.md M8.7): ripgrep for
+# Find in Files. Best-effort, and only with apt: Code searches without it,
+# more slowly, and says so.
+CODE_PACKAGES="ripgrep"
+install_packages() {
+	step "Installing Code's search tools"
+	if ! command -v apt-get >/dev/null 2>&1; then
+		say "   no apt-get — skipped; install ${CODE_PACKAGES} yourself for faster search in Code"
+		return 0
+	fi
+	if [ "$DRY_RUN" = 1 ]; then
+		printf '   [dry-run] apt-get install %s (best-effort)\n' "$CODE_PACKAGES"
+		return 0
+	fi
+	# shellcheck disable=SC2086 # the list is words on purpose
+	if DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $CODE_PACKAGES >/dev/null 2>&1 \
+		|| { apt-get update -qq >/dev/null 2>&1 \
+			&& DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends $CODE_PACKAGES >/dev/null 2>&1; }; then
+		say "   ${CODE_PACKAGES}"
+	else
+		say "   WARNING: could not install ${CODE_PACKAGES}; Code works without them, more slowly."
+	fi
+}
+
 create_dirs() {
 	step "Creating the state and configuration folders"
 	# aosd (re)creates /var/lib/aos and its subtree at every start; creating it
@@ -372,6 +396,7 @@ main() {
 	fetch
 	install_binary
 	create_user
+	install_packages
 	create_dirs
 	write_config
 	install_unit

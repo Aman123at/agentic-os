@@ -90,6 +90,7 @@ RUN apt-get update \
       curl wget ca-certificates iproute2 iputils-ping openssh-client \
       git rsync rclone zip unzip xz-utils p7zip-full \
       python3 python3-venv python3-pip pipx \
+      ripgrep \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=node-dist /opt/node/ /usr/local/
 # Ubuntu images ship a `ubuntu` user with uid 1000; the Machine's user is `aos`.

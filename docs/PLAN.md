@@ -313,6 +313,7 @@ volumes:
 - **Network:** `curl`, `wget`, `ca-certificates`, `iproute2`, `iputils-ping`, `openssh-client`
 - **Transfer and archives:** `git`, `rsync`, `rclone`, `zip`, `unzip`, `xz-utils`, `p7zip-full`
 - **Python:** `python3`, `python3-venv`, `python3-pip`, `pipx`
+- **Code's search (M8.7):** `ripgrep` — also installed by `install.sh` where apt is available; Code falls back to its own search without it
 - **Node.js 24 LTS** from the official binaries (Ubuntu's apt package is much older), with `npm` and `corepack`
 
 Everything else is installed on demand and recorded in the Install Ledger.
