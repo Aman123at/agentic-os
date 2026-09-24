@@ -43,6 +43,8 @@ const (
 	SettingsServiceName = "aos.v1.SettingsService"
 	// SystemServiceName is the fully-qualified name of the SystemService service.
 	SystemServiceName = "aos.v1.SystemService"
+	// CodeServiceName is the fully-qualified name of the CodeService service.
+	CodeServiceName = "aos.v1.CodeService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -218,6 +220,14 @@ const (
 	// SystemServiceClearRootHistoryProcedure is the fully-qualified name of the SystemService's
 	// ClearRootHistory RPC.
 	SystemServiceClearRootHistoryProcedure = "/aos.v1.SystemService/ClearRootHistory"
+	// CodeServiceOpenWorkspaceProcedure is the fully-qualified name of the CodeService's OpenWorkspace
+	// RPC.
+	CodeServiceOpenWorkspaceProcedure = "/aos.v1.CodeService/OpenWorkspace"
+	// CodeServiceCloseWorkspaceProcedure is the fully-qualified name of the CodeService's
+	// CloseWorkspace RPC.
+	CodeServiceCloseWorkspaceProcedure = "/aos.v1.CodeService/CloseWorkspace"
+	// CodeServiceReportDirtyProcedure is the fully-qualified name of the CodeService's ReportDirty RPC.
+	CodeServiceReportDirtyProcedure = "/aos.v1.CodeService/ReportDirty"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2590,4 +2600,156 @@ func (UnimplementedSystemServiceHandler) SetRootMode(context.Context, *connect.R
 
 func (UnimplementedSystemServiceHandler) ClearRootHistory(context.Context, *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.ClearRootHistory is not implemented"))
+}
+
+// CodeServiceClient is a client for the aos.v1.CodeService service.
+type CodeServiceClient interface {
+	// OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+	// tab's subscription. The Workspace's changes then arrive on that
+	// subscription as WorkspaceChanged events: first how it is watched, then
+	// what appears, changes or goes under it. They travel on another connection,
+	// so one may arrive before this response does.
+	//
+	// A folder the Realm's user cannot read is refused (PermissionDenied), and a
+	// path that is not a folder is InvalidArgument. An unknown or ended
+	// subscription is NotFound; more than 32 Workspaces in one tab is
+	// ResourceExhausted. While any Workspace is open, the Realm cannot be
+	// switched (M8.13).
+	OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error)
+	// CloseWorkspace closes a Workspace when its window closes. NotFound once
+	// it is already closed.
+	CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error)
+	// ReportDirty replaces the unsaved files of an open Workspace, which the
+	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+}
+
+// NewCodeServiceClient constructs a client for the aos.v1.CodeService service. By default, it uses
+// the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewCodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) CodeServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	codeServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("CodeService").Methods()
+	return &codeServiceClient{
+		openWorkspace: connect.NewClient[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse](
+			httpClient,
+			baseURL+CodeServiceOpenWorkspaceProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("OpenWorkspace")),
+			connect.WithClientOptions(opts...),
+		),
+		closeWorkspace: connect.NewClient[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse](
+			httpClient,
+			baseURL+CodeServiceCloseWorkspaceProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("CloseWorkspace")),
+			connect.WithClientOptions(opts...),
+		),
+		reportDirty: connect.NewClient[v1.ReportDirtyRequest, v1.ReportDirtyResponse](
+			httpClient,
+			baseURL+CodeServiceReportDirtyProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// codeServiceClient implements CodeServiceClient.
+type codeServiceClient struct {
+	openWorkspace  *connect.Client[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse]
+	closeWorkspace *connect.Client[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse]
+	reportDirty    *connect.Client[v1.ReportDirtyRequest, v1.ReportDirtyResponse]
+}
+
+// OpenWorkspace calls aos.v1.CodeService.OpenWorkspace.
+func (c *codeServiceClient) OpenWorkspace(ctx context.Context, req *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error) {
+	return c.openWorkspace.CallUnary(ctx, req)
+}
+
+// CloseWorkspace calls aos.v1.CodeService.CloseWorkspace.
+func (c *codeServiceClient) CloseWorkspace(ctx context.Context, req *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error) {
+	return c.closeWorkspace.CallUnary(ctx, req)
+}
+
+// ReportDirty calls aos.v1.CodeService.ReportDirty.
+func (c *codeServiceClient) ReportDirty(ctx context.Context, req *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
+	return c.reportDirty.CallUnary(ctx, req)
+}
+
+// CodeServiceHandler is an implementation of the aos.v1.CodeService service.
+type CodeServiceHandler interface {
+	// OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+	// tab's subscription. The Workspace's changes then arrive on that
+	// subscription as WorkspaceChanged events: first how it is watched, then
+	// what appears, changes or goes under it. They travel on another connection,
+	// so one may arrive before this response does.
+	//
+	// A folder the Realm's user cannot read is refused (PermissionDenied), and a
+	// path that is not a folder is InvalidArgument. An unknown or ended
+	// subscription is NotFound; more than 32 Workspaces in one tab is
+	// ResourceExhausted. While any Workspace is open, the Realm cannot be
+	// switched (M8.13).
+	OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error)
+	// CloseWorkspace closes a Workspace when its window closes. NotFound once
+	// it is already closed.
+	CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error)
+	// ReportDirty replaces the unsaved files of an open Workspace, which the
+	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+}
+
+// NewCodeServiceHandler builds an HTTP handler from the service implementation. It returns the path
+// on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	codeServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("CodeService").Methods()
+	codeServiceOpenWorkspaceHandler := connect.NewUnaryHandler(
+		CodeServiceOpenWorkspaceProcedure,
+		svc.OpenWorkspace,
+		connect.WithSchema(codeServiceMethods.ByName("OpenWorkspace")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceCloseWorkspaceHandler := connect.NewUnaryHandler(
+		CodeServiceCloseWorkspaceProcedure,
+		svc.CloseWorkspace,
+		connect.WithSchema(codeServiceMethods.ByName("CloseWorkspace")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceReportDirtyHandler := connect.NewUnaryHandler(
+		CodeServiceReportDirtyProcedure,
+		svc.ReportDirty,
+		connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/aos.v1.CodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case CodeServiceOpenWorkspaceProcedure:
+			codeServiceOpenWorkspaceHandler.ServeHTTP(w, r)
+		case CodeServiceCloseWorkspaceProcedure:
+			codeServiceCloseWorkspaceHandler.ServeHTTP(w, r)
+		case CodeServiceReportDirtyProcedure:
+			codeServiceReportDirtyHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedCodeServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedCodeServiceHandler struct{}
+
+func (UnimplementedCodeServiceHandler) OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.OpenWorkspace is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.CloseWorkspace is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.ReportDirty is not implemented"))
 }

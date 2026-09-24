@@ -151,6 +151,8 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		return serveReadStream(req, enc, out)
 	case OpWriteStream:
 		return serveWriteStream(req, enc, io.MultiReader(dec.Buffered(), in))
+	case OpWatch:
+		return serveWatch(req, enc, io.MultiReader(dec.Buffered(), in))
 	}
 	progress := func(n, total int64) { _ = enc.Encode(response{Progress: &[2]int64{n, total}}) }
 	result, err := dispatch(ctx, req.Ops, req.Op, req.Args, progress)

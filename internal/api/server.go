@@ -21,6 +21,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/catalogue"
+	"github.com/Aman123at/agentic-os/internal/code"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
 	"github.com/Aman123at/agentic-os/internal/files"
@@ -88,7 +89,8 @@ type Server struct {
 	Catalogue *catalogue.File
 	// APIKey replaces the OpenAI API key.
 	APIKey APIKey
-	// WatchInterval is how often FileService.Watch lists a folder again; 0 means 2 s.
+	// WatchInterval is how often FileService.Watch lists a folder again, and
+	// how often a polled Workspace is walked; 0 means 2 s.
 	WatchInterval time.Duration
 	// Usage is model usage per day.
 	Usage *usage.Tracker
@@ -113,6 +115,11 @@ type Server struct {
 	Assets fs.FS
 	// Now is the clock for the Root Mode switch's lockout (M7.7); nil means time.Now.
 	Now func() time.Time
+
+	// workspaces are the open Code windows (M8.2); subscriptions maps each
+	// event subscription's id to the channel its Workspaces' changes go to.
+	workspaces    code.Registry
+	subscriptions sync.Map
 
 	rootGateOnce sync.Once
 	rootGate     *rootModeGate
@@ -140,6 +147,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSettingsServiceHandler(settingsService{s}, opts...))
 	mux.Handle(aosv1connect.NewSoftwareServiceHandler(softwareService{s}, opts...))
 	mux.Handle(aosv1connect.NewSupervisorServiceHandler(supervisorService{s}, opts...))
+	mux.Handle(aosv1connect.NewCodeServiceHandler(codeService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
 	mux.HandleFunc("GET /ws/browser", s.browserSocket)
 	mux.HandleFunc("GET /files/raw", s.rawFile)
@@ -418,13 +426,21 @@ type eventService struct{ s *Server }
 
 func (e eventService) Subscribe(ctx context.Context, req *connect.Request[aosv1.SubscribeRequest], stream *connect.ServerStream[aosv1.SubscribeResponse]) error {
 	ch := e.s.Bus.Subscribe(ctx, req.Msg.TaskId)
+	// The subscription can own Code Workspaces, whose changes come only to it
+	// (M8.2); they close when it ends.
+	id, workspaces, end := e.s.subscribed()
+	defer end()
 	// An empty first message tells the client it is subscribed: state it reads
 	// after this cannot miss an event.
-	if err := stream.Send(&aosv1.SubscribeResponse{}); err != nil {
+	if err := stream.Send(&aosv1.SubscribeResponse{SubscriptionId: id}); err != nil {
 		return err
 	}
 	for {
 		select {
+		case ev := <-workspaces:
+			if err := stream.Send(&aosv1.SubscribeResponse{Event: ev}); err != nil {
+				return err
+			}
 		case ev, ok := <-ch:
 			if !ok {
 				if ctx.Err() != nil {

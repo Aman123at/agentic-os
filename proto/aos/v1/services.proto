@@ -203,6 +203,10 @@ message SubscribeRequest {
 
 message SubscribeResponse {
   Event event = 1;
+  // Set on the first message only: this subscription's id, which
+  // CodeService.OpenWorkspace takes so a Code window's changes ride this
+  // stream instead of holding a connection of their own (M8.2).
+  string subscription_id = 2;
 }
 
 message Event {
@@ -218,6 +222,8 @@ message Event {
     ReplayProgress replay_progress = 9;
     OpenInDesktop open_in_desktop = 10;
     DesktopStateChanged desktop_state = 11;
+    // Only to the subscription that opened the Workspace (M8.2).
+    WorkspaceChanged workspace = 12;
   }
 }
 
@@ -945,4 +951,106 @@ message AuditRequest {
 }
 message AuditResponse {
   repeated AuditEntry entries = 1;
+}
+
+// ---------------------------------------------------------------- Code
+
+// CodeService serves Code, the Desktop's code editor (PLAN.md M8). Everything
+// in it acts with the Realm's rights, like FileService: as aos in Standard Mode,
+// as root in Root Mode. Agents never reach it: the control socket's §7.5 guard
+// refuses Agent-confined callers, and they hold no Desktop token.
+//
+// A Code window holds no stream of its own. Browsers allow six connections to
+// aosd across all the Desktop's tabs, so a Workspace rides its tab's
+// EventService subscription: it belongs to that subscription, its changes
+// arrive on it as WorkspaceChanged events, and it closes when the subscription
+// ends. A tab whose subscription restarts opens its Workspaces again.
+service CodeService {
+  // OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+  // tab's subscription. The Workspace's changes then arrive on that
+  // subscription as WorkspaceChanged events: first how it is watched, then
+  // what appears, changes or goes under it. They travel on another connection,
+  // so one may arrive before this response does.
+  //
+  // A folder the Realm's user cannot read is refused (PermissionDenied), and a
+  // path that is not a folder is InvalidArgument. An unknown or ended
+  // subscription is NotFound; more than 32 Workspaces in one tab is
+  // ResourceExhausted. While any Workspace is open, the Realm cannot be
+  // switched (M8.13).
+  rpc OpenWorkspace(OpenWorkspaceRequest) returns (OpenWorkspaceResponse);
+  // CloseWorkspace closes a Workspace when its window closes. NotFound once
+  // it is already closed.
+  rpc CloseWorkspace(CloseWorkspaceRequest) returns (CloseWorkspaceResponse);
+  // ReportDirty replaces the unsaved files of an open Workspace, which the
+  // Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+  rpc ReportDirty(ReportDirtyRequest) returns (ReportDirtyResponse);
+}
+
+message OpenWorkspaceRequest {
+  // The tab's EventService subscription (SubscribeResponse.subscription_id).
+  string subscription_id = 1;
+  // A folder; ~ and relative paths start at the Realm's home, as in FileService.
+  string path = 2;
+}
+message OpenWorkspaceResponse {
+  string id = 1;
+  // The folder, absolute and clean.
+  string root = 2;
+  // The Realm it was opened in.
+  bool root_mode = 3;
+}
+
+message CloseWorkspaceRequest {
+  string workspace_id = 1;
+}
+message CloseWorkspaceResponse {}
+
+message ReportDirtyRequest {
+  string workspace_id = 1;
+  // Absolute paths of every file with unsaved edits in the window; empty when
+  // all are saved.
+  repeated string paths = 2;
+}
+message ReportDirtyResponse {}
+
+// WorkspaceChanged is sent only to the subscription that opened the Workspace.
+message WorkspaceChanged {
+  string workspace_id = 1;
+  // What appeared, changed or went under the root, in one burst. A path
+  // replaced by a rename (an editor's atomic save) comes as CREATED even when
+  // the client already has it: treat that as CHANGED.
+  repeated FileChange changes = 2;
+  // Set when how the Workspace is watched changes, the first time included.
+  WorkspaceWatch watch = 3;
+}
+
+message FileChange {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_CREATED = 1;
+    KIND_CHANGED = 2;
+    KIND_DELETED = 3;
+    // Changes under path were missed (the kernel dropped events, or the watch
+    // moved to polling): list it again.
+    KIND_RESCAN = 4;
+  }
+  Kind kind = 1;
+  string path = 2;
+  bool dir = 3;
+}
+
+message WorkspaceWatch {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // inotify: changes arrive as they happen.
+    STATE_LIVE = 1;
+    // The tree is walked every 2 s: it has more folders than one Workspace may
+    // watch live, or the Machine's inotify limit was reached. `reason` says which.
+    STATE_POLLING = 2;
+    // No more changes will come, such as after the folder itself was deleted
+    // or moved; the Workspace stays open until its window closes it.
+    STATE_STOPPED = 3;
+  }
+  State state = 1;
+  string reason = 2;
 }

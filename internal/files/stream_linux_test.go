@@ -73,7 +73,9 @@ func TestAWorkerIsStoppedWhenItsReaderGoesAway(t *testing.T) {
 	}
 }
 
-func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
+// asNobody is a worker that runs as nobody, with a folder for the test's files.
+func asNobody(t *testing.T) (AsUser, string) {
+	t.Helper()
 	if os.Getuid() != 0 {
 		t.Skip("running the worker as another user needs root")
 	}
@@ -93,13 +95,17 @@ func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
 	if err := os.WriteFile(exe, bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	return AsUser{Ops: Ops{Home: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}, dir
+}
+
+func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
+	u, dir := asNobody(t)
 	secret := filepath.Join(dir, "token")
 	if err := os.WriteFile(secret, []byte("root only"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	u := AsUser{Ops: Ops{Home: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}
-	err = u.ReadStream(context.Background(), StreamArgs{Path: secret}, func(StreamHeader) error { return nil }, io.Discard)
+	err := u.ReadStream(context.Background(), StreamArgs{Path: secret}, func(StreamHeader) error { return nil }, io.Discard)
 	if !errors.Is(err, ErrPermission) {
 		t.Fatalf("reading a root-only file as nobody: %v, want ErrPermission", err)
 	}

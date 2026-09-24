@@ -673,12 +673,13 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `AuthService` | `ExchangeLoginCode` |
 | `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
-| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
+| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4), `WorkspaceChanged` (M8.2, only to the subscription that opened the Workspace). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
 | `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
 | `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
+| `CodeService` | `OpenWorkspace`, `CloseWorkspace`, `ReportDirty` (M8.2): a Code window's Workspace belongs to its tab's `Subscribe` stream (`subscription_id`) and its file changes arrive there as `WorkspaceChanged` events, so Code holds no connection of its own |
 | `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `GetDesktopState`, `SaveDesktopState` (M3); `Get`, `Update` (M4: the settings that can change while AOS runs, §6.4, each with where its value comes from), `SetApiKey` (M4) |
 | `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes` (M4: read from /proc when asked; a process belongs to a Task when it, an ancestor, its process group or its session is a process that Task's Agent started, matched by pid and start time; "confined" means no_new_privs), `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart), `Metrics` (M4: the Machine's CPU, memory, disks and network, read from its own cgroup first; polled by Activity Monitor while open), `ListNotifications` and `DismissNotification` (M4: notifications are kept, newest 200, until dismissed; a dismissal is published as a `Notification` event with `dismissed` set, so every tab drops it) |
 
@@ -1789,7 +1790,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1 built; M8.2 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.2 built; M8.3 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1843,20 +1844,32 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    the version test.
 
 2. **`CodeService` and Workspace presence.** New `internal/code` package and
-   `CodeService` in `proto/aos/v1`:
-   - `OpenWorkspace(path) returns (stream WorkspaceEvent)` — the first event
-     names the Workspace (id, root, Realm); then *created / changed / deleted*
-     events for files under it, from a recursive inotify watch run **as the
-     Realm's user** through the confined files worker (so a Standard Workspace
-     never sees what `aos` can't read). `.git`, `node_modules` and caches are
-     skipped; past the inotify limit it falls back to polling and says so.
-   - `ReportDirty(workspace_id, paths)` — the window's unsaved files.
-   - The stream's life **is** the presence: an in-memory registry of open
-     Workspaces and their unsaved files, dropped when the stream ends (window
-     closed, tab closed, sign-out).
-   Refused for Agent callers (§7.5 guard). *Tests:* registry add/drop on stream
-   end; events for create/change/delete/rename; a folder `aos` can't read is
-   refused in Standard; watch-limit fallback.
+   `CodeService` in `proto/aos/v1`. *Built on the tab's event stream, not a
+   stream per window (changed while building, Aman 2026-09-24):* browsers
+   allow six connections to aosd across all the Desktop's tabs, the event
+   stream and Finder's watch already hold two per tab and Terminals hold more,
+   so two or three Code windows each holding a stream would stall every other
+   request.
+   - `EventService.Subscribe`'s first message carries a `subscription_id`; the
+     subscription can own Workspaces.
+   - `OpenWorkspace(subscription_id, path)` (unary) checks the folder as the
+     Realm's user and returns the Workspace (id, root, Realm). Its changes
+     arrive on that subscription only, as `Event.workspace`
+     (`WorkspaceChanged`): first how it is watched (live / polling / stopped,
+     with why), then *created / changed / deleted / rescan* batches from a
+     recursive inotify watch run **as the Realm's user** in a files worker
+     process (so a Standard Workspace never sees what `aos` can't read).
+     `.git`, `node_modules` and caches are skipped; past 8000 folders or the
+     Machine's inotify limit it falls back to polling and says so.
+   - `CloseWorkspace(workspace_id)` when the window closes;
+     `ReportDirty(workspace_id, paths)` — the window's unsaved files.
+   - The presence is an in-memory registry of open Workspaces and their
+     unsaved files. A Workspace closes with its window, or with its tab's
+     subscription (tab closed, sign-out, the stream dropped); a tab whose
+     subscription restarts opens its Workspaces again (M8.3). At most 32 per tab.
+   Refused for Agent callers (§7.5 guard). *Tests:* registry open/close and
+   drop with the subscription; events for create/change/delete/rename; a
+   folder `aos` can't read is refused in Standard; watch-limit fallback.
 
 3. **The Code app: Explorer, tabs, editing, saving.** `APPS.code`, in the Dock,
    one Workspace per window, many windows. Opened from the Dock (asks for a
@@ -2007,7 +2020,7 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
 #### The mode switch
 
 13. **No Realm switch while Code is open.** `RootModeBlocked` gains
-    `repeated OpenWorkspace workspaces` {path, unsaved files}. `SetRootMode`,
+    `repeated BlockingWorkspace workspaces` {path, unsaved files}. `SetRootMode`,
     in both directions, is refused (`FailedPrecondition`) while M8.2's registry
     has any Workspace open — checked alongside the Task check, before the
     password, so no attempt is spent. The System pane's switch shows a popup:
@@ -2018,7 +2031,7 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     prints the same list and exits non-zero. **Restart AOS** and **Clear Root
     Mode history** are not blocked but their confirms list unsaved files.
     *Tests:* `api/system_test.go` — refused with the Workspace list either
-    direction, no password attempt spent, allowed once the stream ends;
+    direction, no password attempt spent, allowed once the Workspace closes;
     `cli/root_test.go` — output and exit code; Playwright — popup, *Show*,
     switch works after closing Code.
 
