@@ -78,8 +78,7 @@ export default function TextEdit() {
   const open = useCallback(
     async (p: string) => {
       const seq = ++loadSeq.current;
-      const v = view.current;
-      if (!v) return;
+      if (!view.current) return;
       loaded.current = p;
       setLoad({ kind: "loading" });
       setConflict(false);
@@ -101,13 +100,17 @@ export default function TextEdit() {
         } catch {
           return setLoad({ kind: "refused", message: `${name} is not a text file TextEdit can edit.` });
         }
+        // The view as it is now: a remount (StrictMode's, in development)
+        // replaces the one there was when the read began.
+        const v = view.current;
+        if (!v) return;
         v.setState(EditorState.create({ doc: text, extensions: extensions() }));
         savedDoc.current = v.state.doc;
         onDisk.current = stamp(info);
         setEdited(false);
         setLoad({ kind: "ready" });
         const lang = await languageFor(name).catch(() => null);
-        if (lang && seq === loadSeq.current) v.dispatch({ effects: language.current.reconfigure(lang) });
+        if (lang && seq === loadSeq.current) view.current?.dispatch({ effects: language.current.reconfigure(lang) });
       } catch (err) {
         if (seq === loadSeq.current) setLoad({ kind: "refused", message: friendlyError(err) });
       }
