@@ -96,3 +96,24 @@ func Sensitive(path string) (reason string, ok bool) {
 	}
 	return "", false
 }
+
+// SensitiveUnder reports whether the folder dir holds a Sensitive System File
+// that the list names, for a move or delete of the whole folder. A user's
+// authorized_keys is not listed by name, so the caller looks for those.
+func SensitiveUnder(dir string) (reason string, ok bool) {
+	d := filepath.Clean(dir)
+	if !filepath.IsAbs(d) {
+		return "", false
+	}
+	for _, r := range sensitiveRules {
+		if within(strings.TrimSuffix(r.path, "/"), d) {
+			return r.why, true
+		}
+	}
+	for _, lib := range []string{"/lib", "/lib32", "/lib64", "/libx32"} {
+		if within(lib, d) {
+			return whyPrograms, true
+		}
+	}
+	return "", false
+}

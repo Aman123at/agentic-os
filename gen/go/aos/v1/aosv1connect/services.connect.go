@@ -122,6 +122,15 @@ const (
 	FileServiceListProtectedProcedure = "/aos.v1.FileService/ListProtected"
 	// FileServiceWatchProcedure is the fully-qualified name of the FileService's Watch RPC.
 	FileServiceWatchProcedure = "/aos.v1.FileService/Watch"
+	// FileServiceCheckSensitiveProcedure is the fully-qualified name of the FileService's
+	// CheckSensitive RPC.
+	FileServiceCheckSensitiveProcedure = "/aos.v1.FileService/CheckSensitive"
+	// FileServiceListSensitiveBackupsProcedure is the fully-qualified name of the FileService's
+	// ListSensitiveBackups RPC.
+	FileServiceListSensitiveBackupsProcedure = "/aos.v1.FileService/ListSensitiveBackups"
+	// FileServiceRestoreSensitiveBackupProcedure is the fully-qualified name of the FileService's
+	// RestoreSensitiveBackup RPC.
+	FileServiceRestoreSensitiveBackupProcedure = "/aos.v1.FileService/RestoreSensitiveBackup"
 	// TrashServiceListTrashProcedure is the fully-qualified name of the TrashService's ListTrash RPC.
 	TrashServiceListTrashProcedure = "/aos.v1.TrashService/ListTrash"
 	// TrashServiceRestoreProcedure is the fully-qualified name of the TrashService's Restore RPC.
@@ -942,6 +951,19 @@ type FileServiceClient interface {
 	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
 	// Host, a Windows Shared Folder included).
 	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error)
+	// Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+	// and Delete refuse to change one unless confirm_sensitive is set
+	// (FailedPrecondition, with a SensitivePath detail). A confirmed write
+	// keeps the version it replaces, the last five per file.
+	//
+	// CheckSensitive runs the file's own checker, where it has one, on content
+	// about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+	// --verify for fstab.
+	CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error)
+	ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error)
+	// Puts a kept version back; itself a confirmed write, so the version it
+	// replaces is kept in turn.
+	RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error)
 }
 
 // NewFileServiceClient constructs a client for the aos.v1.FileService service. By default, it uses
@@ -1027,23 +1049,44 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(fileServiceMethods.ByName("Watch")),
 			connect.WithClientOptions(opts...),
 		),
+		checkSensitive: connect.NewClient[v1.CheckSensitiveRequest, v1.CheckSensitiveResponse](
+			httpClient,
+			baseURL+FileServiceCheckSensitiveProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("CheckSensitive")),
+			connect.WithClientOptions(opts...),
+		),
+		listSensitiveBackups: connect.NewClient[v1.ListSensitiveBackupsRequest, v1.ListSensitiveBackupsResponse](
+			httpClient,
+			baseURL+FileServiceListSensitiveBackupsProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("ListSensitiveBackups")),
+			connect.WithClientOptions(opts...),
+		),
+		restoreSensitiveBackup: connect.NewClient[v1.RestoreSensitiveBackupRequest, v1.RestoreSensitiveBackupResponse](
+			httpClient,
+			baseURL+FileServiceRestoreSensitiveBackupProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("RestoreSensitiveBackup")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // fileServiceClient implements FileServiceClient.
 type fileServiceClient struct {
-	list          *connect.Client[v1.ListRequest, v1.ListResponse]
-	stat          *connect.Client[v1.StatRequest, v1.StatResponse]
-	read          *connect.Client[v1.ReadRequest, v1.ReadResponse]
-	write         *connect.Client[v1.WriteRequest, v1.WriteResponse]
-	makeFolder    *connect.Client[v1.MakeFolderRequest, v1.MakeFolderResponse]
-	move          *connect.Client[v1.MoveRequest, v1.MoveResponse]
-	copy          *connect.Client[v1.CopyRequest, v1.CopyResponse]
-	delete        *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
-	protect       *connect.Client[v1.ProtectRequest, v1.ProtectResponse]
-	unprotect     *connect.Client[v1.UnprotectRequest, v1.UnprotectResponse]
-	listProtected *connect.Client[v1.ListProtectedRequest, v1.ListProtectedResponse]
-	watch         *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	list                   *connect.Client[v1.ListRequest, v1.ListResponse]
+	stat                   *connect.Client[v1.StatRequest, v1.StatResponse]
+	read                   *connect.Client[v1.ReadRequest, v1.ReadResponse]
+	write                  *connect.Client[v1.WriteRequest, v1.WriteResponse]
+	makeFolder             *connect.Client[v1.MakeFolderRequest, v1.MakeFolderResponse]
+	move                   *connect.Client[v1.MoveRequest, v1.MoveResponse]
+	copy                   *connect.Client[v1.CopyRequest, v1.CopyResponse]
+	delete                 *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
+	protect                *connect.Client[v1.ProtectRequest, v1.ProtectResponse]
+	unprotect              *connect.Client[v1.UnprotectRequest, v1.UnprotectResponse]
+	listProtected          *connect.Client[v1.ListProtectedRequest, v1.ListProtectedResponse]
+	watch                  *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	checkSensitive         *connect.Client[v1.CheckSensitiveRequest, v1.CheckSensitiveResponse]
+	listSensitiveBackups   *connect.Client[v1.ListSensitiveBackupsRequest, v1.ListSensitiveBackupsResponse]
+	restoreSensitiveBackup *connect.Client[v1.RestoreSensitiveBackupRequest, v1.RestoreSensitiveBackupResponse]
 }
 
 // List calls aos.v1.FileService.List.
@@ -1106,6 +1149,21 @@ func (c *fileServiceClient) Watch(ctx context.Context, req *connect.Request[v1.W
 	return c.watch.CallServerStream(ctx, req)
 }
 
+// CheckSensitive calls aos.v1.FileService.CheckSensitive.
+func (c *fileServiceClient) CheckSensitive(ctx context.Context, req *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error) {
+	return c.checkSensitive.CallUnary(ctx, req)
+}
+
+// ListSensitiveBackups calls aos.v1.FileService.ListSensitiveBackups.
+func (c *fileServiceClient) ListSensitiveBackups(ctx context.Context, req *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error) {
+	return c.listSensitiveBackups.CallUnary(ctx, req)
+}
+
+// RestoreSensitiveBackup calls aos.v1.FileService.RestoreSensitiveBackup.
+func (c *fileServiceClient) RestoreSensitiveBackup(ctx context.Context, req *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error) {
+	return c.restoreSensitiveBackup.CallUnary(ctx, req)
+}
+
 // FileServiceHandler is an implementation of the aos.v1.FileService service.
 type FileServiceHandler interface {
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
@@ -1126,6 +1184,19 @@ type FileServiceHandler interface {
 	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
 	// Host, a Windows Shared Folder included).
 	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error
+	// Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+	// and Delete refuse to change one unless confirm_sensitive is set
+	// (FailedPrecondition, with a SensitivePath detail). A confirmed write
+	// keeps the version it replaces, the last five per file.
+	//
+	// CheckSensitive runs the file's own checker, where it has one, on content
+	// about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+	// --verify for fstab.
+	CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error)
+	ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error)
+	// Puts a kept version back; itself a confirmed write, so the version it
+	// replaces is kept in turn.
+	RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error)
 }
 
 // NewFileServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -1207,6 +1278,24 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(fileServiceMethods.ByName("Watch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	fileServiceCheckSensitiveHandler := connect.NewUnaryHandler(
+		FileServiceCheckSensitiveProcedure,
+		svc.CheckSensitive,
+		connect.WithSchema(fileServiceMethods.ByName("CheckSensitive")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceListSensitiveBackupsHandler := connect.NewUnaryHandler(
+		FileServiceListSensitiveBackupsProcedure,
+		svc.ListSensitiveBackups,
+		connect.WithSchema(fileServiceMethods.ByName("ListSensitiveBackups")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceRestoreSensitiveBackupHandler := connect.NewUnaryHandler(
+		FileServiceRestoreSensitiveBackupProcedure,
+		svc.RestoreSensitiveBackup,
+		connect.WithSchema(fileServiceMethods.ByName("RestoreSensitiveBackup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.FileService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FileServiceListProcedure:
@@ -1233,6 +1322,12 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 			fileServiceListProtectedHandler.ServeHTTP(w, r)
 		case FileServiceWatchProcedure:
 			fileServiceWatchHandler.ServeHTTP(w, r)
+		case FileServiceCheckSensitiveProcedure:
+			fileServiceCheckSensitiveHandler.ServeHTTP(w, r)
+		case FileServiceListSensitiveBackupsProcedure:
+			fileServiceListSensitiveBackupsHandler.ServeHTTP(w, r)
+		case FileServiceRestoreSensitiveBackupProcedure:
+			fileServiceRestoreSensitiveBackupHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1288,6 +1383,18 @@ func (UnimplementedFileServiceHandler) ListProtected(context.Context, *connect.R
 
 func (UnimplementedFileServiceHandler) Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.Watch is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.CheckSensitive is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.ListSensitiveBackups is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.RestoreSensitiveBackup is not implemented"))
 }
 
 // TrashServiceClient is a client for the aos.v1.TrashService service.

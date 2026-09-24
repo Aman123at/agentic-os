@@ -325,7 +325,60 @@ service FileService {
   // client stays (PLAN.md §15: polled every 2 s, which sees changes on every
   // Host, a Windows Shared Folder included).
   rpc Watch(WatchRequest) returns (stream WatchResponse);
+
+  // Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+  // and Delete refuse to change one unless confirm_sensitive is set
+  // (FailedPrecondition, with a SensitivePath detail). A confirmed write
+  // keeps the version it replaces, the last five per file.
+  //
+  // CheckSensitive runs the file's own checker, where it has one, on content
+  // about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+  // --verify for fstab.
+  rpc CheckSensitive(CheckSensitiveRequest) returns (CheckSensitiveResponse);
+  rpc ListSensitiveBackups(ListSensitiveBackupsRequest) returns (ListSensitiveBackupsResponse);
+  // Puts a kept version back; itself a confirmed write, so the version it
+  // replaces is kept in turn.
+  rpc RestoreSensitiveBackup(RestoreSensitiveBackupRequest) returns (RestoreSensitiveBackupResponse);
 }
+
+// SensitivePath is the detail on a refused change to a Sensitive System File.
+message SensitivePath {
+  string path = 1;
+  // What can go wrong, in a sentence.
+  string reason = 2;
+}
+
+message CheckSensitiveRequest {
+  string path = 1;
+  bytes content = 2;
+}
+message CheckSensitiveResponse {
+  // The check that ran, e.g. "visudo -c"; empty when the file has none.
+  string checker = 1;
+  bool passed = 2;
+  // What the checker printed.
+  string output = 3;
+  // The file has a check, but its program isn't installed.
+  bool unavailable = 4;
+}
+
+message SensitiveBackup {
+  string id = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  int64 size = 3;
+}
+message ListSensitiveBackupsRequest {
+  string path = 1;
+}
+message ListSensitiveBackupsResponse {
+  // Newest first.
+  repeated SensitiveBackup backups = 1;
+}
+message RestoreSensitiveBackupRequest {
+  string path = 1;
+  string id = 2;
+}
+message RestoreSensitiveBackupResponse {}
 
 message WatchRequest {
   string path = 1;
@@ -354,6 +407,9 @@ message FileInfo {
   // as that user (M8.4). Code opens a file that isn't writable read-only. AOS's
   // own state is never writable here, even to root.
   bool writable = 11;
+  // In Root Mode, what can go wrong changing this Sensitive System File (M8.5);
+  // empty for any other file, and always in Standard Mode.
+  string sensitive_reason = 12;
 }
 
 message ListRequest {
@@ -385,11 +441,14 @@ message WriteRequest {
   string path = 1;
   bytes content = 2;
   bool overwrite = 3;
+  // Changes a Sensitive System File in Root Mode (M8.5).
+  bool confirm_sensitive = 4;
 }
 message WriteResponse {}
 
 message MakeFolderRequest {
   string path = 1;
+  bool confirm_sensitive = 2;
 }
 message MakeFolderResponse {}
 
@@ -397,6 +456,7 @@ message MoveRequest {
   string source = 1;
   string destination = 2;
   bool overwrite = 3;
+  bool confirm_sensitive = 4;
 }
 message MoveResponse {}
 
@@ -404,11 +464,13 @@ message CopyRequest {
   string source = 1;
   string destination = 2;
   bool overwrite = 3;
+  bool confirm_sensitive = 4;
 }
 message CopyResponse {}
 
 message DeleteRequest {
   string path = 1;
+  bool confirm_sensitive = 2;
 }
 message DeleteResponse {
   TrashItem item = 1;

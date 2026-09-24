@@ -31,6 +31,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/catalogue"
+	"github.com/Aman123at/agentic-os/internal/code"
 	"github.com/Aman123at/agentic-os/internal/config"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
@@ -271,6 +272,9 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.agentHome,
 		UserFiles: userFiles, FileOps: userOps, Protected: d.locks, OwnState: d.ownState(),
+		// What confirmed writes to Sensitive System Files replace (M8.5), kept
+		// with the Realm's outputs; only Root Mode writes them.
+		Backups:  &code.Backups{Dir: filepath.Join(d.outputs.Dir, "sensitive-backups")},
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
 		// Clearing Root Mode history removes the Root Realm's whole subtree — its

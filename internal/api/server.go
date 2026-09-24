@@ -85,6 +85,10 @@ type Server struct {
 	// paths a root Agent's policy hides or keeps read-only (§7.2), so Code opens
 	// them read-only. Files under a path are included.
 	OwnState []string
+	// Backups keeps what confirmed writes to Sensitive System Files replace, and
+	// Checker runs their checks (M8.5); a nil Backups keeps nothing.
+	Backups  *code.Backups
+	Checker  code.Checker
 	Sessions Sessions
 	Memories *profile.Memories
 	Desktop  *desktop.State
@@ -131,6 +135,9 @@ type Server struct {
 	// realmSwitch overrides Tasks as the Root Mode switch's queue gate; tests set
 	// it, production uses Tasks (M7.7).
 	realmSwitch realmSwitcher
+	// sensitivity replaces the Sensitive System File list; tests set it, since
+	// the real list names /etc (M8.5).
+	sensitivity func(path string, tree bool) (reason string, ok bool)
 }
 
 // Handler returns every route; wrap it with Auth.TCP or Auth.Socket.
@@ -485,7 +492,7 @@ func (f fileService) info(i files.Info) *aosv1.FileInfo {
 	src := f.s.Protected.IsProtected(i.Path)
 	return &aosv1.FileInfo{Path: i.Path, Name: i.Name, Dir: i.Dir, Symlink: i.Symlink, LinkTarget: i.LinkTarget, Size: i.Size,
 		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src,
-		Writable: i.Writable && !f.s.ownState(i.Path)}
+		Writable: i.Writable && !f.s.ownState(i.Path), SensitiveReason: f.sensitiveReason(i.Path)}
 }
 
 // ownState reports whether p is, or is inside, one of OwnState's paths.
@@ -543,8 +550,17 @@ func (f fileService) Write(ctx context.Context, req *connect.Request[aosv1.Write
 	if err != nil {
 		return nil, err
 	}
+	why, sensitive := f.sensitive(p, false)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
+	if sensitive && req.Msg.Overwrite {
+		if err := f.keep(p); err != nil {
+			return nil, connectError(err)
+		}
+	}
 	err = f.s.UserFiles.Run(ctx, files.OpWrite, files.WriteArgs{Path: p, Content: string(req.Msg.Content), Overwrite: req.Msg.Overwrite}, nil, nil)
-	f.audit(ctx, "write_file", p, err)
+	f.audit(ctx, auditTool(sensitive, "write_file"), p, err)
 	return connect.NewResponse(&aosv1.WriteResponse{}), connectError(err)
 }
 
@@ -553,12 +569,16 @@ func (f fileService) MakeFolder(ctx context.Context, req *connect.Request[aosv1.
 	if err != nil {
 		return nil, err
 	}
+	why, sensitive := f.sensitive(p, false)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
 	err = f.s.UserFiles.Run(ctx, files.OpMkdir, files.PathArgs{Path: p}, nil, nil)
-	f.audit(ctx, "make_folder", p, err)
+	f.audit(ctx, auditTool(sensitive, "make_folder"), p, err)
 	return connect.NewResponse(&aosv1.MakeFolderResponse{}), connectError(err)
 }
 
-func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrite bool) error {
+func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrite, confirmed bool) error {
 	s, err := f.abs(src)
 	if err != nil {
 		return err
@@ -567,17 +587,38 @@ func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrit
 	if err != nil {
 		return err
 	}
+	// A move takes its source, and a folder's contents, away; both change
+	// what they land on.
+	sensitive := false
+	for _, at := range []struct {
+		path string
+		tree bool
+	}{{s, true}, {d, false}} {
+		if at.tree && op != files.OpMove {
+			continue
+		}
+		why, ok := f.sensitive(at.path, at.tree)
+		if ok && !confirmed {
+			return refuseSensitive(at.path, why)
+		}
+		sensitive = sensitive || ok
+	}
+	if _, ok := f.sensitive(d, false); ok && overwrite {
+		if err := f.keep(d); err != nil {
+			return connectError(err)
+		}
+	}
 	err = f.s.UserFiles.Run(ctx, op, files.TransferArgs{Source: s, Destination: d, Overwrite: overwrite}, nil, nil)
-	f.audit(ctx, op, s+" -> "+d, err)
+	f.audit(ctx, auditTool(sensitive, op), s+" -> "+d, err)
 	return connectError(err)
 }
 
 func (f fileService) Move(ctx context.Context, req *connect.Request[aosv1.MoveRequest]) (*connect.Response[aosv1.MoveResponse], error) {
-	return connect.NewResponse(&aosv1.MoveResponse{}), f.transfer(ctx, files.OpMove, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite)
+	return connect.NewResponse(&aosv1.MoveResponse{}), f.transfer(ctx, files.OpMove, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite, req.Msg.ConfirmSensitive)
 }
 
 func (f fileService) Copy(ctx context.Context, req *connect.Request[aosv1.CopyRequest]) (*connect.Response[aosv1.CopyResponse], error) {
-	return connect.NewResponse(&aosv1.CopyResponse{}), f.transfer(ctx, files.OpCopy, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite)
+	return connect.NewResponse(&aosv1.CopyResponse{}), f.transfer(ctx, files.OpCopy, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite, req.Msg.ConfirmSensitive)
 }
 
 func (f fileService) Delete(ctx context.Context, req *connect.Request[aosv1.DeleteRequest]) (*connect.Response[aosv1.DeleteResponse], error) {
@@ -585,9 +626,13 @@ func (f fileService) Delete(ctx context.Context, req *connect.Request[aosv1.Dele
 	if err != nil {
 		return nil, err
 	}
+	why, sensitive := f.sensitive(p, true)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
 	var item files.TrashItem
 	err = f.s.UserFiles.Run(ctx, files.OpDelete, files.PathArgs{Path: p}, &item, nil)
-	f.audit(ctx, "delete", p, err)
+	f.audit(ctx, auditTool(sensitive, "delete"), p, err)
 	if err != nil {
 		return nil, connectError(err)
 	}
