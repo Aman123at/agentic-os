@@ -13,6 +13,9 @@ export interface FakeOptions {
   rootMode?: boolean;
   // Files to start with, by absolute path; a path ending in "/" is a folder.
   files?: Record<string, string>;
+  // Paths the Realm's user may read but not write (M8.4). In Standard Mode
+  // anything outside the home folder is read-only too, as it is for aos.
+  readOnly?: string[];
 }
 
 // FakeMachine is what a spec reaches through page.evaluate(() => window.__aosd).
@@ -66,6 +69,12 @@ function fake(opts: FakeOptions) {
     }
   }
 
+  const readOnly = new Set(opts.readOnly ?? []);
+  // writable is what access(W_OK) says as the Realm's user; in Root Mode AOS's
+  // own state is never writable (M8.4).
+  const writable = (p: string) =>
+    !readOnly.has(p) && (opts.rootMode ? !p.startsWith("/var/lib/aos") && !p.startsWith("/etc/aos") : p === HOME || p.startsWith(HOME + "/"));
+
   // ------------------------------------------------------------ the Machine
   type Sub = { id: string; push: (msg: unknown) => void; end: () => void };
   const subs: Sub[] = [];
@@ -115,6 +124,7 @@ function fake(opts: FakeOptions) {
       size: String(n.data.length),
       mode: n.dir ? 0o40000755 : 0o644,
       modifiedAt: new Date(n.mtime).toISOString(),
+      writable: writable(p),
     };
   };
 
@@ -187,7 +197,7 @@ function fake(opts: FakeOptions) {
         const p = abs(str("path"));
         const exists = fs.has(p);
         if (exists && !body.overwrite) throw new RpcError("already_exists", `write ${p}: already exists`);
-        if (!opts.rootMode && !p.startsWith(HOME + "/")) throw new RpcError("permission_denied", `open ${p}: permission denied`);
+        if (!writable(p) || !writable(parent(p))) throw new RpcError("permission_denied", `open ${p}: permission denied`);
         mkdirp(parent(p));
         fs.set(p, { dir: false, data: unb64(str("content")), mtime: tick() });
         changed(exists ? "KIND_CHANGED" : "KIND_CREATED", p, false);

@@ -246,6 +246,30 @@ test("in Root Mode Auto Save starts off, and files open read-only until M8.5", a
   await expect(win.getByText(/Read-only in Root Mode/)).toBeVisible();
 });
 
+test("in Standard Mode a file aos can't write opens read-only, with a lock and why", async ({ page }) => {
+  await boot(page, { files: { ...PROJECT, "/etc/hosts": "127.0.0.1 localhost\n", "/home/aos/project/locked.txt": "keep\n" }, readOnly: ["/home/aos/project/locked.txt"] });
+  await page.locator('.dock__tile[title="Code"]').click();
+  await page.getByLabel("Folder to open").fill("/etc");
+  await page.getByRole("button", { name: "Open" }).click();
+  const win = page.locator('.window[aria-label="etc"]');
+  await openFile(win, "hosts");
+  await expect(win.getByText("Read-only in Standard Mode — aos can’t write this file.")).toBeVisible();
+  await expect(win.getByRole("tab", { name: /hosts/ })).toContainText("🔒");
+  await win.locator(".cm-content").click();
+  await page.keyboard.type("evil");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect(win.locator(".cm-content")).not.toContainText("evil");
+  expect(await disk(page, "/etc/hosts")).toBe("127.0.0.1 localhost\n");
+
+  // Inside the home folder too, what aos can't write stays read-only.
+  await win.locator(".traffic__close").click();
+  const project = await openProject(page);
+  await openFile(project, "locked.txt");
+  await expect(project.getByText("Read-only in Standard Mode")).toBeVisible();
+  await openFile(project, "main.go");
+  await expect(project.getByText("Read-only in Standard Mode")).toHaveCount(0);
+});
+
 test("TextEdit still edits and saves a file on the shared editor", async ({ page }) => {
   await boot(page);
   await page.locator('.dock__tile[title="Finder"]').click();

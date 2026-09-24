@@ -20,7 +20,7 @@ import { openWorkspace, type WorkspaceHandle } from "../../api/workspaces";
 import { detectIndent, MAX_TEXT, readText, stamp, type Indent } from "../../editor/document";
 import { languageFor, languageName } from "../../editor/languages";
 import { highlight, theme } from "../../editor/theme";
-import { FileChange_Kind, WorkspaceWatch_State, type OpenWorkspaceResponse, type WorkspaceChanged, type WorkspaceWatch } from "../../gen/aos/v1/services_pb";
+import { FileChange_Kind, WorkspaceWatch_State, type FileInfo, type OpenWorkspaceResponse, type WorkspaceChanged, type WorkspaceWatch } from "../../gen/aos/v1/services_pb";
 import { setCloseGuard } from "../../shell/closeGuard";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
@@ -178,9 +178,15 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   // ------------------------------------------------------------ open, load
 
-  const readOnlyReason = (root: OpenWorkspaceResponse | null): string =>
+  // readOnlyReason says why a file opens read-only, or "". Whether it is
+  // writable was checked on aosd as the Realm's user (M8.4).
+  const readOnlyReason = (root: OpenWorkspaceResponse | null, info: FileInfo): string => {
+    if (!info.writable) {
+      return root?.rootMode ? "Read-only: this is AOS’s own state, which Code doesn’t change even as root." : "Read-only in Standard Mode — aos can’t write this file.";
+    }
     // Editing as root waits for the Sensitive System File guard (M8.5).
-    root?.rootMode ? "Read-only in Root Mode for now: editing as root arrives with the guard for Sensitive System Files." : "";
+    return root?.rootMode ? "Read-only in Root Mode for now: editing as root arrives with the guard for Sensitive System Files." : "";
+  };
 
   const load = useCallback(
     async (d: Doc, keepSelection?: number) => {
@@ -199,7 +205,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         }
         d.indent = detectIndent(got.text, d.path);
         d.crlf = got.text.includes("\r\n");
-        d.readOnly = readOnlyReason(wsRef.current);
+        d.readOnly = readOnlyReason(wsRef.current, got.info);
         const anchor = Math.min(keepSelection ?? 0, got.text.length);
         d.state = EditorState.create({ doc: got.text, selection: { anchor }, extensions: extensions(d) });
         d.saved = d.state.doc;
