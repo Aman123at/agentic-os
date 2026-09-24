@@ -1,0 +1,150 @@
+---
+title: Cloud providers
+description: Create a VM on AWS, Google Cloud, Azure, DigitalOcean, Hetzner, Oracle Cloud or Linode, open port 7700 and install Agentic OS.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Agentic OS runs on any cloud VM with **Ubuntu 22.04+ or Debian 12+**. The install is the same everywhere. What
+differs is **how you open port 7700**, because most providers block inbound traffic by default.
+
+## The steps on any provider
+
+<Steps>
+
+1. **Create a VM** from an **Ubuntu 24.04 LTS** (or 22.04) image. Pick amd64 or arm64; both work. 2 GB of
+   RAM or more is a comfortable start. Add your SSH key.
+
+2. **Open inbound TCP port 7700** in the provider's firewall (see the tabs below). If you can, allow **only
+   your own IP address**, not the whole internet. Keep port **22** open for SSH.
+
+3. **SSH in and run the installer:**
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+   ```
+
+4. **Open `http://<public-ip>:7700`** and [sign in](/start/sign-in/) as `admin` with the one-time password
+   the installer printed.
+
+</Steps>
+
+:::tip[Find your own IP address]
+To limit port 7700 to just you, you need your public IP. Run `curl -s https://checkip.amazonaws.com` on
+your laptop, then use it as `<your-ip>/32` in the rules below.
+:::
+
+## Open port 7700 on your provider
+
+<Tabs syncKey="cloud">
+  <TabItem label="AWS">
+    **Image:** *Ubuntu Server 24.04 LTS*. The default SSH user is `ubuntu`. Graviton (`t4g`) instances are
+    arm64 and work too.
+
+    **Console:** EC2 → *Instances* → your instance → *Security* tab → the security group → *Edit inbound
+    rules* → *Add rule*:
+
+    | Type | Port range | Source |
+    | --- | --- | --- |
+    | Custom TCP | `7700` | *My IP* |
+
+    **CLI:**
+
+    ```bash
+    aws ec2 authorize-security-group-ingress \
+      --group-id sg-0123456789abcdef0 \
+      --protocol tcp --port 7700 \
+      --cidr "$(curl -s https://checkip.amazonaws.com)/32"
+    ```
+
+    Lightsail instances have their own firewall. Go to *Networking* → *IPv4 Firewall* → *Add rule*, Custom
+    TCP 7700.
+  </TabItem>
+  <TabItem label="Google Cloud">
+    **Image:** *Ubuntu 24.04 LTS*. Tau T2A and C4A machine types are arm64.
+
+    Create a firewall rule and attach it to your VM with a network tag:
+
+    ```bash
+    gcloud compute firewall-rules create allow-agentic-os \
+      --direction=INGRESS --action=ALLOW --rules=tcp:7700 \
+      --source-ranges="$(curl -s https://checkip.amazonaws.com)/32" \
+      --target-tags=agentic-os
+
+    gcloud compute instances add-tags my-vm --tags=agentic-os --zone=us-central1-a
+    ```
+
+    In the console: *VPC network* → *Firewall* → *Create firewall rule*, TCP 7700, target tag `agentic-os`.
+  </TabItem>
+  <TabItem label="Azure">
+    **Image:** *Ubuntu Server 24.04 LTS*. Dpsv5 / Dpsv6 sizes are arm64.
+
+    ```bash
+    az vm open-port --resource-group my-rg --name my-vm --port 7700 --priority 1010
+    ```
+
+    That rule allows any source. To limit it to your IP, edit the rule in the portal: *Virtual machine* →
+    *Networking* → *Network settings* → the inbound rule for 7700 → *Source: IP Addresses*.
+  </TabItem>
+  <TabItem label="DigitalOcean">
+    **Image:** *Ubuntu 24.04 (LTS) x64*.
+
+    New Droplets have **no firewall** by default, so port 7700 is already reachable. If you've attached a
+    **Cloud Firewall**, add an inbound rule: *Networking* → *Firewalls* → your firewall → *Inbound Rules* →
+    *Custom*, TCP, port `7700`, sources: your IP.
+  </TabItem>
+  <TabItem label="Hetzner">
+    **Image:** *Ubuntu 24.04*. CAX servers are arm64 (Ampere).
+
+    Cloud servers have **no firewall** by default. If you use one: *Firewalls* → your firewall → *Inbound
+    rules* → *Add rule*, TCP, port `7700`, source your IP. Then apply the firewall to the server.
+  </TabItem>
+  <TabItem label="Oracle Cloud">
+    **Image:** *Canonical Ubuntu 24.04*. The Always Free *VM.Standard.A1.Flex* (Ampere, arm64) shape runs
+    Agentic OS well.
+
+    Oracle needs **two** changes:
+
+    1. **Security list:** *Networking* → *Virtual cloud networks* → your VCN → *Security Lists* → *Default* →
+       *Add Ingress Rules*: source CIDR `<your-ip>/32`, TCP, destination port `7700`.
+    2. **The VM's own iptables.** Oracle's Ubuntu images ship with rules that block other ports, so allow 7700
+       on the VM too:
+
+       ```bash
+       sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 7700 -j ACCEPT
+       sudo netfilter-persistent save
+       ```
+  </TabItem>
+  <TabItem label="Linode">
+    **Image:** *Ubuntu 24.04 LTS*.
+
+    Linodes have **no firewall** by default. If you've added a Cloud Firewall: *Firewalls* → your firewall →
+    *Add an Inbound Rule*, TCP, ports `7700`, sources your IP.
+  </TabItem>
+</Tabs>
+
+### A firewall on the server itself (ufw)
+
+If you've turned on **ufw** on the server, allow the port there too. Make sure SSH stays allowed:
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow from <your-ip> to any port 7700 proto tcp
+sudo ufw enable
+sudo ufw status
+```
+
+## After it's running
+
+- **Use a domain and HTTPS.** Point a DNS `A` record at the VM, then follow
+  [Put nginx and HTTPS in front](/configure/nginx/). Once that's done, close port 7700 to the internet and
+  open 80 and 443 instead.
+- **Set a spending cap** on your OpenAI project, and optionally a
+  [cost limit](/configure/config-file/#cost-limits) in Agentic OS.
+- **Keep SSH access safe.** If you ever lose the Desktop password, SSH is the only way back in. See
+  [If you lose the password](/operate/lost-password/).
+
+<CardGrid>
+  <LinkCard title="Sign in for the first time" description="Set your own password and add your API key." href="/start/sign-in/" />
+  <LinkCard title="Troubleshooting" description="Nothing answers on port 7700? Start here." href="/operate/troubleshooting/#nothing-answers-on-port-7700" />
+</CardGrid>

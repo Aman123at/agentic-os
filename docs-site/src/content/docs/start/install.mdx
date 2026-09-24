@@ -1,0 +1,166 @@
+---
+title: Install on a Linux server
+description: One command installs the daemon, creates its user and starts it under systemd on Ubuntu or Debian.
+---
+
+import { Steps, Tabs, TabItem, FileTree, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+This is the **recommended** way to run Agentic OS. One command turns a fresh Ubuntu or Debian server into a
+Machine your Agents operate, with the Desktop in your browser.
+
+## Before you start
+
+| Requirement | Details |
+| --- | --- |
+| **Operating system** | Ubuntu 22.04 or newer, or Debian 12 or newer. Other systemd-based distributions may work; these are the tested ones. |
+| **Architecture** | amd64 (x86-64) or arm64 (aarch64). |
+| **systemd** | Required. The installer stops cleanly without it. Use [Docker Compose](/start/compose/) instead. |
+| **Root access** | Through `sudo`. |
+| **Disk** | At least 250 MB free on `/usr/local`, plus room for what your Agents install later. |
+| **Tools** | `curl`, `tar`, `sha256sum`, `install` and `useradd`. All ship with stock Ubuntu and Debian images. |
+| **Network** | Inbound TCP **7700** for the Desktop, and outbound HTTPS to GitHub (to download) and OpenAI (to run Tasks). |
+| **Kernel** | 5.13 or newer with Landlock, for the Agent sandbox. Older kernels install with a warning. |
+
+You **don't** need Go, Node, Docker, a database or an API key to install. The installer downloads one prebuilt
+binary for your architecture and nothing else.
+
+:::tip[Using a cloud VPS?]
+Open port 7700 in your provider's firewall first. [Cloud providers](/start/cloud/) has the exact steps for
+AWS, Google Cloud, Azure, DigitalOcean, Hetzner, Oracle Cloud and Linode.
+:::
+
+## Install
+
+<Tabs syncKey="installer">
+  <TabItem label="Quick (pipe to sh)">
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+    ```
+  </TabItem>
+  <TabItem label="Read it first (recommended)">
+    You're about to run a script as root, so it's worth reading first. Download it, read it, then run it:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh -o install.sh
+    less install.sh
+    sudo sh install.sh
+    ```
+  </TabItem>
+  <TabItem label="Dry run">
+    Rehearse the whole install without changing anything. This works on any machine, even macOS:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh -o install.sh
+    DRY_RUN=1 sh install.sh
+    ```
+
+    It prints every step it would take, including any preflight check your machine would fail.
+  </TabItem>
+</Tabs>
+
+### What you'll see
+
+The installer works through these steps and prints a heading for each:
+
+<Steps>
+
+1. **Checking this machine.** Linux, amd64 or arm64, root, systemd, the Landlock sandbox, required tools
+   and free disk space.
+2. **Downloading the latest release** from GitHub, and **verifying its SHA-256 checksum**. It refuses to
+   install on a mismatch.
+3. **Installing `aosd`** to `/usr/local/bin`, with `aos` as a link to the same binary.
+4. **Creating the `aos` user** and its home, `/home/aos`, and granting that user `sudo`.
+5. **Writing `/etc/aos/config.yml`** with commented defaults, unless it already exists.
+6. **Installing and starting the systemd service** `aos.service`, enabled at boot.
+7. **Creating the Desktop account** `admin` and printing its **one-time password**.
+
+</Steps>
+
+It finishes with a summary like this:
+
+```text
+The Desktop account is ready. Sign in with this password once; the Desktop
+then asks you to set your own.
+
+  Username: admin
+  Password: 7kQm4TdX2bWrNf9hPzLc3eYa
+
+It is shown only now.
+
+Agentic OS is installed and running.
+
+  Desktop      http://203.0.113.10:7700
+  Sign in as   admin  (the one-time password was printed just above)
+  Config       /etc/aos/config.yml
+  Logs         sudo aos daemon logs -f
+```
+
+:::caution[Copy the one-time password now]
+It is printed **only once** and isn't stored anywhere you can read it back. If you lose it before signing in,
+see [If you lose the password](/operate/lost-password/).
+:::
+
+## Verify it's running
+
+```bash
+sudo aos status                 # running? which Mode and port?
+sudo aos doctor                 # Mode, Landlock status, API key present
+systemctl status aos --no-pager # the systemd view
+sudo aos daemon logs -n 50      # the last 50 log lines
+```
+
+:::note[Why sudo?]
+`aos` talks to the daemon over a root-only control socket (`/run/aos/aosd.sock`), so run it with `sudo` or
+as root. The Desktop's Terminal app runs as the `aos` user, which can `sudo` without a password.
+:::
+
+Then open **`http://<your-server-ip>:7700`** in your browser. Next: [sign in and set your password](/start/sign-in/).
+
+## Three things to know about that URL
+
+- **It's reachable from the internet.** The daemon listens on port **7700 on every network interface**. That's
+  deliberate: a browser Desktop you can't open from your laptop isn't much use. So your password is what
+  protects the server. Read [What the password protects](/start/password-is-root/).
+- **It's always port 7700.** If something else is already using 7700, the service fails to start. Check with
+  `sudo ss -ltnp | grep 7700`.
+- **It's plain HTTP.** Your password crosses the network unencrypted. On a server with anything real on it,
+  [put nginx and a free certificate in front](/configure/nginx/) before you sign in for the first time.
+
+## What the installer puts on your server
+
+<FileTree>
+- usr/local/bin/
+  - aosd the daemon (one binary for everything)
+  - aos → aosd, the command line
+- usr/local/lib/aos/agent-bin/
+  - rm → aos, so an Agent's `rm` moves files to the Trash
+- etc/
+  - aos/
+    - config.yml your settings, root-only (0600)
+  - sudoers.d/
+    - aos lets the aos user use sudo
+  - systemd/system/
+    - aos.service starts at boot, restarts if it stops
+- home/aos/ the Agents' home
+  - Downloads/
+- var/lib/aos/ database, Audit Log, keys and model catalogue (0700)
+</FileTree>
+
+It **doesn't** install a compiler, a Node runtime, a database or any other software. Your server isn't a
+disposable container, so the installer doesn't decide what goes on it. Agents install what a Task needs
+through the [Install Ledger](/reference/software/), and you can undo it with a [Checkpoint](/reference/checkpoint/).
+
+## Re-running the installer
+
+The installer is **idempotent**: every step checks before it acts. Re-running it is how you **upgrade** and
+how you **repair** a broken install. It never overwrites an existing `config.yml` and never recreates an
+existing account. See [Upgrading and uninstalling](/operate/upgrade/).
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Sign in and set your password" description="The first sign-in and the forced password change." href="/start/sign-in/" />
+  <LinkCard title="Add your OpenAI API key" description="Paste it into System Settings, or set it from the shell." href="/configure/api-key/" />
+  <LinkCard title="Put HTTPS in front" description="nginx and a free Let's Encrypt certificate." href="/configure/nginx/" />
+  <LinkCard title="Give it something to do" description="aos run, or the Agent app on the Desktop." href="/reference/run/" />
+</CardGrid>

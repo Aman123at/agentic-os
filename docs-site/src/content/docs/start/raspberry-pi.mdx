@@ -1,0 +1,88 @@
+---
+title: Raspberry Pi & ARM
+description: Run Agentic OS natively on a Raspberry Pi 4 or 5, or any other 64-bit ARM board or server.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Agentic OS publishes a native **arm64** build, so a Raspberry Pi makes a small, always-on home server your
+Agents can look after. The same steps work on other 64-bit ARM machines: Ampere cloud VMs, AWS Graviton,
+Rock 5, Orange Pi 5, and similar.
+
+## What you need
+
+| | Recommended |
+| --- | --- |
+| **Board** | Raspberry Pi 5 or Pi 4 with **4 GB of RAM or more** |
+| **Operating system** | **64-bit** Raspberry Pi OS (Bookworm or later), or Ubuntu Server 22.04+ for Raspberry Pi |
+| **Storage** | A good 32 GB+ microSD card, or better, an SSD over USB 3 or NVMe |
+| **Network** | Ethernet or Wi-Fi on the same network as the computer you'll open the Desktop from |
+
+:::danger[64-bit only]
+The installer supports **arm64 (aarch64)** and refuses 32-bit ARM (`armv7l`). Check with `uname -m`: it should
+print `aarch64`. If it prints `armv7l`, reflash the card with a **64-bit** image.
+:::
+
+## Install
+
+<Steps>
+
+1. **Flash a 64-bit OS.** In [Raspberry Pi Imager](https://www.raspberrypi.com/software/), choose your board,
+   then **Raspberry Pi OS Lite (64-bit)** or **Ubuntu Server 24.04 LTS (64-bit)**. In the customisation
+   screen, set a username and password, **enable SSH**, and set up Wi-Fi if you need it.
+
+2. **Boot the Pi and SSH in.** Find its address in your router, or try its hostname:
+
+   ```bash
+   ssh you@raspberrypi.local
+   ```
+
+3. **Update the system and install curl** (usually already there):
+
+   ```bash
+   sudo apt update && sudo apt full-upgrade -y
+   sudo apt install -y curl
+   ```
+
+4. **Run the installer:**
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+   ```
+
+   It should report `architecture: arm64`. **Copy the one-time password** it prints at the end.
+
+5. **Open the Desktop** from another computer on your network: `http://raspberrypi.local:7700`, or
+   `http://<pi-ip-address>:7700`. Sign in as `admin`.
+
+</Steps>
+
+## Check the sandbox (Landlock)
+
+Agents are confined by **Landlock**, which needs kernel 5.13+ with Landlock turned on. During preflight the
+installer prints one of these lines:
+
+| Installer says | Meaning |
+| --- | --- |
+| `kernel …: Landlock available` | You're done. Agents are sandboxed. |
+| `WARNING: … supports Landlock but it is not enabled` | The kernel has Landlock, but it isn't in the active security module list. |
+| `WARNING: … has no Landlock` | The kernel is too old. Agents run under policy checks only. |
+
+Check at any time with `sudo aos doctor`. If Landlock is supported but not enabled, you can try adding it to the
+kernel's `lsm=` list. On Raspberry Pi OS, that's in `/boot/firmware/cmdline.txt`: append `lsm=` followed by the
+current list from `cat /sys/kernel/security/lsm` plus `,landlock`, all on the one existing line, then reboot.
+If your board's kernel wasn't built with Landlock at all, **Ubuntu Server for Raspberry Pi** is the easier route.
+
+## Good to know on ARM
+
+- **The Browser app isn't available on arm64.** The headless Chromium it uses is only published for amd64.
+  Everything else works the same.
+- **Use an SSD if you can.** Agents install packages and write logs; SD cards are slow and wear out.
+- **Give it a fixed address.** Reserve the Pi's IP in your router so the Desktop URL doesn't change.
+- **Reach it from outside your home** with a VPN such as Tailscale or WireGuard, rather than forwarding
+  port 7700 on your router. Remember: [the Desktop password is root](/start/password-is-root/).
+
+<CardGrid>
+  <LinkCard title="Sign in and set your password" description="The first sign-in and the forced password change." href="/start/sign-in/" />
+  <LinkCard title="Add your OpenAI API key" description="Paste it into System Settings." href="/configure/api-key/" />
+</CardGrid>
