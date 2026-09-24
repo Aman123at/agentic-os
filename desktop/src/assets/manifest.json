@@ -9,6 +9,7 @@
   "icons": {
     "finder": "finder.svg",
     "terminal": "terminal.svg",
+    "code": "code.svg",
     "agent": "agent.svg",
     "about": "about.svg",
     "preview": "preview.svg",

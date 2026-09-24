@@ -6,6 +6,7 @@ import { tags as t } from "@lezer/highlight";
 
 export const theme = EditorView.theme({
   "&": { height: "100%", backgroundColor: "var(--window-bg)", color: "var(--text)", fontSize: "13px" },
+  "&.cm-focused": { outline: "none" },
   ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.5" },
   ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
   ".cm-activeLineGutter, .cm-activeLine": { backgroundColor: "rgba(127, 127, 127, 0.1)" },
