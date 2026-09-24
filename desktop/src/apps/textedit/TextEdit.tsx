@@ -4,50 +4,24 @@
 // opened, and asks rather than overwrite a change made meanwhile (by an Agent,
 // a Terminal or another window). ⌘S or Ctrl+S saves. A window with no file is a
 // new document, saved to a path it asks for.
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Compartment, EditorState, type Extension, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
+import { languageFor } from "../../editor/languages";
+import { highlight, theme } from "../../editor/theme";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
 import { formatSize, looksBinary } from "../finder/fs";
-import { languageFor } from "./languages";
 
 // The largest file TextEdit opens or saves; FileService.Read returns at most
 // this much at once.
 const MAX_BYTES = 1 << 20;
-
-const theme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "var(--window-bg)", color: "var(--text)", fontSize: "13px" },
-  ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.5" },
-  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
-  ".cm-activeLineGutter, .cm-activeLine": { backgroundColor: "rgba(127, 127, 127, 0.1)" },
-  ".cm-cursor": { borderLeftColor: "var(--text)" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "rgba(80, 140, 255, 0.3)" },
-});
-
-// Code colours come from the theme's --code-* variables, so they read well in
-// both the light and dark themes.
-const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.modifier, t.heading], color: "var(--code-keyword)" },
-  { tag: [t.string, t.special(t.string), t.regexp, t.link], color: "var(--code-string)" },
-  { tag: [t.number, t.bool, t.null, t.atom, t.propertyName, t.constant(t.variableName)], color: "var(--code-number)" },
-  { tag: [t.comment, t.meta, t.processingInstruction], color: "var(--code-comment)", fontStyle: "italic" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName))], color: "var(--code-function)" },
-  { tag: [t.typeName, t.className, t.namespace], color: "var(--code-type)" },
-  { tag: [t.tagName, t.attributeName], color: "var(--code-tag)" },
-  { tag: t.heading, fontWeight: "bold" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strong, fontWeight: "bold" },
-  { tag: t.invalid, color: "var(--danger)" },
-]);
 
 type Load = { kind: "loading" } | { kind: "ready" } | { kind: "refused"; message: string };
 
@@ -78,7 +52,7 @@ export default function TextEdit() {
     (): Extension[] => [
       basicSetup,
       theme,
-      syntaxHighlighting(highlight),
+      highlight,
       language.current.of([]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) setEdited(!savedDoc.current || !u.state.doc.eq(savedDoc.current));

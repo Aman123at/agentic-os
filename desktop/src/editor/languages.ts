@@ -1,9 +1,9 @@
-// TextEdit's syntax highlighting, chosen by the file's name. Each language is
-// its own chunk, fetched when a file of that kind opens.
+// Syntax highlighting for TextEdit and Code, chosen by the file's name. Each
+// language is its own chunk, fetched when a file of that kind opens.
 import { StreamLanguage, type StreamParser } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 
-import { extOf } from "../filetypes";
+import { extOf } from "../apps/filetypes";
 
 async function legacy(load: () => Promise<StreamParser<unknown>>): Promise<Extension> {
   return StreamLanguage.define(await load());
