@@ -401,3 +401,71 @@ test("TextEdit still edits and saves a file on the shared editor", async ({ page
   await page.keyboard.press("ControlOrMeta+s");
   await expect.poll(() => disk(page, "/home/aos/notes.md")).toBe("line one\nline two");
 });
+
+// termText is what the newest xterm shows (term.ts hands it over under test).
+const termText = (page: Page) =>
+  page.evaluate(() => {
+    const t = (window as unknown as { __aosTerm?: { buffer: { active: { length: number; getLine(i: number): { translateToString(trim: boolean): string } | undefined } } } }).__aosTerm;
+    if (!t) return "";
+    const b = t.buffer.active;
+    return Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString(true) ?? "").join("\n");
+  });
+
+test("⌃` opens a Terminal panel in the Workspace; it survives hiding and ends with the window", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  const panel = win.getByRole("region", { name: "Terminal panel" });
+  await expect(panel).toHaveCount(0); // xterm loads only when asked for
+
+  await win.getByText("Open a file from the Explorer.").click();
+  await page.keyboard.press("Control+Backquote");
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole("tab", { name: /Terminal 1/ })).toBeVisible();
+  await expect.poll(() => aosd(page, (m) => Object.values(m.sessions).map((s) => s.cwd))).toEqual(["/home/aos/project"]);
+  await expect(panel).not.toContainText("root");
+
+  await expect.poll(() => termText(page)).toContain("aos$");
+  await panel.locator(".xterm").click();
+  await page.keyboard.type("pwd\r");
+  await expect.poll(() => termText(page)).toContain("/home/aos/project");
+
+  // Hiding keeps the shell; showing it again opens no new one.
+  await page.keyboard.press("Control+Backquote");
+  await expect(panel).toBeHidden();
+  await win.getByRole("button", { name: /Terminal/ }).click();
+  await expect(panel).toBeVisible();
+  expect(await aosd(page, (m) => Object.keys(m.sessions).length)).toBe(1);
+
+  // A second Terminal, then closing the window ends both.
+  await panel.getByRole("button", { name: "New Terminal" }).click();
+  await expect(panel.getByRole("tab")).toHaveCount(2);
+  await win.locator(".traffic__close").click();
+  await expect(win).toHaveCount(0);
+  await expect.poll(() => aosd(page, (m) => Object.values(m.sessions).map((s) => s.open))).toEqual([false, false]);
+});
+
+test("a reload takes the panel's shell back rather than starting another", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  await win.getByRole("button", { name: /Terminal/ }).click();
+  const panel = win.getByRole("region", { name: "Terminal panel" });
+  await expect(panel.getByRole("tab", { name: /Terminal 1/ })).toBeVisible();
+  const first = await aosd(page, (m) => Object.keys(m.sessions));
+  expect(first).toHaveLength(1);
+
+  // The fake Machine is reborn with the page, so carry the Session over.
+  await page.evaluate(() => sessionStorage.setItem("fake.sessions", JSON.stringify((window as unknown as { __aosd: FakeMachine }).__aosd.sessions)));
+  await page.reload();
+  const again = page.locator('.window[aria-label="project"]').getByRole("region", { name: "Terminal panel" });
+  await expect(again.getByRole("tab", { name: /Terminal 1/ })).toBeVisible();
+  expect(await aosd(page, (m) => Object.keys(m.sessions))).toEqual(first);
+});
+
+test("in Root Mode the panel's shell is root's, and says so", async ({ page }) => {
+  await boot(page, { rootMode: true });
+  const win = await openProject(page);
+  await win.getByRole("button", { name: /Terminal/ }).click();
+  const panel = win.getByRole("region", { name: "Terminal panel" });
+  await expect(panel.getByText("this Terminal runs as root")).toBeVisible();
+  await expect.poll(() => termText(page)).toContain("root@machine:/home/aos/project#");
+});

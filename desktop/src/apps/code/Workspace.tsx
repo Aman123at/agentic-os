@@ -12,7 +12,7 @@ import { Compartment, EditorState, type Extension, type Text, type TransactionSp
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { Code as RpcCode, ConnectError } from "@connectrpc/connect";
 import { basicSetup } from "codemirror";
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
@@ -40,6 +40,9 @@ import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
 import { Explorer, type Relist } from "./Explorer";
 import { baseOf, dirOf, relative, within } from "./paths";
+
+// The Terminal panel brings xterm with it, so it loads when first opened (M8.6).
+const TerminalPanel = lazy(() => import("./TerminalPanel"));
 
 // AUTO_SAVE_MS is how long typing has to pause before Auto Save saves.
 const AUTO_SAVE_MS = 1000;
@@ -89,6 +92,12 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [openReq] = useWinState("open", "");
   const [autoSaveSetting, setAutoSave] = useWinState("autosave", "");
   const [sideSetting, setSide] = useWinState("side", "240");
+  const [panelSetting, setPanel] = useWinState("panel", "");
+  const [panelHeight, setPanelHeight] = useWinState("panelh", "220");
+  const panelOpen = panelSetting === "1";
+  // Once opened, the panel stays mounted while hidden, so its shells keep
+  // running and their output keeps arriving.
+  const [panelMounted, setPanelMounted] = useState(panelOpen);
 
   const [ws, setWs] = useState<OpenWorkspaceResponse | null>(null);
   const [wsError, setWsError] = useState("");
@@ -603,7 +612,19 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   // ------------------------------------------------------------ render
 
   const d = docs.current.get(active);
+  const togglePanel = (open = !panelOpen) => {
+    setPanel(open ? "1" : "");
+    if (open) setPanelMounted(true);
+    else requestAnimationFrame(() => view.current?.focus());
+  };
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // ⌃` shows or hides the Terminal panel, as in VS Code.
+    if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Backquote") {
+      e.preventDefault();
+      e.stopPropagation();
+      togglePanel();
+      return;
+    }
     if (!(e.metaKey || e.ctrlKey) || e.code !== "KeyS") return;
     e.preventDefault();
     e.stopPropagation();
@@ -630,7 +651,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   const side = Number(sideSetting) || 0;
   return (
-    <div className="code" onKeyDownCapture={onKeyDown}>
+    // Focusable, so the window's shortcuts work after a click anywhere in it.
+    <div className="code" tabIndex={-1} onKeyDownCapture={onKeyDown}>
       <div className="code__body">
         <div className="code__side" style={{ width: side }} hidden={side === 0}>
           <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} onSensitive={askSensitive} />
@@ -726,10 +748,39 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
               )}
             </div>
           )}
+          {panelMounted && (
+            <>
+              {panelOpen && (
+                <Splitter
+                  axis="y"
+                  size={Number(panelHeight) || 220}
+                  onSize={(h) => (h ? setPanelHeight(String(h)) : togglePanel(false))}
+                  min={100}
+                  max={900}
+                  label="Resize the Terminal panel"
+                  restore={220}
+                />
+              )}
+              <div className="code__panel" style={{ height: Number(panelHeight) || 220 }} hidden={!panelOpen}>
+                <Suspense fallback={<div className="preview__note">Loading…</div>}>
+                  <TerminalPanel root={ws.root} visible={panelOpen} onHide={() => togglePanel(false)} />
+                </Suspense>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      <StatusBar ws={ws} watch={watch} doc={d} cursor={cursor} autoSave={autoSave} onAutoSave={(on) => setAutoSave(on ? "on" : "off")} />
+      <StatusBar
+        ws={ws}
+        watch={watch}
+        doc={d}
+        cursor={cursor}
+        autoSave={autoSave}
+        onAutoSave={(on) => setAutoSave(on ? "on" : "off")}
+        panelOpen={panelOpen}
+        onPanel={() => togglePanel()}
+      />
 
       {sensitive && (
         <SensitiveConfirm
@@ -773,6 +824,8 @@ function StatusBar({
   cursor,
   autoSave,
   onAutoSave,
+  panelOpen,
+  onPanel,
 }: {
   ws: OpenWorkspaceResponse;
   watch?: WorkspaceWatch;
@@ -780,12 +833,17 @@ function StatusBar({
   cursor: { line: number; col: number };
   autoSave: boolean;
   onAutoSave: (on: boolean) => void;
+  panelOpen: boolean;
+  onPanel: () => void;
 }) {
   const ready = doc?.load === "ready";
   return (
     <div className="code__status" role="status" aria-label="Status bar">
       <span className={`code__realm${ws.rootMode ? " code__realm--root" : ""}`}>{ws.rootMode ? "Root Mode · root" : "Standard Mode · aos"}</span>
       <WatchState watch={watch} />
+      <button className="code__status-btn" aria-pressed={panelOpen} onClick={onPanel} title="Show or hide the Terminal panel (⌃`)">
+        ⌨ Terminal
+      </button>
       <span className="code__status-gap" />
       {ready && (
         <>

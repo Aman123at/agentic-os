@@ -34,13 +34,18 @@ export interface FakeMachine {
   // replaced (M8.5).
   sensitiveWrites: string[];
   backups: Record<string, string[]>;
+  // User Sessions (M8.6): where each started, and whether it is still open.
+  sessions: Record<string, { cwd: string; open: boolean }>;
 }
 
 export async function installFakeAosd(page: Page, opts: FakeOptions = {}): Promise<void> {
   await page.addInitScript(() => {
     try {
+      // Terminals hand their xterm to the spec (term.ts).
+      (window as unknown as { __AOS_E2E__: boolean }).__AOS_E2E__ = true;
       localStorage.setItem("aos.refresh", "refresh-token");
-      sessionStorage.setItem("aos.layout", JSON.stringify({ theme: "light", windows: [], focused: "" }));
+      // An empty Desktop to start with; a reload keeps the layout it saved.
+      if (!sessionStorage.getItem("aos.layout")) sessionStorage.setItem("aos.layout", JSON.stringify({ theme: "light", windows: [], focused: "" }));
     } catch {
       // The spec fails loudly if the session is missing.
     }
@@ -90,6 +95,8 @@ function fake(opts: FakeOptions) {
     workspaces,
     sensitiveWrites: [],
     backups: {},
+    // A spec carries Sessions over a reload, as aosd keeps them running.
+    sessions: JSON.parse(sessionStorage.getItem("fake.sessions") ?? "{}") as FakeMachine["sessions"],
     write(p, text) {
       const existed = fs.has(p);
       mkdirp(parent(p));
@@ -190,6 +197,7 @@ function fake(opts: FakeOptions) {
 
   let subCount = 0;
   let wsCount = 0;
+  let sessionCount = Object.keys(machine.sessions).length;
 
   function unary(method: string, body: Record<string, unknown>): unknown {
     const str = (k: string) => String(body[k] ?? "");
@@ -294,6 +302,24 @@ function fake(opts: FakeOptions) {
         return {};
       }
 
+      case "AuthService/CreateTicket":
+        return { ticket: "ticket" };
+      case "SessionService/CreateSession": {
+        // The shell enters the folder if its user may, else stays home.
+        const want = body.cwd ? abs(str("cwd")) : HOME;
+        const cwd = fs.get(want)?.dir && (opts.rootMode || want === HOME || want.startsWith(HOME + "/")) ? want : HOME;
+        const id = `u_${++sessionCount}`;
+        machine.sessions[id] = { cwd, open: true };
+        return { session: { id, cwd, createdAt: new Date(clock).toISOString() } };
+      }
+      case "SessionService/ListSessions":
+        return { sessions: Object.entries(machine.sessions).filter(([, s]) => s.open).map(([id]) => ({ id })) };
+      case "SessionService/CloseSession": {
+        const s = machine.sessions[str("id")];
+        if (s) s.open = false;
+        return {};
+      }
+
       case "CodeService/OpenWorkspace": {
         const sub = str("subscriptionId");
         if (!subs.some((s) => s.id === sub)) throw new RpcError("not_found", "the event subscription has ended; subscribe again");
@@ -372,6 +398,68 @@ function fake(opts: FakeOptions) {
     }
     return new Response(body, { status: 200, headers: { "Content-Type": "application/connect+json" } });
   }
+
+  // A Session's socket: a shell that knows pwd and cd, and echoes like a PTY.
+  const RealWebSocket = window.WebSocket;
+  class FakeSocket extends EventTarget {
+    static readonly OPEN = 1;
+    binaryType = "arraybuffer";
+    readyState = 0;
+    onopen: ((ev: Event) => void) | null = null;
+    onmessage: ((ev: MessageEvent) => void) | null = null;
+    onclose: ((ev: CloseEvent) => void) | null = null;
+    onerror: ((ev: Event) => void) | null = null;
+    private line = "";
+    private id: string;
+    constructor(url: string) {
+      super();
+      this.id = decodeURIComponent(new URL(url).pathname.split("/").pop()!);
+      setTimeout(() => {
+        const s = machine.sessions[this.id];
+        if (!s?.open) return this.close();
+        this.readyState = 1;
+        this.onopen?.(new Event("open"));
+        this.out(this.prompt());
+      }, 5);
+    }
+    private prompt() {
+      return opts.rootMode ? "root@machine:" + machine.sessions[this.id].cwd + "# " : "aos$ ";
+    }
+    private out(text: string) {
+      this.onmessage?.(new MessageEvent("message", { data: enc.encode(text).buffer }));
+    }
+    send(data: string | ArrayBuffer | Uint8Array) {
+      if (typeof data === "string") return; // a resize
+      const s = machine.sessions[this.id];
+      for (const ch of dec.decode(data as Uint8Array)) {
+        if (ch !== "\r") {
+          this.line += ch;
+          this.out(ch);
+          continue;
+        }
+        const [cmd, arg] = this.line.trim().split(/\s+/);
+        this.line = "";
+        let reply = "";
+        if (cmd === "pwd") reply = s.cwd + "\r\n";
+        else if (cmd === "cd") {
+          const to = arg?.startsWith("/") ? arg : `${s.cwd}/${arg ?? ""}`;
+          if (fs.get(to)?.dir) s.cwd = to;
+          else reply = `bash: cd: ${arg}: No such file or directory\r\n`;
+        } else if (cmd) reply = `bash: ${cmd}: command not found\r\n`;
+        this.out("\r\n" + reply + this.prompt());
+      }
+    }
+    close() {
+      if (this.readyState === 3) return;
+      this.readyState = 3;
+      this.onclose?.(new CloseEvent("close"));
+    }
+  }
+  window.WebSocket = function (url: string | URL, protocols?: string | string[]) {
+    const u = String(url);
+    return u.includes("/ws/session/") ? new FakeSocket(u) : new RealWebSocket(u, protocols);
+  } as unknown as typeof WebSocket;
+  Object.assign(window.WebSocket, { OPEN: 1, CLOSED: 3, CONNECTING: 0, CLOSING: 2 });
 
   const realFetch = window.fetch.bind(window);
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {

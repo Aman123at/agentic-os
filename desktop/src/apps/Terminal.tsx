@@ -12,13 +12,7 @@ import type { SessionInfo } from "../gen/aos/v1/services_pb";
 import { useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import { resolvedTheme } from "../theme";
-import { TermController } from "./terminal/term";
-
-// The Sessions some Terminal window in this tab already shows. A second window
-// re-attaches only to what is left, so two windows never type into one shell.
-const claimed = new Set<string>();
-const claim = (id: string) => claimed.add(id);
-const release = (id: string) => claimed.delete(id);
+import { claim, claimed, release, TermController } from "./terminal/term";
 
 // remember writes the window's User Sessions into its window state, so a reload
 // re-attaches exactly these.

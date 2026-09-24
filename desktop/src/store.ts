@@ -19,7 +19,7 @@ import { subscribe, type ConnState } from "./api/events";
 import { setSubscription, workspaceEvent } from "./api/workspaces";
 import { appForFile } from "./apps/filetypes";
 import { APPS, preloadApps, type AppId } from "./apps/registry";
-import { mayClose } from "./shell/closeGuard";
+import { mayClose, windowClosed } from "./shell/closeGuard";
 import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
 import { type WallpaperDesignId } from "./shell/wallpaper";
 import { applyGlass, applyTheme, type ThemePref } from "./theme";
@@ -482,6 +482,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       return { windows: rest, focused: s.focused === id ? (topmost(rest)?.id ?? "") : s.focused };
     });
     save(get);
+    windowClosed(id);
   },
 
   focusWindow: (id) => {

@@ -12,3 +12,21 @@ export function setCloseGuard(winId: string, guard: (() => boolean) | null): voi
 export function mayClose(winId: string): boolean {
   return guards.get(winId)?.() ?? true;
 }
+
+// What a window's app ends when the window closes, not merely unmounts (a
+// reload, or StrictMode's remount in development): Code's Terminal panel ends
+// its Sessions with the window (M8.6).
+const endings = new Map<string, Set<() => void>>();
+
+export function onWindowClosed(winId: string, end: () => void): () => void {
+  let set = endings.get(winId);
+  if (!set) endings.set(winId, (set = new Set()));
+  set.add(end);
+  return () => void set.delete(end);
+}
+
+export function windowClosed(winId: string): void {
+  const set = endings.get(winId);
+  endings.delete(winId);
+  set?.forEach((end) => end());
+}
