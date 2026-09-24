@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.6 built; M8.7 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.7 built; M8.8 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1972,6 +1972,17 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    grouped by file, a click jumps to the line. Replace-in-files is out of M8.
    *Tests:* ranking table; `.gitignore`; `rg` and fallback give the same
    results; Playwright — ⌘P and ⌘⇧F.
+   *As built:* the fallback is a new search of AOS's own, not
+   `files.SearchQuery` (which has no regex, case or globs), walking exactly as
+   ripgrep is told to: hidden files in, the watch's skipped folders and binary
+   files out, no symlinks followed, only the Workspace's own `.gitignore` files
+   (not the parent's, the global one or `.git/info/exclude`). Include globs
+   are applied to ripgrep's results, because `--glob` would override
+   `.gitignore`. Quick Open's list is loaded on the first ⌘P and kept current
+   from the watch; a rescan or an edited `.gitignore` lists it afresh. Results
+   stop at 2000 lines; Quick Open lists up to 100 000 files. `ripgrep` joined
+   the image and `install.sh` here (best-effort, apt only). The activity bar
+   arrives with the Search view: Explorer (⌘⇧E) and Search (⌘⇧F).
 
 8. **Symbols and navigation across files.** `CodeService.Definition`,
    `References`, `DocumentSymbols`, `WorkspaceSymbols`, backed by
