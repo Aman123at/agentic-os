@@ -270,7 +270,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	userFiles := files.AsUser{Ops: userOps, UID: d.agentUID, GID: d.agentGID, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.agentHome,
-		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
+		UserFiles: userFiles, FileOps: userOps, Protected: d.locks, OwnState: d.ownState(),
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
 		// Clearing Root Mode history removes the Root Realm's whole subtree — its
@@ -551,6 +551,17 @@ func (d *Daemon) rootPolicy() sandbox.Policy {
 		Protected: []string{d.exe, "/usr/local/bin/aos", "/usr/local/lib/aos", unitPath},
 		Writable:  []string{"/"},
 	}
+}
+
+// ownState is what Code shows read-only whatever the Realm's user may write
+// (M8.4): in Root Mode, AOS's own state — what rootPolicy hides from a root
+// Agent or keeps read-only. In Standard Mode aos can't write it anyway.
+func (d *Daemon) ownState() []string {
+	if !d.realm.IsRoot() {
+		return nil
+	}
+	p := d.rootPolicy()
+	return append(append([]string{}, p.Hidden...), p.Protected...)
 }
 
 // widenToHost opens the Writable set from home to the whole VPS minus an explicit

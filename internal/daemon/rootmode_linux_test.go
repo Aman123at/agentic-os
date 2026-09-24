@@ -99,3 +99,18 @@ func TestLaunchServiceRunsAsRootInRootMode(t *testing.T) {
 		t.Errorf("Service env = %v, want HOME=/root and USER=root", cmd.Env)
 	}
 }
+
+// TestCodeShowsAOSStateReadOnlyInRootMode is M8.4's rule: root may write
+// anything, but FileInfo reports AOS's own state not writable in Root Mode, so
+// Code opens it read-only; Standard Mode needs no list, aos can't write it.
+func TestCodeShowsAOSStateReadOnlyInRootMode(t *testing.T) {
+	own := rootDaemon().ownState()
+	for _, p := range []string{StateDir, "/etc/aos", "/usr/local/bin/aos", unitPath} {
+		if !slices.Contains(own, p) {
+			t.Errorf("%s is not in Root Mode's own state %v", p, own)
+		}
+	}
+	if got := vpsDaemon("host").ownState(); got != nil {
+		t.Errorf("Standard Mode's own state = %v, want none", got)
+	}
+}

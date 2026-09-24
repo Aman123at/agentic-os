@@ -2768,6 +2768,10 @@ type FileInfo struct {
 	// Protected Path), "inherited" (inside one of those), or "" when it is not
 	// protected at all.
 	ProtectSource string `protobuf:"bytes,10,opt,name=protect_source,json=protectSource,proto3" json:"protect_source,omitempty"`
+	// Whether the Realm's user may write it (for a folder, add to it), checked
+	// as that user (M8.4). Code opens a file that isn't writable read-only. AOS's
+	// own state is never writable here, even to root.
+	Writable      bool `protobuf:"varint,11,opt,name=writable,proto3" json:"writable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2870,6 +2874,13 @@ func (x *FileInfo) GetProtectSource() string {
 		return x.ProtectSource
 	}
 	return ""
+}
+
+func (x *FileInfo) GetWritable() bool {
+	if x != nil {
+		return x.Writable
+	}
+	return false
 }
 
 type ListRequest struct {
@@ -8736,7 +8747,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\fWatchRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\";\n" +
 	"\rWatchResponse\x12*\n" +
-	"\aentries\x18\x01 \x03(\v2\x10.aos.v1.FileInfoR\aentries\"\xa9\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x10.aos.v1.FileInfoR\aentries\"\xc5\x02\n" +
 	"\bFileInfo\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
@@ -8750,7 +8761,8 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"modifiedAt\x12\x1c\n" +
 	"\tprotected\x18\t \x01(\bR\tprotected\x12%\n" +
 	"\x0eprotect_source\x18\n" +
-	" \x01(\tR\rprotectSource\"!\n" +
+	" \x01(\tR\rprotectSource\x12\x1a\n" +
+	"\bwritable\x18\v \x01(\bR\bwritable\"!\n" +
 	"\vListRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\":\n" +
 	"\fListResponse\x12*\n" +

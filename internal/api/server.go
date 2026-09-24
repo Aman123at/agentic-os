@@ -80,9 +80,14 @@ type Server struct {
 	UserFiles files.Runner // file operations as the aos user, unconfined
 	FileOps   files.Ops
 	Protected Protected
-	Sessions  Sessions
-	Memories  *profile.Memories
-	Desktop   *desktop.State
+	// OwnState is AOS's own state, which FileInfo reports not writable whatever
+	// the Realm's user may do (M8.4): in Root Mode, where that user is root, the
+	// paths a root Agent's policy hides or keeps read-only (§7.2), so Code opens
+	// them read-only. Files under a path are included.
+	OwnState []string
+	Sessions Sessions
+	Memories *profile.Memories
+	Desktop  *desktop.State
 	// Settings are the settings that can change while aosd runs.
 	Settings *settings.Store
 	// Catalogue is the model catalogue the Settings dropdowns offer (M6.16).
@@ -479,7 +484,18 @@ func (f fileService) abs(p string) (string, error) {
 func (f fileService) info(i files.Info) *aosv1.FileInfo {
 	src := f.s.Protected.IsProtected(i.Path)
 	return &aosv1.FileInfo{Path: i.Path, Name: i.Name, Dir: i.Dir, Symlink: i.Symlink, LinkTarget: i.LinkTarget, Size: i.Size,
-		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src}
+		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src,
+		Writable: i.Writable && !f.s.ownState(i.Path)}
+}
+
+// ownState reports whether p is, or is inside, one of OwnState's paths.
+func (s *Server) ownState(p string) bool {
+	for _, own := range s.OwnState {
+		if p == own || strings.HasPrefix(p, strings.TrimSuffix(own, "/")+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (f fileService) List(ctx context.Context, req *connect.Request[aosv1.ListRequest]) (*connect.Response[aosv1.ListResponse], error) {

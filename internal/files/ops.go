@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 // Ops performs file operations for one uid.
@@ -329,6 +331,11 @@ type Info struct {
 	Size       int64       `json:"size"`
 	Mode       fs.FileMode `json:"mode"`
 	ModTime    time.Time   `json:"modified"`
+	// Writable is whether this process's user may write the file (or, for a
+	// folder, make entries in it), by access(2): the Desktop's worker runs as
+	// the Realm's user, so it is what Code may save (M8.4). Landlock is not
+	// consulted, so for an Agent's worker it can say more than the Agent may.
+	Writable bool `json:"writable,omitempty"`
 }
 
 // Stat describes path without following a final symlink; Dir reports whether
@@ -338,7 +345,7 @@ func (o Ops) Stat(path string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	info := Info{Path: path, Name: fi.Name(), Dir: fi.IsDir(), Size: fi.Size(), Mode: fi.Mode(), ModTime: fi.ModTime()}
+	info := Info{Path: path, Name: fi.Name(), Dir: fi.IsDir(), Size: fi.Size(), Mode: fi.Mode(), ModTime: fi.ModTime(), Writable: unix.Access(path, unix.W_OK) == nil}
 	if fi.Mode()&fs.ModeSymlink != 0 {
 		info.Symlink = true
 		info.LinkTarget, _ = os.Readlink(path)

@@ -350,6 +350,10 @@ message FileInfo {
   // Protected Path), "inherited" (inside one of those), or "" when it is not
   // protected at all.
   string protect_source = 10;
+  // Whether the Realm's user may write it (for a folder, add to it), checked
+  // as that user (M8.4). Code opens a file that isn't writable read-only. AOS's
+  // own state is never writable here, even to root.
+  bool writable = 11;
 }
 
 message ListRequest {

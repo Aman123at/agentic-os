@@ -13,6 +13,7 @@ import (
 	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 	"github.com/Aman123at/agentic-os/gen/go/aos/v1/aosv1connect"
 	"github.com/Aman123at/agentic-os/internal/audit"
+	"github.com/Aman123at/agentic-os/internal/files"
 )
 
 // fileClient is FileService over fileServer's temp home.
@@ -49,5 +50,33 @@ func TestMakeFolderMakesANewFolderAndAuditsIt(t *testing.T) {
 	}
 	if made != 2 {
 		t.Errorf("%d make_folder entries in the Audit Log, want 2 (one ok, one error)", made)
+	}
+}
+
+func TestFileInfoReportsAOSStateNotWritable(t *testing.T) {
+	home := t.TempDir()
+	auth, _ := newAuth(t)
+	ops := files.Ops{Home: home, UID: os.Getuid()}
+	state := filepath.Join(home, "state")
+	for _, p := range []string{filepath.Join(state, "aos.db"), filepath.Join(home, "notes.md")} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := &Server{Auth: auth, Home: home, UserFiles: files.InProcess{Ops: ops}, Protected: noLocks{}, OwnState: []string{state}}
+	srv := httptest.NewServer(auth.TCP(s.Handler()))
+	t.Cleanup(srv.Close)
+	c := aosv1connect.NewFileServiceClient(&http.Client{Transport: bearer{}}, srv.URL)
+	for p, want := range map[string]bool{"~/notes.md": true, "~/state": false, "~/state/aos.db": false} {
+		resp, err := c.Stat(context.Background(), connect.NewRequest(&aosv1.StatRequest{Path: p}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.Msg.Info.Writable != want {
+			t.Errorf("%s: writable %v, want %v", p, resp.Msg.Info.Writable, want)
+		}
 	}
 }

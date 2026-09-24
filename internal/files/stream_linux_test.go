@@ -110,3 +110,28 @@ func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
 		t.Fatalf("reading a root-only file as nobody: %v, want ErrPermission", err)
 	}
 }
+
+// TestAWorkerSaysWhatItsUserMayWrite is M8.4: writable is checked as the
+// worker's user, so a file root owns is not writable to nobody.
+func TestAWorkerSaysWhatItsUserMayWrite(t *testing.T) {
+	u, dir := asNobody(t)
+	for name, mode := range map[string]os.FileMode{"roots.conf": 0o644, "shared.txt": 0o666} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(dir, name), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var infos []Info
+	if err := u.Run(context.Background(), OpList, PathArgs{Path: dir}, &infos, nil); err != nil {
+		t.Fatal(err)
+	}
+	writable := map[string]bool{}
+	for _, i := range infos {
+		writable[i.Name] = i.Writable
+	}
+	if writable["roots.conf"] || !writable["shared.txt"] {
+		t.Errorf("as nobody: %v, want only shared.txt writable", writable)
+	}
+}

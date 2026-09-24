@@ -192,3 +192,32 @@ func TestMkdirMakesANewFolderOnly(t *testing.T) {
 		t.Errorf("a file already there: %v, want ErrExists", err)
 	}
 }
+
+func TestStatSaysWhetherItsUserMayWrite(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root may write everything; the nobody worker test covers another user")
+	}
+	ops, home := machine(t)
+	rw := filepath.Join(home, "rw.txt")
+	ro := filepath.Join(home, "ro.txt")
+	writeFile(t, rw, "x")
+	writeFile(t, ro, "x")
+	if err := os.Chmod(ro, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]bool{rw: true, ro: false, home: true} {
+		info, err := ops.Stat(p)
+		if err != nil || info.Writable != want {
+			t.Errorf("%s: writable %v (%v), want %v", p, info.Writable, err, want)
+		}
+	}
+	list, err := ops.List(home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range list {
+		if e.Writable != (e.Path != ro) {
+			t.Errorf("listed %s writable %v", e.Name, e.Writable)
+		}
+	}
+}
