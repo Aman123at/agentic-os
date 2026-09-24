@@ -532,6 +532,16 @@ func (f fileService) Write(ctx context.Context, req *connect.Request[aosv1.Write
 	return connect.NewResponse(&aosv1.WriteResponse{}), connectError(err)
 }
 
+func (f fileService) MakeFolder(ctx context.Context, req *connect.Request[aosv1.MakeFolderRequest]) (*connect.Response[aosv1.MakeFolderResponse], error) {
+	p, err := f.abs(req.Msg.Path)
+	if err != nil {
+		return nil, err
+	}
+	err = f.s.UserFiles.Run(ctx, files.OpMkdir, files.PathArgs{Path: p}, nil, nil)
+	f.audit(ctx, "make_folder", p, err)
+	return connect.NewResponse(&aosv1.MakeFolderResponse{}), connectError(err)
+}
+
 func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrite bool) error {
 	s, err := f.abs(src)
 	if err != nil {

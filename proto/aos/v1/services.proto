@@ -311,6 +311,9 @@ service FileService {
   rpc Stat(StatRequest) returns (StatResponse);
   rpc Read(ReadRequest) returns (ReadResponse);
   rpc Write(WriteRequest) returns (WriteResponse);
+  // Makes a new folder, and any missing folders above it (M8.3). Something
+  // already at the path is AlreadyExists.
+  rpc MakeFolder(MakeFolderRequest) returns (MakeFolderResponse);
   rpc Move(MoveRequest) returns (MoveResponse);
   rpc Copy(CopyRequest) returns (CopyResponse);
   // Moves to the Trash.
@@ -380,6 +383,11 @@ message WriteRequest {
   bool overwrite = 3;
 }
 message WriteResponse {}
+
+message MakeFolderRequest {
+  string path = 1;
+}
+message MakeFolderResponse {}
 
 message MoveRequest {
   string source = 1;

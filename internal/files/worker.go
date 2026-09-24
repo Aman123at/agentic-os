@@ -19,6 +19,7 @@ const (
 	OpReadText    = "read_text"
 	OpRead        = "read"
 	OpWrite       = "write"
+	OpMkdir       = "mkdir"
 	OpEdit        = "edit"
 	OpMove        = "move"
 	OpCopy        = "copy"
@@ -237,6 +238,12 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return nil, ops.Write(a.Path, []byte(a.Content), a.Overwrite)
+	case OpMkdir:
+		var a PathArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return nil, ops.Mkdir(a.Path)
 	case OpEdit:
 		var a EditArgs
 		if err := decode(&a); err != nil {

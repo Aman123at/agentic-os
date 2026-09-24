@@ -70,6 +70,19 @@ func (o Ops) Write(path string, content []byte, overwrite bool) error {
 	return f.Close()
 }
 
+// Mkdir makes a folder, and any missing folders above it. Something already at
+// path is ErrExists, a folder included: a new folder is new.
+func (o Ops) Mkdir(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	err := os.Mkdir(path, 0o755)
+	if errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("mkdir %s: %w", path, ErrExists)
+	}
+	return err
+}
+
 // Edit is one search-and-replace in a file.
 type Edit struct {
 	Old string `json:"old"`

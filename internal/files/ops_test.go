@@ -174,3 +174,21 @@ func TestListStatAndSearch(t *testing.T) {
 		t.Errorf("name search: %+v, %v", matches, err)
 	}
 }
+
+func TestMkdirMakesANewFolderOnly(t *testing.T) {
+	ops, home := machine(t)
+	p := filepath.Join(home, "project", "src", "pkg")
+	if err := ops.Mkdir(p); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(p); err != nil || !fi.IsDir() {
+		t.Fatalf("after Mkdir: %v", err)
+	}
+	if err := ops.Mkdir(p); !errors.Is(err, ErrExists) {
+		t.Errorf("a folder already there: %v, want ErrExists", err)
+	}
+	writeFile(t, filepath.Join(home, "notes.md"), "x")
+	if err := ops.Mkdir(filepath.Join(home, "notes.md")); !errors.Is(err, ErrExists) {
+		t.Errorf("a file already there: %v, want ErrExists", err)
+	}
+}

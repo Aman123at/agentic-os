@@ -105,6 +105,8 @@ const (
 	FileServiceReadProcedure = "/aos.v1.FileService/Read"
 	// FileServiceWriteProcedure is the fully-qualified name of the FileService's Write RPC.
 	FileServiceWriteProcedure = "/aos.v1.FileService/Write"
+	// FileServiceMakeFolderProcedure is the fully-qualified name of the FileService's MakeFolder RPC.
+	FileServiceMakeFolderProcedure = "/aos.v1.FileService/MakeFolder"
 	// FileServiceMoveProcedure is the fully-qualified name of the FileService's Move RPC.
 	FileServiceMoveProcedure = "/aos.v1.FileService/Move"
 	// FileServiceCopyProcedure is the fully-qualified name of the FileService's Copy RPC.
@@ -926,6 +928,9 @@ type FileServiceClient interface {
 	Stat(context.Context, *connect.Request[v1.StatRequest]) (*connect.Response[v1.StatResponse], error)
 	Read(context.Context, *connect.Request[v1.ReadRequest]) (*connect.Response[v1.ReadResponse], error)
 	Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error)
+	// Makes a new folder, and any missing folders above it (M8.3). Something
+	// already at the path is AlreadyExists.
+	MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error)
 	Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error)
 	Copy(context.Context, *connect.Request[v1.CopyRequest]) (*connect.Response[v1.CopyResponse], error)
 	// Moves to the Trash.
@@ -972,6 +977,12 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			httpClient,
 			baseURL+FileServiceWriteProcedure,
 			connect.WithSchema(fileServiceMethods.ByName("Write")),
+			connect.WithClientOptions(opts...),
+		),
+		makeFolder: connect.NewClient[v1.MakeFolderRequest, v1.MakeFolderResponse](
+			httpClient,
+			baseURL+FileServiceMakeFolderProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("MakeFolder")),
 			connect.WithClientOptions(opts...),
 		),
 		move: connect.NewClient[v1.MoveRequest, v1.MoveResponse](
@@ -1025,6 +1036,7 @@ type fileServiceClient struct {
 	stat          *connect.Client[v1.StatRequest, v1.StatResponse]
 	read          *connect.Client[v1.ReadRequest, v1.ReadResponse]
 	write         *connect.Client[v1.WriteRequest, v1.WriteResponse]
+	makeFolder    *connect.Client[v1.MakeFolderRequest, v1.MakeFolderResponse]
 	move          *connect.Client[v1.MoveRequest, v1.MoveResponse]
 	copy          *connect.Client[v1.CopyRequest, v1.CopyResponse]
 	delete        *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
@@ -1052,6 +1064,11 @@ func (c *fileServiceClient) Read(ctx context.Context, req *connect.Request[v1.Re
 // Write calls aos.v1.FileService.Write.
 func (c *fileServiceClient) Write(ctx context.Context, req *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error) {
 	return c.write.CallUnary(ctx, req)
+}
+
+// MakeFolder calls aos.v1.FileService.MakeFolder.
+func (c *fileServiceClient) MakeFolder(ctx context.Context, req *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error) {
+	return c.makeFolder.CallUnary(ctx, req)
 }
 
 // Move calls aos.v1.FileService.Move.
@@ -1095,6 +1112,9 @@ type FileServiceHandler interface {
 	Stat(context.Context, *connect.Request[v1.StatRequest]) (*connect.Response[v1.StatResponse], error)
 	Read(context.Context, *connect.Request[v1.ReadRequest]) (*connect.Response[v1.ReadResponse], error)
 	Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error)
+	// Makes a new folder, and any missing folders above it (M8.3). Something
+	// already at the path is AlreadyExists.
+	MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error)
 	Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error)
 	Copy(context.Context, *connect.Request[v1.CopyRequest]) (*connect.Response[v1.CopyResponse], error)
 	// Moves to the Trash.
@@ -1137,6 +1157,12 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		FileServiceWriteProcedure,
 		svc.Write,
 		connect.WithSchema(fileServiceMethods.ByName("Write")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceMakeFolderHandler := connect.NewUnaryHandler(
+		FileServiceMakeFolderProcedure,
+		svc.MakeFolder,
+		connect.WithSchema(fileServiceMethods.ByName("MakeFolder")),
 		connect.WithHandlerOptions(opts...),
 	)
 	fileServiceMoveHandler := connect.NewUnaryHandler(
@@ -1191,6 +1217,8 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 			fileServiceReadHandler.ServeHTTP(w, r)
 		case FileServiceWriteProcedure:
 			fileServiceWriteHandler.ServeHTTP(w, r)
+		case FileServiceMakeFolderProcedure:
+			fileServiceMakeFolderHandler.ServeHTTP(w, r)
 		case FileServiceMoveProcedure:
 			fileServiceMoveHandler.ServeHTTP(w, r)
 		case FileServiceCopyProcedure:
@@ -1228,6 +1256,10 @@ func (UnimplementedFileServiceHandler) Read(context.Context, *connect.Request[v1
 
 func (UnimplementedFileServiceHandler) Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.Write is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.MakeFolder is not implemented"))
 }
 
 func (UnimplementedFileServiceHandler) Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error) {
