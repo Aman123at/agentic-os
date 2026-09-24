@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.7 built; M8.8 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.8 built; M8.9 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1999,6 +1999,17 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    universal-ctags"* instead of failing. *Tests:* `code` — index and incremental
    update on a fixture repo (Go, TS, Python); definition ranking; Playwright —
    F12 into another file and back.
+   *As built:* the index covers what Quick Open lists (so `.gitignore` holds),
+   is built at the first question, re-tags only the files the watch saw change
+   at the next one, and forgets deleted ones at once. Definitions in the asking
+   file's language win when there are any; a package clause comes after a real
+   definition. `References` needs no ctags: a whole-word, case-sensitive
+   search in the language's files (up to 1000 lines), shown in the palette
+   like several definitions. ⌘T is the browser's New Tab, which a page can't
+   always take, so the palette took VS Code's prefixes: `#` symbols anywhere,
+   `@` symbols in the file (⌘⇧O), `:` a line (⌃G). "Past 20 000 files, the
+   open files' folders" is the folders of files asked from. Completion
+   keywords are a list per language family in the Desktop.
 
 9. **Languages.** Lezer grammars for JavaScript/TypeScript/JSX/TSX, Python,
    Go, Rust, C/C++, Java, PHP, SQL, HTML, CSS/SCSS/Less, JSON, YAML, XML,
