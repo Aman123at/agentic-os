@@ -8,11 +8,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { files, trash } from "../api/client";
 import { friendlyError } from "../api/error";
+import { sensitiveOf } from "../api/sensitive";
 import { watchFolder } from "../api/watch";
 import type { FileInfo, TrashItem } from "../gen/aos/v1/services_pb";
 import { useWinFocused, useWinState } from "../shell/win";
 import { useDesktop } from "../store";
 import { Confirm } from "../ui/Confirm";
+import { SensitiveConfirm, type SensitiveAsk } from "../ui/SensitiveConfirm";
 import { Splitter } from "../ui/Splitter";
 import { ContextMenu, MenuItem } from "../ui/ContextMenu";
 import { Skeleton } from "../ui/Skeleton";
@@ -64,6 +66,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [sensitive, setSensitive] = useState<{ ask: SensitiveAsk; retry: () => void } | null>(null);
   const [view, setView] = useState<View>(savedView === "icon" || savedView === "column" ? savedView : "list");
   const [selected, setSelected] = useState<string>("");
   const [quick, setQuick] = useState<FileInfo | null>(null);
@@ -217,16 +220,23 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   }, [focused, quick, entries, selected, ask]);
 
   // run wraps a mutation: it reports failures in the status bar and reloads.
+  // run runs a change. One aosd refuses because it touches a Sensitive
+  // System File in Root Mode (M8.5) asks, and runs again confirmed.
   const run = useCallback(
-    async (label: string, fn: () => Promise<unknown>) => {
+    async (label: string, fn: (confirmSensitive: boolean) => Promise<unknown>, action = "", confirmSensitive = false) => {
       setBusy(label);
       setError("");
       try {
-        await fn();
+        await fn(confirmSensitive);
         reload();
         void refreshTrashCount();
       } catch (err) {
-        setError(friendlyError(err));
+        const s = sensitiveOf(err);
+        if (s && action && !confirmSensitive) {
+          setSensitive({ ask: { path: s.path, reason: s.reason, action, keeps: false }, retry: () => void run(label, fn, action, true) });
+        } else {
+          setError(friendlyError(err));
+        }
       } finally {
         setBusy("");
       }
@@ -241,7 +251,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
     run(e.protectSource === "user" ? "Unprotecting…" : "Protecting…", () =>
       e.protectSource === "user" ? files.unprotect({ path: e.path }) : files.protect({ path: e.path }),
     );
-  const doDelete = (e: FileInfo) => run(`Moving ${e.name} to Trash…`, () => files.delete({ path: e.path }));
+  const doDelete = (e: FileInfo) => run(`Moving ${e.name} to Trash…`, (confirmSensitive) => files.delete({ path: e.path, confirmSensitive }), "Move to Trash");
   const doRestore = (it: TrashItem) => run("Restoring…", () => trash.restore({ id: it.id }));
   const doEmpty = () => {
     setEmptying(false);
@@ -250,7 +260,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   const doMove = (srcPath: string, destDir: string) => {
     const dest = join(destDir, basename(srcPath));
     if (dest === srcPath) return;
-    void run("Moving…", () => files.move({ source: srcPath, destination: dest }));
+    void run("Moving…", (confirmSensitive) => files.move({ source: srcPath, destination: dest, confirmSensitive }), "Move");
   };
 
   const uploadFiles = (list: FileList | null) => {
@@ -520,6 +530,16 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
           danger
           onConfirm={doEmpty}
           onCancel={() => setEmptying(false)}
+        />
+      )}
+      {sensitive && (
+        <SensitiveConfirm
+          ask={sensitive.ask}
+          onCancel={() => setSensitive(null)}
+          onConfirm={() => {
+            setSensitive(null);
+            sensitive.retry();
+          }}
         />
       )}
       {ask && <AskDialog file={ask} onCancel={() => setAsk(null)} onSubmit={doAsk} />}

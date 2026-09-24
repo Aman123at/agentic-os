@@ -12,11 +12,13 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
+import { sensitiveOf } from "../../api/sensitive";
 import { languageFor } from "../../editor/languages";
 import { highlight, theme } from "../../editor/theme";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
+import { SensitiveConfirm, type SensitiveAsk } from "../../ui/SensitiveConfirm";
 import { formatSize, looksBinary } from "../finder/fs";
 
 // The largest file TextEdit opens or saves; FileService.Read returns at most
@@ -47,6 +49,7 @@ export default function TextEdit() {
   const [saveAs, setSaveAs] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [sensitive, setSensitive] = useState<{ ask: SensitiveAsk; opts: { force?: boolean; create?: boolean } } | null>(null);
 
   const extensions = useCallback(
     (): Extension[] => [
@@ -126,7 +129,7 @@ export default function TextEdit() {
   // the file on disk is still the version the text came from. A new document
   // (create) never replaces a file without asking.
   const write = useCallback(
-    async (p: string, opts: { force?: boolean; create?: boolean } = {}) => {
+    async (p: string, opts: { force?: boolean; create?: boolean; confirmed?: boolean } = {}) => {
       const v = view.current;
       if (!v || busy) return;
       const doc = v.state.doc;
@@ -145,12 +148,13 @@ export default function TextEdit() {
           );
           if (now !== onDisk.current) return setConflict(true);
         }
+        const confirmSensitive = Boolean(opts.confirmed);
         try {
-          await files.write({ path: p, content: bytes, overwrite: !opts.create });
+          await files.write({ path: p, content: bytes, overwrite: !opts.create, confirmSensitive });
         } catch (err) {
           if (!opts.create || ConnectError.from(err).code !== Code.AlreadyExists) throw err;
           if (!window.confirm(`${p} already exists. Replace it?`)) return;
-          await files.write({ path: p, content: bytes, overwrite: true });
+          await files.write({ path: p, content: bytes, overwrite: true, confirmSensitive });
         }
         onDisk.current = stamp((await files.stat({ path: p })).info);
         savedDoc.current = doc;
@@ -159,6 +163,18 @@ export default function TextEdit() {
         setEdited(!v.state.doc.eq(doc));
         if (p !== path) setPath(p);
       } catch (err) {
+        // A Sensitive System File in Root Mode (M8.5): ask, with its check,
+        // and save again once confirmed.
+        const s = sensitiveOf(err);
+        if (s && !opts.confirmed) {
+          const ask: SensitiveAsk = { path: p, reason: s.reason, action: "Save", check: "checking", keeps: true };
+          setSensitive({ ask, opts });
+          void files.checkSensitive({ path: p, content: bytes }).then(
+            (check) => setSensitive((cur) => (cur?.ask === ask ? { ask: { ...ask, check }, opts } : cur)),
+            () => setSensitive((cur) => (cur?.ask === ask ? { ask: { ...ask, check: undefined }, opts } : cur)),
+          );
+          return;
+        }
         setError(friendlyError(err));
       } finally {
         setBusy(false);
@@ -166,6 +182,8 @@ export default function TextEdit() {
     },
     [busy, path, setPath],
   );
+  const writeRef = useRef(write);
+  writeRef.current = write;
 
   const save = useCallback(() => {
     if (load.kind !== "ready") return;
@@ -233,6 +251,17 @@ export default function TextEdit() {
             Cancel
           </button>
         </div>
+      )}
+
+      {sensitive && (
+        <SensitiveConfirm
+          ask={sensitive.ask}
+          onCancel={() => setSensitive(null)}
+          onConfirm={() => {
+            setSensitive(null);
+            void writeRef.current(sensitive.ask.path, { ...sensitive.opts, confirmed: true });
+          }}
+        />
       )}
 
       {error && (

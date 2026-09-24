@@ -8,7 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
-import type { FileInfo } from "../../gen/aos/v1/services_pb";
+import { sensitiveOf } from "../../api/sensitive";
+import type { FileInfo, SensitivePath } from "../../gen/aos/v1/services_pb";
 import { ContextMenu, MenuItem } from "../../ui/ContextMenu";
 import { VirtualList } from "../../ui/VirtualList";
 import { iconFor } from "../finder/fs";
@@ -38,9 +39,11 @@ interface Props {
   onOpen: (path: string) => void;
   onMoved: (from: string, to: string) => void;
   onError: (message: string) => void;
+  // aosd refused to change a Sensitive System File (M8.5): ask, then retry.
+  onSensitive: (s: SensitivePath, action: string, retry: () => Promise<void>) => void;
 }
 
-export function Explorer({ root, active, subscribe, onOpen, onMoved, onError }: Props) {
+export function Explorer({ root, active, subscribe, onOpen, onMoved, onError, onSensitive }: Props) {
   const [listings, setListings] = useState<Map<string, Listing>>(() => new Map());
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([root]));
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -114,37 +117,43 @@ export function Explorer({ root, active, subscribe, onOpen, onMoved, onError }: 
     setEditing({ kind, dir });
   };
 
+  // act runs a change, and lists dir again after it. A refusal to change a
+  // Sensitive System File asks, then runs it again confirmed.
+  const act = async (dir: string, action: string, name: string, op: (confirm: boolean) => Promise<unknown>, confirm = false) => {
+    try {
+      await op(confirm);
+    } catch (err) {
+      const s = sensitiveOf(err);
+      if (s && !confirm) onSensitive(s, action, () => act(dir, action, name, op, true));
+      else onError(ConnectError.from(err).code === RpcCode.AlreadyExists ? `Something named “${name}” is already there.` : friendlyError(err));
+    }
+    void list(dir);
+  };
+
   const commit = async (e: Editing, name: string) => {
     setEditing(null);
     name = name.trim();
     if (!name || (e.kind === "rename" && name === e.name)) return;
     if (name.includes("/") || name === "." || name === "..") return onError(`“${name}” is not a name a file can have.`);
     const path = join(e.dir, name);
-    try {
-      if (e.kind === "file") {
-        await files.write({ path, content: new Uint8Array(), overwrite: false });
+    if (e.kind === "file") {
+      await act(e.dir, "Create", name, async (confirmSensitive) => {
+        await files.write({ path, content: new Uint8Array(), overwrite: false, confirmSensitive });
         onOpen(path);
-      } else if (e.kind === "folder") {
-        await files.makeFolder({ path });
-      } else if (e.kind === "rename") {
-        await files.move({ source: e.path, destination: path, overwrite: false });
+      });
+    } else if (e.kind === "folder") {
+      await act(e.dir, "Create", name, (confirmSensitive) => files.makeFolder({ path, confirmSensitive }));
+    } else if (e.kind === "rename") {
+      await act(e.dir, "Rename", name, async (confirmSensitive) => {
+        await files.move({ source: e.path, destination: path, overwrite: false, confirmSensitive });
         onMoved(e.path, path);
-      }
-    } catch (err) {
-      const c = ConnectError.from(err).code;
-      onError(c === RpcCode.AlreadyExists ? `Something named “${name}” is already there.` : friendlyError(err));
+      });
     }
-    void list(e.dir);
   };
 
   const trash = async (info: FileInfo) => {
     setMenu(null);
-    try {
-      await files.delete({ path: info.path });
-    } catch (err) {
-      onError(friendlyError(err));
-    }
-    void list(dirOf(info.path));
+    await act(dirOf(info.path), "Move to Trash", info.name, (confirmSensitive) => files.delete({ path: info.path, confirmSensitive }));
   };
 
   const name = root === "/" ? "/" : root.slice(root.lastIndexOf("/") + 1);

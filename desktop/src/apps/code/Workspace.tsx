@@ -16,14 +16,25 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
+import { sensitiveOf } from "../../api/sensitive";
 import { openWorkspace, type WorkspaceHandle } from "../../api/workspaces";
 import { detectIndent, MAX_TEXT, readText, stamp, type Indent } from "../../editor/document";
 import { languageFor, languageName } from "../../editor/languages";
 import { highlight, theme } from "../../editor/theme";
-import { FileChange_Kind, WorkspaceWatch_State, type FileInfo, type OpenWorkspaceResponse, type WorkspaceChanged, type WorkspaceWatch } from "../../gen/aos/v1/services_pb";
+import {
+  FileChange_Kind,
+  WorkspaceWatch_State,
+  type FileInfo,
+  type OpenWorkspaceResponse,
+  type SensitiveBackup,
+  type SensitivePath,
+  type WorkspaceChanged,
+  type WorkspaceWatch,
+} from "../../gen/aos/v1/services_pb";
 import { setCloseGuard } from "../../shell/closeGuard";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
+import { SensitiveConfirm, type SensitiveAsk } from "../../ui/SensitiveConfirm";
 import { Splitter } from "../../ui/Splitter";
 import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
@@ -49,6 +60,11 @@ interface Doc {
   // edits, or went away.
   disk?: "changed" | "deleted";
   readOnly: string; // why the file can't be edited, or ""
+  // In Root Mode, what can go wrong changing this Sensitive System File (M8.5):
+  // saving asks first, Auto Save leaves it alone, and the versions confirmed
+  // saves replaced can be restored.
+  sensitive: string;
+  backups: SensitiveBackup[];
   indent: Indent;
   crlf: boolean;
   lang: Extension | null;
@@ -82,6 +98,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   const [error, setError] = useState("");
   const [ask, setAsk] = useState<Ask | null>(null);
+  const [sensitive, setSensitive] = useState<{ ask: SensitiveAsk; confirm: () => void } | null>(null);
   const [, setTick] = useState(0);
   const bump = useCallback(() => setTick((n) => n + 1), []);
 
@@ -181,11 +198,17 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   // readOnlyReason says why a file opens read-only, or "". Whether it is
   // writable was checked on aosd as the Realm's user (M8.4).
   const readOnlyReason = (root: OpenWorkspaceResponse | null, info: FileInfo): string => {
-    if (!info.writable) {
-      return root?.rootMode ? "Read-only: this is AOS’s own state, which Code doesn’t change even as root." : "Read-only in Standard Mode — aos can’t write this file.";
+    if (info.writable) return "";
+    return root?.rootMode ? "Read-only: this is AOS’s own state, which Code doesn’t change even as root." : "Read-only in Standard Mode — aos can’t write this file.";
+  };
+
+  const loadBackups = async (d: Doc) => {
+    if (!d.sensitive) return;
+    const list = await files.listSensitiveBackups({ path: d.path }).catch(() => null);
+    if (list && docs.current.get(d.path) === d) {
+      d.backups = list.backups;
+      bump();
     }
-    // Editing as root waits for the Sensitive System File guard (M8.5).
-    return root?.rootMode ? "Read-only in Root Mode for now: editing as root arrives with the guard for Sensitive System Files." : "";
   };
 
   const load = useCallback(
@@ -206,6 +229,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         d.indent = detectIndent(got.text, d.path);
         d.crlf = got.text.includes("\r\n");
         d.readOnly = readOnlyReason(wsRef.current, got.info);
+        d.sensitive = got.info.sensitiveReason;
         const anchor = Math.min(keepSelection ?? 0, got.text.length);
         d.state = EditorState.create({ doc: got.text, selection: { anchor }, extensions: extensions(d) });
         d.saved = d.state.doc;
@@ -219,6 +243,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           show();
         }
         bump();
+        void loadBackups(d);
         if (!d.lang) {
           const lang = await languageFor(baseOf(d.path)).catch(() => null);
           if (lang && docs.current.get(d.path) === d) {
@@ -242,7 +267,21 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       const kind = fileKind(p);
       if (kind !== "text" && kind !== "other") return openFile(p);
       if (!docs.current.has(p)) {
-        const d: Doc = { path: p, load: "loading", note: "", stamp: "", dirty: false, saving: false, error: "", readOnly: "", indent: { tabs: false, size: 2 }, crlf: false, lang: null };
+        const d: Doc = {
+          path: p,
+          load: "loading",
+          note: "",
+          stamp: "",
+          dirty: false,
+          saving: false,
+          error: "",
+          readOnly: "",
+          sensitive: "",
+          backups: [],
+          indent: { tabs: false, size: 2 },
+          crlf: false,
+          lang: null,
+        };
         docs.current.set(p, d);
         setOrder((o) => [...o, p]);
         void load(d);
@@ -254,7 +293,9 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   // ------------------------------------------------------------ save
 
-  const save = async (d: Doc, opts: { force?: boolean } = {}): Promise<boolean> => {
+  // save writes a Doc to disk. A Sensitive System File is saved only once the
+  // person has confirmed, after its check (M8.5); aosd refuses it otherwise.
+  const save = async (d: Doc, opts: { force?: boolean; confirmed?: boolean } = {}): Promise<boolean> => {
     const st = current(d);
     if (d.load !== "ready" || !st || d.readOnly || d.saving) return false;
     clearTimeout(d.timer);
@@ -262,6 +303,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     if (bytes.length > MAX_TEXT) {
       d.error = `Code saves files up to ${formatSize(BigInt(MAX_TEXT), false)}.`;
       bump();
+      return false;
+    }
+    if (d.sensitive && !opts.confirmed) {
+      askToSave(d, bytes, opts);
       return false;
     }
     d.saving = true;
@@ -281,13 +326,22 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           return false;
         }
       }
-      await files.write({ path: d.path, content: bytes, overwrite: true });
+      await files.write({ path: d.path, content: bytes, overwrite: true, confirmSensitive: Boolean(opts.confirmed) });
       d.stamp = stamp((await files.stat({ path: d.path })).info);
       d.saved = st.doc;
       d.disk = undefined;
       d.dirty = !current(d)?.doc.eq(st.doc);
+      if (opts.confirmed) void loadBackups(d);
       return true;
     } catch (err) {
+      // aosd knows a file as sensitive that this tab didn't (a new one in
+      // /etc/sudoers.d, say): ask, then save again.
+      const s = sensitiveOf(err);
+      if (s && !opts.confirmed) {
+        d.sensitive = s.reason;
+        askToSave(d, bytes, opts);
+        return false;
+      }
       d.error = friendlyError(err);
       return false;
     } finally {
@@ -296,11 +350,58 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     }
   };
 
+  // askToSave shows the Sensitive System File ask, with the file's check.
+  const askToSave = (d: Doc, bytes: Uint8Array, opts: { force?: boolean }) => {
+    const ask: SensitiveAsk = { path: d.path, reason: d.sensitive, action: "Save", check: "checking", keeps: true };
+    const entry = {
+      ask,
+      confirm: () => {
+        setSensitive(null);
+        void save(d, { ...opts, confirmed: true });
+      },
+    };
+    setSensitive(entry);
+    void files.checkSensitive({ path: d.path, content: bytes }).then(
+      (check) => setSensitive((cur) => (cur === entry || cur?.ask === ask ? { ...entry, ask: { ...ask, check } } : cur)),
+      () => setSensitive((cur) => (cur?.ask === ask ? { ...entry, ask: { ...ask, check: undefined } } : cur)),
+    );
+  };
+
+  // askSensitive asks before an Explorer change aosd refused, and retries it.
+  const askSensitive = (s: SensitivePath, action: string, retry: () => Promise<void>) => {
+    setSensitive({
+      ask: { path: s.path, reason: s.reason, action, keeps: false },
+      confirm: () => {
+        setSensitive(null);
+        void retry();
+      },
+    });
+  };
+
+  const restore = (d: Doc) => {
+    const newest = d.backups[0];
+    if (!newest) return;
+    setSensitive({
+      ask: { path: d.path, reason: d.sensitive, action: "Restore the previous version of", confirmLabel: "Restore", keeps: true },
+      confirm: () => {
+        setSensitive(null);
+        void files.restoreSensitiveBackup({ path: d.path, id: newest.id }).then(
+          () => load(d),
+          (err) => {
+            d.error = friendlyError(err);
+            bump();
+          },
+        );
+      },
+    });
+  };
+
   const scheduleAutoSave = (d: Doc) => {
     clearTimeout(d.timer);
-    if (!autoSaveRef.current) return;
+    // Auto Save never saves a Sensitive System File (M8.5).
+    if (!autoSaveRef.current || d.sensitive) return;
     d.timer = setTimeout(() => {
-      if (autoSaveRef.current && d.dirty && !d.disk && !d.readOnly && docs.current.get(d.path) === d) void save(d);
+      if (autoSaveRef.current && d.dirty && !d.disk && !d.readOnly && !d.sensitive && docs.current.get(d.path) === d) void save(d);
     }, AUTO_SAVE_MS);
   };
 
@@ -532,7 +633,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     <div className="code" onKeyDownCapture={onKeyDown}>
       <div className="code__body">
         <div className="code__side" style={{ width: side }} hidden={side === 0}>
-          <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} />
+          <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} onSensitive={askSensitive} />
         </div>
         <Splitter size={side} onSize={(w) => setSide(String(w))} min={160} max={520} label="Resize the Explorer" restore={240} />
         <div className="code__main">
@@ -573,6 +674,18 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
             </div>
           )}
           {d?.readOnly && <div className="code__banner code__banner--info">{d.readOnly}</div>}
+          {d?.sensitive && (
+            <div className="code__banner code__banner--warn" role="note" aria-label="Sensitive System File">
+              <span>
+                ⚠︎ <strong>Sensitive System File.</strong> {d.sensitive} Saving asks first; Auto Save leaves it alone.
+              </span>
+              {d.backups.length > 0 && (
+                <button className="finder__btn" onClick={() => restore(d)}>
+                  Restore Previous Version
+                </button>
+              )}
+            </div>
+          )}
           {d?.disk === "changed" && (
             <div className="code__banner code__banner--warn" role="alertdialog" aria-label="The file changed on disk">
               <span>{baseOf(d.path)} changed on disk, and you have unsaved changes.</span>
@@ -618,10 +731,27 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
       <StatusBar ws={ws} watch={watch} doc={d} cursor={cursor} autoSave={autoSave} onAutoSave={(on) => setAutoSave(on ? "on" : "off")} />
 
+      {sensitive && (
+        <SensitiveConfirm
+          ask={sensitive.ask}
+          onConfirm={() => {
+            sensitive.confirm();
+            view.current?.focus();
+          }}
+          onCancel={() => {
+            setSensitive(null);
+            view.current?.focus(); // so ⌘S reaches the editor again
+          }}
+        />
+      )}
+
       {ask && (
         <SaveDialog
           names={ask.paths.map(baseOf)}
-          onCancel={() => setAsk(null)}
+          onCancel={() => {
+            setAsk(null);
+            view.current?.focus();
+          }}
           onDiscard={() => {
             setAsk(null);
             ask.then();

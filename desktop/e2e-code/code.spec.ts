@@ -237,13 +237,101 @@ test("Spotlight's Open Folder in Code asks for a folder", async ({ page }) => {
   await expect(page.locator('.window[aria-label="Code"]').getByLabel("Folder to open")).toBeVisible();
 });
 
-test("in Root Mode Auto Save starts off, and files open read-only until M8.5", async ({ page }) => {
-  await boot(page, { rootMode: true });
+test("in Root Mode Code edits as root: Auto Save starts off, and AOS's own state is read-only", async ({ page }) => {
+  await boot(page, { rootMode: true, files: { ...PROJECT, "/var/lib/aos/aos.db": "sqlite" } });
   const win = await openProject(page);
   await expect(win.getByRole("status", { name: "Status bar" })).toContainText("Root Mode · root");
   await expect(win.getByRole("button", { name: "Auto Save: Off" })).toBeVisible();
   await openFile(win, "main.go");
-  await expect(win.getByText(/Read-only in Root Mode/)).toBeVisible();
+  await typeAtEnd(page, win, "// as root");
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect.poll(() => disk(page, "/home/aos/project/main.go")).toContain("// as root");
+  await win.locator(".traffic__close").click();
+
+  await page.locator('.dock__tile[title="Code"]').click();
+  await page.getByLabel("Folder to open").fill("/var/lib/aos");
+  await page.getByRole("button", { name: "Open" }).click();
+  const state = page.locator('.window[aria-label="aos"]');
+  await openFile(state, "aos.db");
+  await expect(state.getByText(/this is AOS’s own state/)).toBeVisible();
+});
+
+const SUDOERS = { ...PROJECT, "/etc/sudoers": "root ALL=(ALL) ALL\n", "/etc/sudoers.d/": "", "/etc/motd": "hello\n" };
+
+async function openEtc(page: Page): Promise<Locator> {
+  await page.locator('.dock__tile[title="Code"]').click();
+  await page.getByLabel("Folder to open").fill("/etc");
+  await page.getByRole("button", { name: "Open" }).click();
+  const win = page.locator('.window[aria-label="etc"]');
+  await expect(win.getByRole("treeitem", { name: /sudoers$/ })).toBeVisible();
+  return win;
+}
+
+test("a Sensitive System File warns on open, asks with its check on save, and never auto-saves", async ({ page }) => {
+  await boot(page, { rootMode: true, files: SUDOERS });
+  const win = await openEtc(page);
+  await win.getByRole("button", { name: "Auto Save: Off" }).click(); // on, to show it leaves sudoers alone
+  await openFile(win, "sudoers");
+  const banner = win.getByRole("note", { name: "Sensitive System File" });
+  await expect(banner).toContainText("lock everyone out of sudo");
+
+  // Auto Save leaves it alone.
+  await typeAtEnd(page, win, "aos ALL=(ALL) NOPASSWD: ALL\n");
+  await page.waitForTimeout(1600);
+  expect(await disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\n");
+
+  // ⌘S asks, naming the file and the risk, after visudo's check.
+  await page.keyboard.press("ControlOrMeta+s");
+  const ask = page.getByRole("alertdialog", { name: "Save /etc/sudoers?" });
+  await expect(ask).toContainText("lock everyone out of sudo");
+  await expect(ask).toContainText("AOS can’t undo this");
+  await expect(ask).toContainText("✓ visudo -c found no problems.");
+  await ask.getByRole("button", { name: "Cancel" }).click();
+  expect(await disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\n");
+
+  await page.keyboard.press("ControlOrMeta+s");
+  await ask.getByRole("button", { name: "Save anyway" }).click();
+  await expect.poll(() => disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\naos ALL=(ALL) NOPASSWD: ALL\n");
+  expect(await aosd(page, (m) => m.sensitiveWrites)).toEqual(["/etc/sudoers"]);
+
+  // The version it replaced can be put back.
+  await banner.getByRole("button", { name: "Restore Previous Version" }).click();
+  await page.getByRole("alertdialog", { name: /Restore the previous version of \/etc\/sudoers/ }).getByRole("button", { name: "Restore" }).click();
+  await expect.poll(() => disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\n");
+  await expect(win.locator(".cm-content")).not.toContainText("NOPASSWD");
+
+  // An ordinary file in /etc saves without asking.
+  await openFile(win, "motd");
+  await expect(win.getByRole("note", { name: "Sensitive System File" })).toHaveCount(0);
+});
+
+test("a failed check turns the button into Save anyway (check failed)", async ({ page }) => {
+  await boot(page, { rootMode: true, files: SUDOERS });
+  const win = await openEtc(page);
+  await openFile(win, "sudoers");
+  await win.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("oops");
+  await page.keyboard.press("ControlOrMeta+s");
+  const ask = page.getByRole("alertdialog", { name: "Save /etc/sudoers?" });
+  await expect(ask).toContainText("✗ visudo -c found problems:");
+  await expect(ask).toContainText("syntax error");
+  await ask.getByRole("button", { name: "Save anyway (check failed)" }).click();
+  await expect.poll(() => disk(page, "/etc/sudoers")).toBe("oops");
+});
+
+test("a new file in sudoers.d asks before aosd creates it", async ({ page }) => {
+  await boot(page, { rootMode: true, files: SUDOERS });
+  const win = await openEtc(page);
+  await win.getByRole("treeitem", { name: /sudoers\.d/ }).click({ button: "right" });
+  await page.getByRole("button", { name: "New File…" }).click();
+  await win.getByLabel("New file name").fill("90-aos");
+  await win.getByLabel("New file name").press("Enter");
+  const ask = page.getByRole("alertdialog", { name: "Create /etc/sudoers.d/90-aos?" });
+  await expect(ask).toContainText("lock everyone out of sudo");
+  await ask.getByRole("button", { name: "Create anyway" }).click();
+  await expect(win.getByRole("tab", { name: /90-aos/, selected: true })).toBeVisible();
+  expect(await disk(page, "/etc/sudoers.d/90-aos")).toBe("");
 });
 
 test("in Standard Mode a file aos can't write opens read-only, with a lock and why", async ({ page }) => {
@@ -268,6 +356,35 @@ test("in Standard Mode a file aos can't write opens read-only, with a lock and w
   await expect(project.getByText("Read-only in Standard Mode")).toBeVisible();
   await openFile(project, "main.go");
   await expect(project.getByText("Read-only in Standard Mode")).toHaveCount(0);
+});
+
+test("in Root Mode TextEdit and Finder ask before changing a Sensitive System File", async ({ page }) => {
+  await boot(page, { rootMode: true, files: SUDOERS });
+  await page.locator('.dock__tile[title="Finder"]').click();
+  const finder = page.locator('.window[aria-label="Finder"]');
+  await finder.locator(".finder__sidebar").getByText("Filesystem").click();
+  await finder.getByText("etc", { exact: true }).dblclick();
+
+  // Finder: Move to Trash asks, and Cancel leaves it be.
+  await finder.getByText("sudoers", { exact: true }).click({ button: "right" });
+  await page.getByRole("button", { name: "Move to Trash" }).click();
+  const trashAsk = page.getByRole("alertdialog", { name: "Move to Trash /etc/sudoers?" });
+  await expect(trashAsk).toContainText("lock everyone out of sudo");
+  await trashAsk.getByRole("button", { name: "Cancel" }).click();
+  expect(await disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\n");
+
+  // TextEdit: saving asks, with the check, and saves once confirmed.
+  await finder.getByText("sudoers", { exact: true }).dblclick();
+  const te = page.locator('.window[aria-label="sudoers"]');
+  await expect(te.locator(".cm-content")).toContainText("root ALL");
+  await te.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type("aos ALL=(ALL) ALL");
+  await page.keyboard.press("ControlOrMeta+s");
+  const ask = te.getByRole("alertdialog", { name: "Save /etc/sudoers?" });
+  await expect(ask).toContainText("✓ visudo -c found no problems.");
+  await ask.getByRole("button", { name: "Save anyway" }).click();
+  await expect.poll(() => disk(page, "/etc/sudoers")).toBe("root ALL=(ALL) ALL\naos ALL=(ALL) ALL");
 });
 
 test("TextEdit still edits and saves a file on the shared editor", async ({ page }) => {

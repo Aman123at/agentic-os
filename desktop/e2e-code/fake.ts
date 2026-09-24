@@ -30,6 +30,10 @@ export interface FakeMachine {
   dropStream(): void;
   dirty: Record<string, string[]>;
   workspaces: Record<string, { root: string; sub: string; open: boolean }>;
+  // Confirmed changes to Sensitive System Files, and the versions they
+  // replaced (M8.5).
+  sensitiveWrites: string[];
+  backups: Record<string, string[]>;
 }
 
 export async function installFakeAosd(page: Page, opts: FakeOptions = {}): Promise<void> {
@@ -84,6 +88,8 @@ function fake(opts: FakeOptions) {
     subscriptions: [],
     dirty: {},
     workspaces,
+    sensitiveWrites: [],
+    backups: {},
     write(p, text) {
       const existed = fs.has(p);
       mkdirp(parent(p));
@@ -115,6 +121,14 @@ function fake(opts: FakeOptions) {
     }, 30);
   }
 
+  // The fake's Sensitive System Files, in Root Mode only, as policy.Sensitive.
+  const sensitive = (p: string): string => {
+    if (!opts.rootMode) return "";
+    if (p === "/etc/sudoers" || p.startsWith("/etc/sudoers.d/")) return "A mistake here can lock everyone out of sudo.";
+    if (p === "/etc/fstab") return "A mistake here can stop the Machine from starting.";
+    return "";
+  };
+
   const info = (p: string) => {
     const n = fs.get(p)!;
     return {
@@ -125,6 +139,7 @@ function fake(opts: FakeOptions) {
       mode: n.dir ? 0o40000755 : 0o644,
       modifiedAt: new Date(n.mtime).toISOString(),
       writable: writable(p),
+      sensitiveReason: sensitive(p),
     };
   };
 
@@ -150,6 +165,28 @@ function fake(opts: FakeOptions) {
     return btoa(s);
   };
   const unb64 = (s: string) => Uint8Array.from(atob(s || ""), (c) => c.charCodeAt(0));
+
+  // A SensitivePath detail, encoded by hand: path = 1, reason = 2.
+  const sensitiveDetail = (p: string, reason: string) => {
+    const field = (tag: number, text: string) => {
+      const b = enc.encode(text);
+      const len: number[] = [];
+      let n = b.length;
+      do {
+        len.push((n & 0x7f) | (n > 0x7f ? 0x80 : 0));
+        n >>= 7;
+      } while (n > 0);
+      return [tag, ...len, ...b];
+    };
+    return { type: "aos.v1.SensitivePath", value: b64(new Uint8Array([...field(0x0a, p), ...field(0x12, reason)])).replace(/=+$/, "") };
+  };
+  // guard refuses an unconfirmed change to a Sensitive System File, as aosd does.
+  const guard = (p: string, body: Record<string, unknown>): boolean => {
+    const why = sensitive(p);
+    if (why && !body.confirmSensitive) throw new RpcError("failed_precondition", `${p} is a Sensitive System File. ${why} Confirm to change it`, [sensitiveDetail(p, why)]);
+    if (why) machine.sensitiveWrites.push(p);
+    return Boolean(why);
+  };
 
   let subCount = 0;
   let wsCount = 0;
@@ -198,6 +235,7 @@ function fake(opts: FakeOptions) {
         const exists = fs.has(p);
         if (exists && !body.overwrite) throw new RpcError("already_exists", `write ${p}: already exists`);
         if (!writable(p) || !writable(parent(p))) throw new RpcError("permission_denied", `open ${p}: permission denied`);
+        if (guard(p, body) && exists) (machine.backups[p] ??= []).unshift(dec.decode(fs.get(p)!.data));
         mkdirp(parent(p));
         fs.set(p, { dir: false, data: unb64(str("content")), mtime: tick() });
         changed(exists ? "KIND_CHANGED" : "KIND_CREATED", p, false);
@@ -206,6 +244,7 @@ function fake(opts: FakeOptions) {
       case "FileService/MakeFolder": {
         const p = abs(str("path"));
         if (fs.has(p)) throw new RpcError("already_exists", `mkdir ${p}: already exists`);
+        guard(p, body);
         mkdirp(p);
         changed("KIND_CREATED", p, true);
         return {};
@@ -215,6 +254,7 @@ function fake(opts: FakeOptions) {
         const to = abs(str("destination"));
         if (!fs.has(from)) throw notFound(from);
         if (fs.has(to)) throw new RpcError("already_exists", `rename ${to}: already exists`);
+        if (!guard(from, body)) guard(to, body);
         for (const k of [...fs.keys()]) {
           if (k === from || k.startsWith(from + "/")) {
             fs.set(to + k.slice(from.length), fs.get(k)!);
@@ -228,8 +268,30 @@ function fake(opts: FakeOptions) {
       case "FileService/Delete": {
         const p = abs(str("path"));
         if (!fs.has(p)) throw notFound(p);
+        guard(p, body);
         machine.remove(p);
         return { item: { id: p, name: base(p) } };
+      }
+
+      case "FileService/CheckSensitive": {
+        const p = abs(str("path"));
+        if (!sensitive(p) || p !== "/etc/sudoers") return {};
+        const text = dec.decode(unb64(str("content")));
+        return text.includes("ALL") ? { checker: "visudo -c", passed: true, output: "/etc/sudoers: parsed OK" } : { checker: "visudo -c", output: `/etc/sudoers:1:1: syntax error\n${text}` };
+      }
+      case "FileService/ListSensitiveBackups": {
+        const p = abs(str("path"));
+        return { backups: (machine.backups[p] ?? []).map((_, i) => ({ id: `v${i}`, savedAt: new Date(clock - i * 1000).toISOString(), size: "1" })) };
+      }
+      case "FileService/RestoreSensitiveBackup": {
+        const p = abs(str("path"));
+        const kept = machine.backups[p] ?? [];
+        const old = kept[Number(str("id").slice(1))];
+        if (old === undefined) throw new RpcError("not_found", "no such kept version");
+        kept.unshift(dec.decode(fs.get(p)!.data));
+        fs.set(p, { dir: false, data: enc.encode(old), mtime: tick() });
+        changed("KIND_CHANGED", p, false);
+        return {};
       }
 
       case "CodeService/OpenWorkspace": {
