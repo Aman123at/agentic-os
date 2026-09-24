@@ -85,19 +85,19 @@ func (c codeService) OpenWorkspace(ctx context.Context, req *connect.Request[aos
 		stop()
 		return nil, connectError(err)
 	}
-	_, list, _ := c.s.workspaces.Get(ws.ID)
-	go c.watch(watchCtx, watcher, ws, list, events)
+	_, tools, _ := c.s.workspaces.Get(ws.ID)
+	go c.watch(watchCtx, watcher, ws, tools, events)
 	return connect.NewResponse(&aosv1.OpenWorkspaceResponse{Id: ws.ID, Root: ws.Root, RootMode: ws.RootMode}), nil
 }
 
 // watch relays a Workspace's watch to its subscription until ctx ends. A
 // subscription that falls behind holds the watch back rather than losing
 // changes: the kernel's queue fills, and the watch then asks for a rescan.
-func (c codeService) watch(ctx context.Context, w files.Watcher, ws code.Workspace, list *code.FileList, events chan<- *aosv1.Event) {
+func (c codeService) watch(ctx context.Context, w files.Watcher, ws code.Workspace, tools code.Tools, events chan<- *aosv1.Event) {
 	send := func(ev files.WatchEvent) error {
-		// Quick Open's list follows the same changes (M8.7).
-		if list != nil && len(ev.Changes) > 0 {
-			list.Apply(ev.Changes)
+		// Quick Open's list and the symbol index follow the same changes.
+		if len(ev.Changes) > 0 {
+			tools.Apply(ev.Changes)
 		}
 		select {
 		case events <- workspaceEvent(ws.ID, ev):
@@ -166,24 +166,29 @@ func (c codeService) ReportDirty(_ context.Context, req *connect.Request[aosv1.R
 // ---------------------------------------------------------------- Quick Open, Find in Files (M8.7)
 
 // workspace is an open Workspace, or NotFound.
-func (c codeService) workspace(id string) (code.Workspace, *code.FileList, error) {
-	ws, list, err := c.s.workspaces.Get(id)
+func (c codeService) workspace(id string) (code.Workspace, code.Tools, error) {
+	ws, tools, err := c.s.workspaces.Get(id)
 	if err != nil {
-		return code.Workspace{}, nil, connect.NewError(connect.CodeNotFound, err)
+		return code.Workspace{}, code.Tools{}, connect.NewError(connect.CodeNotFound, err)
 	}
-	return ws, list, nil
+	return ws, tools, nil
 }
 
-func (c codeService) FindFiles(ctx context.Context, req *connect.Request[aosv1.FindFilesRequest]) (*connect.Response[aosv1.FindFilesResponse], error) {
-	ws, list, err := c.workspace(req.Msg.WorkspaceId)
-	if err != nil {
-		return nil, err
-	}
-	paths, truncated, err := list.Paths(ctx, func(ctx context.Context) (files.Tree, error) {
+// paths lists a Workspace's files through its FileList.
+func (c codeService) paths(ctx context.Context, ws code.Workspace, list *code.FileList) ([]string, bool, error) {
+	return list.Paths(ctx, func(ctx context.Context) (files.Tree, error) {
 		var t files.Tree
 		err := c.s.UserFiles.Run(ctx, files.OpListTree, files.TreeArgs{Root: ws.Root}, &t, nil)
 		return t, err
 	})
+}
+
+func (c codeService) FindFiles(ctx context.Context, req *connect.Request[aosv1.FindFilesRequest]) (*connect.Response[aosv1.FindFilesResponse], error) {
+	ws, tools, err := c.workspace(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, err
+	}
+	paths, truncated, err := c.paths(ctx, ws, tools.Files)
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -232,15 +237,7 @@ func (c codeService) SearchText(ctx context.Context, req *connect.Request[aosv1.
 		Root: ws.Root, Query: req.Msg.Query, Regex: req.Msg.Regex, Case: req.Msg.CaseSensitive,
 		Include: req.Msg.Include, Exclude: req.Msg.Exclude,
 	}, func(f files.TextFile) error {
-		m := &aosv1.TextFileMatches{Path: f.Path}
-		for _, x := range f.Matches {
-			tm := &aosv1.TextMatch{Line: uint32(x.Line), Text: x.Text}
-			for _, r := range x.Ranges {
-				tm.Ranges = append(tm.Ranges, &aosv1.TextRange{Start: uint32(r[0]), End: uint32(r[1])})
-			}
-			m.Matches = append(m.Matches, tm)
-		}
-		batch = append(batch, m)
+		batch = append(batch, textFileOut(f))
 		if len(batch) >= 32 || time.Since(last) >= searchFlush {
 			return flush()
 		}
@@ -258,4 +255,16 @@ func (c codeService) SearchText(ctx context.Context, req *connect.Request[aosv1.
 	return stream.Send(&aosv1.SearchTextResponse{Summary: &aosv1.SearchTextSummary{
 		Files: uint32(res.Files), Matches: uint32(res.Matches), Truncated: res.Truncated, Engine: res.Engine,
 	}})
+}
+
+func textFileOut(f files.TextFile) *aosv1.TextFileMatches {
+	m := &aosv1.TextFileMatches{Path: f.Path}
+	for _, x := range f.Matches {
+		tm := &aosv1.TextMatch{Line: uint32(x.Line), Text: x.Text}
+		for _, r := range x.Ranges {
+			tm.Ranges = append(tm.Ranges, &aosv1.TextRange{Start: uint32(r[0]), End: uint32(r[1])})
+		}
+		m.Matches = append(m.Matches, tm)
+	}
+	return m
 }

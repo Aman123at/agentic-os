@@ -19,6 +19,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/Aman123at/agentic-os/internal/files"
 )
 
 var (
@@ -56,9 +58,15 @@ type Workspace struct {
 
 type entry struct {
 	Workspace
-	stop func()
-	// list is the Workspace's files for Quick Open (M8.7).
-	list *FileList
+	stop  func()
+	tools Tools
+}
+
+// Tools are what aosd keeps of a Workspace for navigation, fed by its watch:
+// its files for Quick Open (M8.7) and its symbols (M8.8).
+type Tools struct {
+	Files   *FileList
+	Symbols *Index
 }
 
 // Registry is the open Workspaces and the owners they belong to. The zero
@@ -122,7 +130,7 @@ func (r *Registry) Open(owner, root string, rootMode bool, stop func()) (Workspa
 		return Workspace{}, ErrTooMany
 	}
 	e := &entry{Workspace: Workspace{ID: NewID("ws_"), Owner: owner, Root: filepath.Clean(root), RootMode: rootMode, OpenedAt: now()}, stop: stop}
-	e.list = &FileList{Root: e.Root}
+	e.tools = Tools{Files: &FileList{Root: e.Root}, Symbols: &Index{Root: e.Root}}
 	if r.m == nil {
 		r.m = make(map[string]*entry)
 	}
@@ -168,17 +176,27 @@ func (r *Registry) SetUnsaved(id string, paths []string) error {
 	return nil
 }
 
-// Get returns an open Workspace and its file list.
-func (r *Registry) Get(id string) (Workspace, *FileList, error) {
+// Get returns an open Workspace and its tools.
+func (r *Registry) Get(id string) (Workspace, Tools, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	e, ok := r.m[id]
 	if !ok {
-		return Workspace{}, nil, ErrNoWorkspace
+		return Workspace{}, Tools{}, ErrNoWorkspace
 	}
 	w := e.Workspace
 	w.Unsaved = slices.Clone(e.Unsaved)
-	return w, e.list, nil
+	return w, e.tools, nil
+}
+
+// Apply feeds a batch of a Workspace's watched changes to its tools.
+func (t Tools) Apply(changes []files.Change) {
+	if t.Files != nil {
+		t.Files.Apply(changes)
+	}
+	if t.Symbols != nil {
+		t.Symbols.Apply(changes)
+	}
 }
 
 // List returns the open Workspaces, oldest first.

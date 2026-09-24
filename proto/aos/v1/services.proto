@@ -1074,6 +1074,97 @@ service CodeService {
   // .gitignore and skip binary files. A regular expression that does not
   // compile is InvalidArgument.
   rpc SearchText(SearchTextRequest) returns (stream SearchTextResponse);
+
+  // Navigation (M8.8), from a symbol index of the Workspace that
+  // universal-ctags builds as the Realm's user: in memory, built at the first
+  // question and then kept current from the Workspace's watch. It is by name,
+  // not by type: two Run methods are both offered. Past 20 000 files only the
+  // folders of the files asked from are indexed (IndexState.partial). Without
+  // universal-ctags these are FailedPrecondition, saying to install it.
+  //
+  // Definition: where a name is defined, nearest to the file asked from first.
+  rpc Definition(DefinitionRequest) returns (DefinitionResponse);
+  // References: the name's whole-word, case-sensitive uses in files of the
+  // same language as the file asked from. A text search, so it needs no ctags.
+  rpc References(ReferencesRequest) returns (ReferencesResponse);
+  // DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+  rpc DocumentSymbols(DocumentSymbolsRequest) returns (DocumentSymbolsResponse);
+  // WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+  // completion.
+  rpc WorkspaceSymbols(WorkspaceSymbolsRequest) returns (WorkspaceSymbolsResponse);
+}
+
+message Symbol {
+  string name = 1;
+  // ctags' kind, such as "func", "method", "class", "struct", "const".
+  string kind = 2;
+  // Absolute.
+  string path = 3;
+  // From 1; end_line is 0 when ctags does not know it.
+  uint32 line = 4;
+  uint32 end_line = 5;
+  // What it is inside, such as "main.Server" for a Go method.
+  string scope = 6;
+  string signature = 7;
+  string language = 8;
+}
+
+// IndexState is how much of the Workspace the symbol index covers.
+message IndexState {
+  // Files with symbols, and files in the Workspace.
+  uint32 files = 1;
+  uint32 total = 2;
+  // The Workspace has more than 20 000 files: only the folders of files
+  // asked from are indexed.
+  bool partial = 3;
+}
+
+message DefinitionRequest {
+  string workspace_id = 1;
+  string name = 2;
+  // The file asked from, absolute: nearer definitions come first, and one
+  // in its language is preferred.
+  string path = 3;
+}
+message DefinitionResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
+}
+
+message ReferencesRequest {
+  string workspace_id = 1;
+  string name = 2;
+  // The file asked from, absolute; its language picks the files searched.
+  string path = 3;
+}
+message ReferencesResponse {
+  repeated TextFileMatches files = 1;
+  // It stopped at 1000 lines.
+  bool truncated = 2;
+}
+
+message DocumentSymbolsRequest {
+  string workspace_id = 1;
+  // Absolute.
+  string path = 2;
+}
+message DocumentSymbolsResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
+}
+
+message WorkspaceSymbolsRequest {
+  string workspace_id = 1;
+  string query = 2;
+  // 0 means 100; more than 500 is 500.
+  uint32 limit = 3;
+  // The file asked from, absolute, if any: past 20 000 files its folder is
+  // indexed first.
+  string path = 4;
+}
+message WorkspaceSymbolsResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
 }
 
 message FindFilesRequest {

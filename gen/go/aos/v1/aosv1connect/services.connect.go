@@ -243,6 +243,16 @@ const (
 	CodeServiceFindFilesProcedure = "/aos.v1.CodeService/FindFiles"
 	// CodeServiceSearchTextProcedure is the fully-qualified name of the CodeService's SearchText RPC.
 	CodeServiceSearchTextProcedure = "/aos.v1.CodeService/SearchText"
+	// CodeServiceDefinitionProcedure is the fully-qualified name of the CodeService's Definition RPC.
+	CodeServiceDefinitionProcedure = "/aos.v1.CodeService/Definition"
+	// CodeServiceReferencesProcedure is the fully-qualified name of the CodeService's References RPC.
+	CodeServiceReferencesProcedure = "/aos.v1.CodeService/References"
+	// CodeServiceDocumentSymbolsProcedure is the fully-qualified name of the CodeService's
+	// DocumentSymbols RPC.
+	CodeServiceDocumentSymbolsProcedure = "/aos.v1.CodeService/DocumentSymbols"
+	// CodeServiceWorkspaceSymbolsProcedure is the fully-qualified name of the CodeService's
+	// WorkspaceSymbols RPC.
+	CodeServiceWorkspaceSymbolsProcedure = "/aos.v1.CodeService/WorkspaceSymbols"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2775,6 +2785,23 @@ type CodeServiceClient interface {
 	// .gitignore and skip binary files. A regular expression that does not
 	// compile is InvalidArgument.
 	SearchText(context.Context, *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error)
+	// Navigation (M8.8), from a symbol index of the Workspace that
+	// universal-ctags builds as the Realm's user: in memory, built at the first
+	// question and then kept current from the Workspace's watch. It is by name,
+	// not by type: two Run methods are both offered. Past 20 000 files only the
+	// folders of the files asked from are indexed (IndexState.partial). Without
+	// universal-ctags these are FailedPrecondition, saying to install it.
+	//
+	// Definition: where a name is defined, nearest to the file asked from first.
+	Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error)
+	// References: the name's whole-word, case-sensitive uses in files of the
+	// same language as the file asked from. A text search, so it needs no ctags.
+	References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error)
+	// DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+	DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error)
+	// WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+	// completion.
+	WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error)
 }
 
 // NewCodeServiceClient constructs a client for the aos.v1.CodeService service. By default, it uses
@@ -2818,16 +2845,44 @@ func NewCodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(codeServiceMethods.ByName("SearchText")),
 			connect.WithClientOptions(opts...),
 		),
+		definition: connect.NewClient[v1.DefinitionRequest, v1.DefinitionResponse](
+			httpClient,
+			baseURL+CodeServiceDefinitionProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("Definition")),
+			connect.WithClientOptions(opts...),
+		),
+		references: connect.NewClient[v1.ReferencesRequest, v1.ReferencesResponse](
+			httpClient,
+			baseURL+CodeServiceReferencesProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("References")),
+			connect.WithClientOptions(opts...),
+		),
+		documentSymbols: connect.NewClient[v1.DocumentSymbolsRequest, v1.DocumentSymbolsResponse](
+			httpClient,
+			baseURL+CodeServiceDocumentSymbolsProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("DocumentSymbols")),
+			connect.WithClientOptions(opts...),
+		),
+		workspaceSymbols: connect.NewClient[v1.WorkspaceSymbolsRequest, v1.WorkspaceSymbolsResponse](
+			httpClient,
+			baseURL+CodeServiceWorkspaceSymbolsProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("WorkspaceSymbols")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // codeServiceClient implements CodeServiceClient.
 type codeServiceClient struct {
-	openWorkspace  *connect.Client[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse]
-	closeWorkspace *connect.Client[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse]
-	reportDirty    *connect.Client[v1.ReportDirtyRequest, v1.ReportDirtyResponse]
-	findFiles      *connect.Client[v1.FindFilesRequest, v1.FindFilesResponse]
-	searchText     *connect.Client[v1.SearchTextRequest, v1.SearchTextResponse]
+	openWorkspace    *connect.Client[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse]
+	closeWorkspace   *connect.Client[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse]
+	reportDirty      *connect.Client[v1.ReportDirtyRequest, v1.ReportDirtyResponse]
+	findFiles        *connect.Client[v1.FindFilesRequest, v1.FindFilesResponse]
+	searchText       *connect.Client[v1.SearchTextRequest, v1.SearchTextResponse]
+	definition       *connect.Client[v1.DefinitionRequest, v1.DefinitionResponse]
+	references       *connect.Client[v1.ReferencesRequest, v1.ReferencesResponse]
+	documentSymbols  *connect.Client[v1.DocumentSymbolsRequest, v1.DocumentSymbolsResponse]
+	workspaceSymbols *connect.Client[v1.WorkspaceSymbolsRequest, v1.WorkspaceSymbolsResponse]
 }
 
 // OpenWorkspace calls aos.v1.CodeService.OpenWorkspace.
@@ -2853,6 +2908,26 @@ func (c *codeServiceClient) FindFiles(ctx context.Context, req *connect.Request[
 // SearchText calls aos.v1.CodeService.SearchText.
 func (c *codeServiceClient) SearchText(ctx context.Context, req *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error) {
 	return c.searchText.CallServerStream(ctx, req)
+}
+
+// Definition calls aos.v1.CodeService.Definition.
+func (c *codeServiceClient) Definition(ctx context.Context, req *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error) {
+	return c.definition.CallUnary(ctx, req)
+}
+
+// References calls aos.v1.CodeService.References.
+func (c *codeServiceClient) References(ctx context.Context, req *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error) {
+	return c.references.CallUnary(ctx, req)
+}
+
+// DocumentSymbols calls aos.v1.CodeService.DocumentSymbols.
+func (c *codeServiceClient) DocumentSymbols(ctx context.Context, req *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error) {
+	return c.documentSymbols.CallUnary(ctx, req)
+}
+
+// WorkspaceSymbols calls aos.v1.CodeService.WorkspaceSymbols.
+func (c *codeServiceClient) WorkspaceSymbols(ctx context.Context, req *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error) {
+	return c.workspaceSymbols.CallUnary(ctx, req)
 }
 
 // CodeServiceHandler is an implementation of the aos.v1.CodeService service.
@@ -2885,6 +2960,23 @@ type CodeServiceHandler interface {
 	// .gitignore and skip binary files. A regular expression that does not
 	// compile is InvalidArgument.
 	SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error
+	// Navigation (M8.8), from a symbol index of the Workspace that
+	// universal-ctags builds as the Realm's user: in memory, built at the first
+	// question and then kept current from the Workspace's watch. It is by name,
+	// not by type: two Run methods are both offered. Past 20 000 files only the
+	// folders of the files asked from are indexed (IndexState.partial). Without
+	// universal-ctags these are FailedPrecondition, saying to install it.
+	//
+	// Definition: where a name is defined, nearest to the file asked from first.
+	Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error)
+	// References: the name's whole-word, case-sensitive uses in files of the
+	// same language as the file asked from. A text search, so it needs no ctags.
+	References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error)
+	// DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+	DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error)
+	// WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+	// completion.
+	WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error)
 }
 
 // NewCodeServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -2924,6 +3016,30 @@ func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(codeServiceMethods.ByName("SearchText")),
 		connect.WithHandlerOptions(opts...),
 	)
+	codeServiceDefinitionHandler := connect.NewUnaryHandler(
+		CodeServiceDefinitionProcedure,
+		svc.Definition,
+		connect.WithSchema(codeServiceMethods.ByName("Definition")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceReferencesHandler := connect.NewUnaryHandler(
+		CodeServiceReferencesProcedure,
+		svc.References,
+		connect.WithSchema(codeServiceMethods.ByName("References")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceDocumentSymbolsHandler := connect.NewUnaryHandler(
+		CodeServiceDocumentSymbolsProcedure,
+		svc.DocumentSymbols,
+		connect.WithSchema(codeServiceMethods.ByName("DocumentSymbols")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceWorkspaceSymbolsHandler := connect.NewUnaryHandler(
+		CodeServiceWorkspaceSymbolsProcedure,
+		svc.WorkspaceSymbols,
+		connect.WithSchema(codeServiceMethods.ByName("WorkspaceSymbols")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.CodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CodeServiceOpenWorkspaceProcedure:
@@ -2936,6 +3052,14 @@ func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption
 			codeServiceFindFilesHandler.ServeHTTP(w, r)
 		case CodeServiceSearchTextProcedure:
 			codeServiceSearchTextHandler.ServeHTTP(w, r)
+		case CodeServiceDefinitionProcedure:
+			codeServiceDefinitionHandler.ServeHTTP(w, r)
+		case CodeServiceReferencesProcedure:
+			codeServiceReferencesHandler.ServeHTTP(w, r)
+		case CodeServiceDocumentSymbolsProcedure:
+			codeServiceDocumentSymbolsHandler.ServeHTTP(w, r)
+		case CodeServiceWorkspaceSymbolsProcedure:
+			codeServiceWorkspaceSymbolsHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2963,4 +3087,20 @@ func (UnimplementedCodeServiceHandler) FindFiles(context.Context, *connect.Reque
 
 func (UnimplementedCodeServiceHandler) SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.SearchText is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.Definition is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.References is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.DocumentSymbols is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.WorkspaceSymbols is not implemented"))
 }
