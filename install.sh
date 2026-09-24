@@ -216,14 +216,15 @@ create_user() {
 	fi
 }
 
-# install_packages adds what Code's search needs (PLAN.md M8.7): ripgrep for
-# Find in Files. Best-effort, and only with apt: Code searches without it,
-# more slowly, and says so.
-CODE_PACKAGES="ripgrep"
+# install_packages adds what Code's search and navigation need (PLAN.md
+# M8.7–M8.8): ripgrep for Find in Files, universal-ctags for Go to Definition
+# and symbols. Best-effort, and only with apt: Code works without them — it
+# searches more slowly, and navigation says to install universal-ctags.
+CODE_PACKAGES="ripgrep universal-ctags"
 install_packages() {
-	step "Installing Code's search tools"
+	step "Installing Code's search and navigation tools"
 	if ! command -v apt-get >/dev/null 2>&1; then
-		say "   no apt-get — skipped; install ${CODE_PACKAGES} yourself for faster search in Code"
+		say "   no apt-get — skipped; install ${CODE_PACKAGES} yourself for faster search and Go to Definition in Code"
 		return 0
 	fi
 	if [ "$DRY_RUN" = 1 ]; then
