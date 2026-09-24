@@ -40,6 +40,8 @@ import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
 import { Explorer, type Relist } from "./Explorer";
 import { baseOf, dirOf, relative, within } from "./paths";
+import { QuickOpen } from "./QuickOpen";
+import { SearchView, type SearchRequest } from "./SearchView";
 
 // The Terminal panel brings xterm with it, so it loads when first opened (M8.6).
 const TerminalPanel = lazy(() => import("./TerminalPanel"));
@@ -72,6 +74,15 @@ interface Doc {
   crlf: boolean;
   lang: Extension | null;
   timer?: ReturnType<typeof setTimeout>;
+  // Where to put the cursor once the Doc has loaded: a jump from Quick Open
+  // or a search result to a file not yet open.
+  reveal?: Reveal;
+}
+
+// Reveal is a place in a file: a line, and optionally text on it to select.
+export interface Reveal {
+  line: number;
+  find?: string;
 }
 
 // Ask is the unsaved-files dialog: for closing tabs or the window.
@@ -92,6 +103,9 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [openReq] = useWinState("open", "");
   const [autoSaveSetting, setAutoSave] = useWinState("autosave", "");
   const [sideSetting, setSide] = useWinState("side", "240");
+  const [sideView, setSideView] = useWinState("view", "explorer");
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [searchReq, setSearchReq] = useState<SearchRequest>({ n: 0 });
   const [panelSetting, setPanel] = useWinState("panel", "");
   const [panelHeight, setPanelHeight] = useWinState("panelh", "220");
   const panelOpen = panelSetting === "1";
@@ -173,12 +187,15 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     }
   }, []);
 
+  // The Doc to focus once it has loaded: one opened before it was ready.
+  const focusOnLoad = useRef("");
   const activate = useCallback(
     (p: string) => {
       activeRef.current = p;
       setActive(p);
       show();
       if (docs.current.get(p)?.load === "ready") requestAnimationFrame(() => view.current?.focus());
+      else focusOnLoad.current = p;
     },
     [show],
   );
@@ -251,6 +268,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           if (shown.current === d.path) shown.current = ""; // replaced, not kept
           show();
         }
+        if (d.reveal) {
+          select(d, d.reveal);
+          d.reveal = undefined;
+        }
         bump();
         void loadBackups(d);
         if (!d.lang) {
@@ -299,6 +320,36 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     },
     [activate, load, openFile],
   );
+
+  // select puts the cursor at a Reveal and scrolls to it.
+  const select = (d: Doc, at: Reveal) => {
+    const st = current(d);
+    if (!st) return;
+    const line = st.doc.line(Math.min(Math.max(1, at.line), st.doc.lines));
+    let from = line.from;
+    let to = line.from;
+    if (at.find) {
+      let i = line.text.indexOf(at.find);
+      if (i < 0) i = line.text.toLowerCase().indexOf(at.find.toLowerCase());
+      if (i >= 0) {
+        from = line.from + i;
+        to = from + at.find.length;
+      }
+    }
+    apply(d, { selection: { anchor: from, head: to }, effects: EditorView.scrollIntoView(from, { y: "center" }) });
+  };
+
+  // reveal opens a file and, given a place, goes there: at once if it is
+  // loaded, else once it is.
+  const reveal = (p: string, at?: Reveal) => {
+    openDoc(p);
+    const d = docs.current.get(p);
+    if (!d || !at) return;
+    if (d.load === "ready") {
+      select(d, at);
+      requestAnimationFrame(() => view.current?.focus());
+    } else d.reveal = at;
+  };
 
   // ------------------------------------------------------------ save
 
@@ -505,6 +556,16 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     };
   }, [path]);
 
+  // A Doc opened before it had loaded takes focus once it is shown: after
+  // the render that unhides the editor, since a hidden one cannot.
+  useEffect(() => {
+    const p = focusOnLoad.current;
+    if (p && p === activeRef.current && shown.current === p && docs.current.get(p)?.load === "ready") {
+      focusOnLoad.current = "";
+      view.current?.focus();
+    }
+  });
+
   // The editor view lives as long as the Workspace is open.
   const ready = ws !== null;
   useEffect(() => {
@@ -617,7 +678,39 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     if (open) setPanelMounted(true);
     else requestAnimationFrame(() => view.current?.focus());
   };
+  const side = Number(sideSetting) || 0;
+  // showView shows a view in the side bar; its own button again hides the bar.
+  const showView = (v: string, toggle = true) => {
+    if (toggle && v === sideView && side > 0) setSide("0");
+    else {
+      setSideView(v);
+      if (side === 0) setSide("240");
+    }
+  };
   const onKeyDown = (e: React.KeyboardEvent) => {
+    const mod = e.metaKey || e.ctrlKey;
+    // ⌘P: Quick Open. ⌘⇧F: Find in Files, with the selection if there is one.
+    if (mod && !e.altKey && !e.shiftKey && e.code === "KeyP") {
+      e.preventDefault();
+      e.stopPropagation();
+      setQuickOpen(true);
+      return;
+    }
+    if (mod && !e.altKey && e.shiftKey && e.code === "KeyF") {
+      e.preventDefault();
+      e.stopPropagation();
+      showView("search", false);
+      const st = view.current?.state;
+      const sel = st && !st.selection.main.empty ? st.sliceDoc(st.selection.main.from, st.selection.main.to) : "";
+      setSearchReq((r) => ({ n: r.n + 1, text: sel && !sel.includes("\n") ? sel : undefined }));
+      return;
+    }
+    if (mod && !e.altKey && e.shiftKey && e.code === "KeyE") {
+      e.preventDefault();
+      e.stopPropagation();
+      showView("explorer", false);
+      return;
+    }
     // ⌃` shows or hides the Terminal panel, as in VS Code.
     if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Backquote") {
       e.preventDefault();
@@ -649,13 +742,25 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     );
   }
 
-  const side = Number(sideSetting) || 0;
   return (
     // Focusable, so the window's shortcuts work after a click anywhere in it.
     <div className="code" tabIndex={-1} onKeyDownCapture={onKeyDown}>
       <div className="code__body">
+        <div className="code__activity" role="tablist" aria-label="Views" aria-orientation="vertical">
+          <button role="tab" aria-selected={side > 0 && sideView === "explorer"} aria-label="Explorer" title="Explorer (⌘⇧E)" className="code__activity-btn" onClick={() => showView("explorer")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l5 5v13H6z M14 3v5h5" /></svg>
+          </button>
+          <button role="tab" aria-selected={side > 0 && sideView === "search"} aria-label="Search" title="Search (⌘⇧F)" className="code__activity-btn" onClick={() => showView("search")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5.5 5.5" /></svg>
+          </button>
+        </div>
         <div className="code__side" style={{ width: side }} hidden={side === 0}>
-          <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} onSensitive={askSensitive} />
+          <div className="code__view" hidden={sideView !== "explorer"}>
+            <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} onSensitive={askSensitive} />
+          </div>
+          <div className="code__view" hidden={sideView !== "search"}>
+            <SearchView workspaceId={ws.id} root={ws.root} request={searchReq} onReveal={(p, line, find) => reveal(p, { line, find })} />
+          </div>
         </div>
         <Splitter size={side} onSize={(w) => setSide(String(w))} min={160} max={520} label="Resize the Explorer" restore={240} />
         <div className="code__main">
@@ -781,6 +886,18 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         panelOpen={panelOpen}
         onPanel={() => togglePanel()}
       />
+
+      {quickOpen && (
+        <QuickOpen
+          workspaceId={ws.id}
+          root={ws.root}
+          onOpen={(p, line) => reveal(p, line ? { line } : undefined)}
+          onClose={() => {
+            setQuickOpen(false);
+            requestAnimationFrame(() => view.current?.focus());
+          }}
+        />
+      )}
 
       {sensitive && (
         <SensitiveConfirm

@@ -77,7 +77,7 @@ test("Code opens a folder from the Dock, and ⌘S saves an edit through aosd", a
   await win.getByRole("treeitem", { name: /src/ }).click();
   await openFile(win, "util.ts");
   await expect(win.locator(".cm-content")).toContainText("export const x = 1;");
-  await expect(win.getByRole("tab")).toHaveCount(2);
+  await expect(win.getByRole("tablist", { name: "Open files" }).getByRole("tab")).toHaveCount(2);
 });
 
 test("Auto Save saves a second after typing stops, and is on in Standard Mode", async ({ page }) => {
@@ -155,7 +155,7 @@ test("closing a window with unsaved files asks Save All, Don't Save or Cancel", 
   await typeAtEnd(page, again, "// dropped");
   await again.getByRole("button", { name: "main.go has unsaved changes; close" }).click();
   await page.getByRole("alertdialog", { name: "Save the changes to main.go?" }).getByRole("button", { name: "Don’t Save" }).click();
-  await expect(again.getByRole("tab")).toHaveCount(0);
+  await expect(again.getByRole("tablist", { name: "Open files" }).getByRole("tab")).toHaveCount(0);
   expect(await disk(page, "/home/aos/project/main.go")).not.toContain("dropped");
 });
 
@@ -468,4 +468,77 @@ test("in Root Mode the panel's shell is root's, and says so", async ({ page }) =
   const panel = win.getByRole("region", { name: "Terminal panel" });
   await expect(panel.getByText("this Terminal runs as root")).toBeVisible();
   await expect.poll(() => termText(page)).toContain("root@machine:/home/aos/project#");
+});
+
+test("⌘P finds a file by a few letters and opens it, at a line if asked", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  await win.getByText("Open a file from the Explorer.").click();
+
+  await page.keyboard.press("ControlOrMeta+p");
+  const palette = win.getByRole("dialog", { name: "Quick Open" });
+  await expect(palette).toBeVisible();
+  await page.keyboard.type("utl");
+  const first = palette.getByRole("option").first();
+  await expect(first).toContainText("util.ts");
+  await expect(first).toHaveAttribute("aria-selected", "true");
+  await expect(first.locator("b").first()).toHaveText("ut"); // the letters that matched
+  await page.keyboard.press("Enter");
+  await expect(palette).toHaveCount(0);
+  await expect(win.getByRole("tab", { name: /util\.ts/, selected: true })).toBeVisible();
+
+  // name:line goes to the line.
+  await expect(win.locator(".cm-content")).toBeFocused();
+  await page.keyboard.press("ControlOrMeta+p");
+  await expect(palette).toBeVisible();
+  await page.keyboard.type("main:3");
+  await expect(palette.getByRole("option").first()).toContainText("main.go");
+  await page.keyboard.press("Enter");
+  await expect(win.getByRole("tab", { name: /main\.go/, selected: true })).toBeVisible();
+  await expect(win.getByRole("status", { name: "Status bar" })).toContainText("Ln 3, Col 1");
+
+  // Escape closes it without opening anything.
+  await page.keyboard.press("ControlOrMeta+p");
+  await page.keyboard.press("Escape");
+  await expect(palette).toHaveCount(0);
+  await expect(win.getByRole("tablist", { name: "Open files" }).getByRole("tab")).toHaveCount(2);
+});
+
+test("⌘⇧F searches the Workspace and a result opens the file at the match", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  await win.getByText("Open a file from the Explorer.").click();
+
+  await page.keyboard.press("ControlOrMeta+Shift+f");
+  const search = win.getByLabel("Search for");
+  await expect(search).toBeFocused();
+  await page.keyboard.type("main");
+  const summary = win.getByRole("status", { name: "Search results summary" });
+  await expect(summary).toHaveText("2 results in 1 file");
+  const hit = win.getByRole("treeitem", { name: "main.go line 3" });
+  await expect(hit.locator("mark")).toHaveText("main");
+  await hit.click();
+  await expect(win.getByRole("tab", { name: /main\.go/, selected: true })).toBeVisible();
+  // The match is selected: the cursor sits at its end.
+  await expect(win.getByRole("status", { name: "Status bar" })).toContainText("Ln 3, Col 10");
+
+  // Options: case, and a regular expression that does not compile says why.
+  await win.getByRole("button", { name: "Aa" }).click();
+  await search.fill("MAIN");
+  await expect(summary).toHaveText("No results.");
+  await win.getByRole("button", { name: ".*" }).click();
+  await search.fill("(");
+  await expect(summary).toContainText("not valid");
+
+  // The Explorer is a click away, as it was.
+  await win.getByRole("tab", { name: "Explorer" }).click();
+  await expect(win.getByRole("treeitem", { name: /README\.md/ })).toBeVisible();
+});
+
+test("without ripgrep, Find in Files says it searched on its own", async ({ page }) => {
+  await boot(page, { engine: "built-in" });
+  const win = await openProject(page);
+  await win.getByRole("tab", { name: "Search" }).click();
+  await win.getByLabel("Search for").fill("Project");
+  await expect(win.getByRole("status", { name: "Search results summary" })).toContainText("ripgrep isn’t installed");
 });

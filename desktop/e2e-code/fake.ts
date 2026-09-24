@@ -16,6 +16,8 @@ export interface FakeOptions {
   // Paths the Realm's user may read but not write (M8.4). In Standard Mode
   // anything outside the home folder is read-only too, as it is for aos.
   readOnly?: string[];
+  // The search engine Find in Files reports (M8.7); ripgrep unless told.
+  engine?: string;
 }
 
 // FakeMachine is what a spec reaches through page.evaluate(() => window.__aosd).
@@ -338,6 +340,27 @@ function fake(opts: FakeOptions) {
         w.open = false;
         return {};
       }
+      case "CodeService/FindFiles": {
+        const w = workspaces[str("workspaceId")];
+        if (!w?.open) throw new RpcError("not_found", "no such open Workspace");
+        const q = str("query").toLowerCase().replace(/\s+/g, "");
+        const all = [...fs.keys()].filter((k) => k.startsWith(w.root + "/") && !fs.get(k)!.dir).map((k) => k.slice(w.root.length + 1));
+        // In order, the file's name first, like aosd's ranking; then shorter.
+        const find = (rel: string, from: number) => {
+          const pos: number[] = [];
+          for (let i = from; i < rel.length && pos.length < q.length; i++) if (rel[i].toLowerCase() === q[pos.length]) pos.push(i);
+          return pos.length === q.length ? pos : null;
+        };
+        const found = all
+          .map((rel) => {
+            const name = rel.lastIndexOf("/") + 1;
+            const inName = find(rel, name);
+            return { rel, pos: inName ?? find(rel, 0), inName: Boolean(inName) };
+          })
+          .filter((f) => f.pos)
+          .sort((a, b) => Number(b.inName) - Number(a.inName) || a.rel.length - b.rel.length || a.rel.localeCompare(b.rel));
+        return { files: found.slice(0, Number(body.limit) || 50).map((f) => ({ path: `${w.root}/${f.rel}`, positions: f.pos })), total: all.length };
+      }
       case "CodeService/ReportDirty": {
         const id = str("workspaceId");
         if (!workspaces[id]?.open) throw new RpcError("not_found", "no such open Workspace");
@@ -346,6 +369,37 @@ function fake(opts: FakeOptions) {
       }
     }
     return {};
+  }
+
+  // searchText is Find in Files over the fake's tree, one file per result.
+  function searchText(req: Record<string, unknown>) {
+    const w = workspaces[String(req.workspaceId)];
+    if (!w?.open) throw new RpcError("not_found", "no such open Workspace");
+    const q = String(req.query ?? "");
+    let re: RegExp;
+    try {
+      re = new RegExp(req.regex ? q : q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), req.caseSensitive ? "g" : "gi");
+    } catch (err) {
+      throw new RpcError("invalid_argument", `the search is not valid: ${(err as Error).message}`);
+    }
+    const out: { path: string; matches: unknown[] }[] = [];
+    let matches = 0;
+    for (const k of [...fs.keys()].sort()) {
+      const n = fs.get(k)!;
+      if (n.dir || !k.startsWith(w.root + "/")) continue;
+      const found: { line: number; text: string; ranges: { start: number; end: number }[] }[] = [];
+      dec.decode(n.data).split("\n").forEach((line, i) => {
+        const lead = line.length - line.trimStart().length;
+        const text = line.trim();
+        const ranges = [...line.matchAll(re)].filter((m) => m[0]).map((m) => ({ start: m.index! - lead, end: m.index! - lead + m[0].length }));
+        if (ranges.length) found.push({ line: i + 1, text, ranges });
+      });
+      if (found.length) {
+        out.push({ path: k, matches: found });
+        matches += found.length;
+      }
+    }
+    return { files: out, summary: { files: out.length, matches, engine: opts.engine ?? "ripgrep" } };
   }
 
   // A server stream: Connect's envelopes over a body the fake keeps open.
@@ -362,10 +416,10 @@ function fake(opts: FakeOptions) {
     };
     const body = new ReadableStream<Uint8Array>({ start: (c) => void (ctrl = c) });
     const push = (msg: unknown) => !done && ctrl.enqueue(frame(0, msg));
-    const end = () => {
+    const end = (error?: RpcError) => {
       if (done) return;
       done = true;
-      ctrl.enqueue(frame(2, {}));
+      ctrl.enqueue(frame(2, error ? { error: { code: error.code, message: error.message } } : {}));
       ctrl.close();
     };
     if (method === "EventService/Subscribe") {
@@ -383,6 +437,18 @@ function fake(opts: FakeOptions) {
       machine.subscriptions.push(sub.id);
       push({ subscriptionId: sub.id });
       signal?.addEventListener("abort", () => sub.end());
+    } else if (method === "CodeService/SearchText") {
+      const req = JSON.parse(dec.decode(raw.slice(5))) as Record<string, unknown>;
+      setTimeout(() => {
+        try {
+          const res = searchText(req);
+          for (const f of res.files) push({ files: [f] });
+          push({ summary: res.summary });
+          end();
+        } catch (err) {
+          end(err instanceof RpcError ? err : new RpcError("internal", String(err)));
+        }
+      }, 10);
     } else if (method === "FileService/Watch") {
       // Finder's folder stream: the listing now, then held open.
       const req = JSON.parse(dec.decode(raw.slice(5))) as Record<string, unknown>;
