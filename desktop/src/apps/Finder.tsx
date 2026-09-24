@@ -270,6 +270,7 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
   };
 
   const createTask = useDesktop((s) => s.createTask);
+  const openInCode = useDesktop((s) => s.openInCode);
   const doAsk = (prompt: string) => {
     setAsk(null);
     void run("Starting Task…", () => createTask(prompt));
@@ -484,10 +485,14 @@ export default function Finder({ trashOnly = false }: { trashOnly?: boolean }) {
       {menu?.file && (
         <ContextMenu x={menu.x} y={menu.y}>
           {menu.file.dir ? (
-            <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
+            <>
+              <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
+              <MenuItem label="Open in Code" onClick={() => act(() => openInCode(menu.file!.path, true))} />
+            </>
           ) : (
             <>
               <MenuItem label="Open" onClick={() => act(() => open(menu.file!))} />
+              <MenuItem label="Open in Code" onClick={() => act(() => openInCode(menu.file!.path, false))} />
               <MenuItem label="Quick Look" onClick={() => act(() => setQuick(menu.file!))} />
               <MenuItem label="Download…" onClick={() => act(() => doDownload(menu.file!))} />
             </>

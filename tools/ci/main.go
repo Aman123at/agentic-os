@@ -1,7 +1,7 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, unit-linux, ui, auth-ui, image, e2e, playwright. With
+// Stages: lint, unit, unit-linux, ui, auth-ui, code-ui, image, e2e, playwright. With
 // no arguments, all run in order. `live` (the real-model suite, §16 M4.7),
 // `release` (the tarball build, M6.18) and `docs` (the documentation site,
 // M6.21) are optional: they run only when named — `go run ./tools/ci live`,
@@ -59,6 +59,7 @@ var stages = []struct {
 	{"unit-linux", unitLinux, false},
 	{"ui", ui, false},
 	{"auth-ui", authUI, false},
+	{"code-ui", codeUI, false},
 	{"image", image, false},
 	{"e2e", e2e, false},
 	{"playwright", playwright, false},
@@ -399,6 +400,23 @@ func authUI() error {
 		return err
 	}
 	return run("npm", "--prefix", desktopDir, "run", "e2e:auth")
+}
+
+// codeUI runs Code's suite (PLAN.md M8). Like auth-ui it needs no Docker: the
+// specs fake aosd inside the page (desktop/e2e-code/fake.ts), event stream and
+// all, so opening, editing, saving and live reloads run on any machine.
+func codeUI() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "e2e-code")); os.IsNotExist(err) {
+		fmt.Println("    no Code specs")
+		return nil
+	}
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "exec", "--", "playwright", "install", "chromium"); err != nil {
+		return err
+	}
+	return run("npm", "--prefix", desktopDir, "run", "e2e:code")
 }
 
 // playwright runs the Desktop's browser e2e and performance suite (§16, §17).

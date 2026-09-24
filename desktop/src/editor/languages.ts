@@ -61,3 +61,31 @@ export async function languageFor(name: string): Promise<Extension | null> {
   }
   return null;
 }
+
+// languageName is what Code's status bar calls a file's language.
+export function languageName(name: string): string {
+  const base = name.slice(name.lastIndexOf("/") + 1).toLowerCase();
+  if (base === "dockerfile" || base.startsWith("dockerfile.")) return "Dockerfile";
+  if (base === "makefile") return "Makefile";
+  return NAMES[extOf(base)] ?? "Plain Text";
+}
+
+const NAMES: Record<string, string> = {};
+const named = (name: string, exts: string) => exts.split(" ").forEach((e) => (NAMES[e] = name));
+named("JavaScript", "js mjs cjs");
+named("JavaScript JSX", "jsx");
+named("TypeScript", "ts mts cts");
+named("TypeScript JSX", "tsx");
+named("JSON", "json");
+named("Markdown", "md markdown");
+named("Python", "py");
+named("HTML", "html htm");
+named("CSS", "css");
+named("Go", "go");
+named("YAML", "yaml yml");
+named("Shell", "sh bash zsh");
+named("TOML", "toml");
+named("Rust", "rs");
+named("C", "c h");
+named("C++", "cc cpp hpp");
+named("Java", "java");

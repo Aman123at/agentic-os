@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "The Agentic OS Desktop: a browser-built macOS-style shell over aosd's API (PLAN.md §4.3).",
+  "description": "The Agentic OS Desktop: a browser-built macOS-style shell over aosd's API (PLAN.md \u00a74.3).",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,7 +12,8 @@
     "generate": "cd .. && buf generate",
     "e2e": "playwright test",
     "e2e:live": "playwright test --config playwright.live.config.ts",
-    "e2e:auth": "playwright test --config playwright.auth.config.ts"
+    "e2e:auth": "playwright test --config playwright.auth.config.ts",
+    "e2e:code": "playwright test --config playwright.code.config.ts"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.9.0",

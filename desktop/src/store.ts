@@ -16,8 +16,10 @@ import { approvals as approvalApi, settings, system, tasks as taskApi, trash as 
 import { friendlyError } from "./api/error";
 import * as session from "./api/session";
 import { subscribe, type ConnState } from "./api/events";
+import { setSubscription, workspaceEvent } from "./api/workspaces";
 import { appForFile } from "./apps/filetypes";
 import { APPS, preloadApps, type AppId } from "./apps/registry";
+import { mayClose } from "./shell/closeGuard";
 import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
 import { type WallpaperDesignId } from "./shell/wallpaper";
 import { applyGlass, applyTheme, type ThemePref } from "./theme";
@@ -149,7 +151,11 @@ interface DesktopState {
   openApp: (appId: AppId, doc?: string) => void;
   /** Opens a file in the app for its type, or shows it in the Finder when none opens it. */
   openFile: (path: string) => void;
-  closeWindow: (id: string) => void;
+  /** Opens a folder in Code, or a file in Code with its folder (PLAN.md M8.3). */
+  openInCode: (path: string, dir: boolean) => void;
+  setWinTitle: (id: string, title: string) => void;
+  /** Closes a window, after its app's close guard (and the unsaved-edits check) unless forced. */
+  closeWindow: (id: string, force?: boolean) => void;
   focusWindow: (id: string) => void;
   setRect: (id: string, rect: Rect) => void;
   minimize: (id: string) => void;
@@ -438,7 +444,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     const id = `win-${nextId++}`;
     const z = get().topZ + 1;
     // A document window is titled with the file's name, as on macOS.
-    const title = doc ? doc.slice(doc.lastIndexOf("/") + 1) : app.name;
+    const title = doc ? doc.slice(doc.lastIndexOf("/") + 1) || doc : app.name;
     const state = doc ? { path: doc } : undefined;
     set((s) => ({ windows: [...s.windows, { id, appId, title, rect, z, minimized: false, maximized: false, state }], focused: id, topZ: z }));
     save(get);
@@ -451,9 +457,26 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     else get().revealInFinder(path.slice(0, path.lastIndexOf("/")) || "/", path);
   },
 
-  closeWindow: (id) => {
+  openInCode: (path, dir) => {
+    const folder = dir ? path : path.slice(0, path.lastIndexOf("/")) || "/";
+    set({ spotlight: false });
+    get().openApp("code", folder);
+    if (dir) return;
+    // The window showing that folder opens the file in a tab.
+    const win = get().windows.filter((w) => w.appId === "code" && w.state?.path === folder).at(-1);
+    if (win) get().setWinState(win.id, { open: path });
+  },
+
+  setWinTitle: (id, title) => {
+    if (get().windows.find((w) => w.id === id)?.title === title) return;
+    set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, title } : w)) }));
+    save(get);
+  },
+
+  closeWindow: (id, force) => {
     const win = get().windows.find((w) => w.id === id);
-    if (win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
+    if (!force && !mayClose(id)) return;
+    if (!force && win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
     set((s) => {
       const rest = s.windows.filter((w) => w.id !== id);
       return { windows: rest, focused: s.focused === id ? (topmost(rest)?.id ?? "") : s.focused };
@@ -665,6 +688,7 @@ let streamUnsub: (() => void) | undefined;
 function closeStream() {
   streamUnsub?.();
   streamUnsub = undefined;
+  setSubscription("");
 }
 
 // startStream applies aosd's events, batched to one store commit per animation
@@ -700,7 +724,10 @@ function startStream(set: SetState) {
   };
   streamUnsub = subscribe({
     onState: (conn) => set({ conn }),
+    onSubscription: setSubscription,
     onEvent: (event) => {
+      // A Code window's folder changes go straight to it, not through the store.
+      if (event.kind.case === "workspace") return workspaceEvent(event.kind.value);
       queue.push(event);
       if (!scheduled) {
         scheduled = true;

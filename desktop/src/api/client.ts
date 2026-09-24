@@ -9,6 +9,7 @@ import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   ApprovalService,
   AuthService,
+  CodeService,
   EventService,
   FileService,
   SessionService,
@@ -51,3 +52,4 @@ export const sessions = client(SessionService);
 export const approvals = client(ApprovalService);
 export const software = client(SoftwareService);
 export const supervisor = client(SupervisorService);
+export const code = client(CodeService);
