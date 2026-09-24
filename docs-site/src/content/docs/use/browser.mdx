@@ -1,0 +1,60 @@
+---
+title: The Browser
+description: Install Chromium's headless shell so Agents can browse the web while you watch, and remove it again.
+---
+
+import { Steps } from "@astrojs/starlight/components";
+
+The **Browser** is an optional Desktop app. It gives Agents a real Chromium to browse with, for JavaScript-heavy
+sites, logins and forms, and streams it into a Desktop window so you can watch and take over. It isn't
+installed by default, to keep the install small.
+
+## Requirements
+
+| | |
+| --- | --- |
+| **Architecture** | **amd64 (x86-64) only.** The headless Chromium it uses isn't published for arm64, so the Browser isn't available on Raspberry Pi, Graviton, Ampere or Apple silicon. |
+| **Mode** | `ui` (the Desktop). |
+| **Disk** | About **1 GB free**. The download is about 120 MB and unpacks to about 600 MB. The install refuses to start with less free space. |
+| **Libraries** | Some system libraries Chromium needs. The installer adds any that are missing with `apt-get`. |
+
+## Install it
+
+<Steps>
+
+1. **Run the installer** on the Machine:
+
+   ```bash
+   sudo aos browser install                       # native
+   docker compose exec aos aos browser install    # Docker Compose
+   ```
+
+   It downloads a pinned build of **Chrome for Testing**'s headless shell from Google, **verifies its
+   SHA-256**, checks and installs the libraries it needs, and unpacks it to `/opt/aos-browser`.
+
+2. **Reload the Desktop.** A 🌐 **Browser** appears in the Dock.
+
+</Steps>
+
+To check for missing libraries without installing anything through `apt`, use `--no-deps`. It reports what's
+missing and stops.
+
+```bash
+sudo aos browser install --no-deps
+```
+
+## Remove it
+
+```bash
+sudo aos browser remove                        # native
+docker compose exec aos aos browser remove     # Docker Compose
+```
+
+This deletes the browser and hides the app. If you plan to [uninstall Agentic OS](/operate/upgrade/#uninstall),
+run `sudo aos browser remove` first, so nothing is left behind in `/opt/aos-browser`.
+
+## Good to know
+
+- The Browser **stays out of the Install Ledger**, so restoring a Checkpoint never removes its libraries out
+  from under it.
+- In [Root Mode](/use/root-mode/), the Browser keeps its own profile, separate from the Standard one.

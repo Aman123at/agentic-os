@@ -1,0 +1,213 @@
+---
+title: Run it with Docker Compose
+description: The sandboxed way to run Agentic OS on any computer with Docker. Same product; the Agents only see the container's filesystem.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Docker Compose runs the full Agentic OS product **inside a container**. The Agents get a complete Ubuntu 24.04
+machine to work on, but it isn't your computer. What they see is the container's filesystem, and **nothing
+they do touches your host**. It's the safe way to try Agentic OS on a laptop, and it works anywhere Docker
+runs.
+
+Want a click-by-click guide? See [Docker on macOS](/start/macos/) or [Docker on Windows](/start/windows/).
+
+## Requirements
+
+| | |
+| --- | --- |
+| **Docker** | Docker Desktop (macOS, Windows, Linux) or Docker Engine (Linux), with **Compose v2** (`docker compose`, not `docker-compose`) and BuildKit, both on by default in current versions |
+| **Git** | To clone the repository |
+| **Architecture** | amd64 or arm64, including Apple silicon |
+| **Disk** | A few GB for the image build and the volumes |
+| **OpenAI API key** | Optional at start. You can add it later in System Settings. |
+
+## Install
+
+<Steps>
+
+1. **Clone the repository.**
+
+   ```bash
+   git clone https://github.com/Aman123at/agentic-os.git
+   cd agentic-os
+   ```
+
+2. **Create your `.env` file** from the example:
+
+   <Tabs syncKey="os">
+     <TabItem label="macOS / Linux">
+       ```bash
+       cp .env.example .env
+       ```
+     </TabItem>
+     <TabItem label="Windows (PowerShell)">
+       ```powershell
+       Copy-Item .env.example .env
+       ```
+     </TabItem>
+   </Tabs>
+
+   Open `.env` and paste your key after `OPENAI_API_KEY=`, or leave it empty for now. **The line itself must
+   stay in the file**, even if it's empty.
+
+3. **Build and start it.** The first build takes a few minutes. Later starts take seconds.
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+4. **Create your Desktop account.** This prints a one-time password:
+
+   ```bash
+   docker compose exec aos aos mode ui
+   ```
+
+   ```text
+   The Desktop account is ready. Sign in with this password once; the Desktop
+   then asks you to set your own.
+
+     Username: admin
+     Password: 7kQm4TdX2bWrNf9hPzLc3eYa
+   ```
+
+   The command creates the account first, then tries to restart the service with `systemctl`, which a
+   container doesn't have. If it ends with a message about `systemctl` or `docker compose restart`, that's
+   expected. **Your account is ready**, and Compose already runs the Desktop.
+
+5. **Open [http://localhost:7700](http://localhost:7700)** and sign in as `admin` with that password. You'll
+   choose your own password (12+ characters) straight away.
+
+</Steps>
+
+## Everyday commands
+
+Run these from the `agentic-os` folder.
+
+| To… | Run |
+| --- | --- |
+| See if it's running | `docker compose ps` |
+| Follow the logs | `docker compose logs -f` |
+| Use the CLI inside the Machine | `docker compose exec aos aos` |
+| Check health | `docker compose exec aos aos doctor` |
+| Stop it (keeps all data) | `docker compose stop` |
+| Start it again | `docker compose start` |
+| Restart after editing `.env` | `docker compose up -d` |
+| Upgrade to the latest code | `git pull && docker compose up -d --build` |
+| Remove the containers (keeps data volumes) | `docker compose down` |
+| **Delete everything, including all data** | `docker compose down -v` |
+
+Your data lives in three named Docker volumes, `aos-home`, `aos-state` and `aos-pkgcache`, so it survives
+`stop`, `down`, rebuilds and upgrades. Only `down -v` deletes it.
+
+## Settings in `.env`
+
+Compose reads `.env` to fill in `compose.yaml`. Settings you later change in **System Settings** take
+precedence over these defaults.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | *(empty)* | Your key. Delivered to the daemon as a secret file, never as an environment variable. |
+| `OPENAI_MODEL` | `gpt-5.6-terra` | The model Agents use. See [Models](/configure/models/). |
+| `OPENAI_REASONING_EFFORT` | *(model default)* | How hard the model thinks. |
+| `OPENAI_BASE_URL` | *(OpenAI)* | An OpenAI-compatible endpoint instead of OpenAI's own. |
+| `AOS_MODE` | `ui` | `ui` for the Desktop, `cli` for the terminal only. |
+| `AOS_BIND` | `127.0.0.1` | Which host interface the Desktop is published on. |
+| `AOS_PORT` | `7700` | Which host port the Desktop is published on. |
+| `AOS_AUTONOMY` | `confirm-risky` | `auto`, `confirm-risky` or `confirm-all`. |
+| `AOS_MAX_TASKS` | `3` | How many Tasks run at once. |
+| `AOS_TASK_COST_LIMIT_USD` / `AOS_DAILY_COST_LIMIT_USD` | *(none)* | Optional spending caps. |
+| `AOS_TRASH_RETENTION_DAYS` / `AOS_TRASH_MAX_GB` | `30` / `5` | How long, and how much, the Trash keeps. |
+| `TZ` | `UTC` | The Machine's time zone, e.g. `Europe/Berlin`. |
+
+## Common recipes
+
+<Tabs>
+  <TabItem label="Open from other devices">
+    By default the Desktop is published on `127.0.0.1` only, so just this computer can open it. To reach it
+    from your phone or another computer on your network, set this in `.env`:
+
+    ```ini
+    AOS_BIND=0.0.0.0
+    ```
+
+    Then run `docker compose up -d` and open `http://<this-computer's-ip>:7700`. Anyone on your network can now
+    reach the sign-in page, so use a strong password.
+  </TabItem>
+  <TabItem label="Share a folder">
+    Agents only see the container. To give them one folder from your computer, create `compose.override.yaml`
+    next to `compose.yaml`:
+
+    ```yaml
+    services:
+      aos:
+        volumes:
+          - ./shared:/home/aos/Shared
+    ```
+
+    Run `docker compose up -d`. On Linux, set `AOS_UID` and `AOS_GID` in `.env` to your own `id -u` and
+    `id -g`, so files the Agents create are owned by you.
+  </TabItem>
+  <TabItem label="Publish Service ports">
+    Services an Agent starts open from the Desktop, or at `http://<port>.localhost:7700` on this computer.
+    To publish a range of ports directly as well, copy the example override and set the range:
+
+    ```bash
+    cp compose.override.example.yaml compose.override.yaml
+    echo "AOS_PUBLISH_PORTS=8000-8010" >> .env
+    docker compose up -d
+    ```
+  </TabItem>
+  <TabItem label="Terminal only">
+    Prefer no Desktop? Set `AOS_MODE=cli` in `.env`, run `docker compose up -d`, then chat with:
+
+    ```bash
+    docker compose exec aos aos
+    ```
+  </TabItem>
+  <TabItem label="Add the Browser">
+    The Browser app is installed on demand (amd64 hosts only):
+
+    ```bash
+    docker compose exec aos aos browser install
+    ```
+
+    A 🌐 Browser appears in the Dock. `aos browser remove` takes it away again. See [The Browser](/use/browser/).
+  </TabItem>
+</Tabs>
+
+## How Compose differs from a native install
+
+- **Agents write only inside `/home/aos`** in the container (`filesystem: home`). A native install lets them
+  write across the server.
+- **There's no systemd.** Use `docker compose` commands instead of `aos daemon …`. Restarting from the
+  Desktop still works; Compose brings the container back up.
+- **Your software survives rebuilds.** On a Compose install, what Agents installed is replayed into a fresh
+  container at startup, so an image rebuild doesn't lose it.
+- **`<port>.localhost` links work**, because the Desktop really is on localhost.
+
+## Troubleshooting
+
+<Tabs>
+  <TabItem label="Stuck in “Created” (macOS)">
+    Docker Desktop can't mount folders under `~/Desktop`, `~/Documents` or `~/Downloads` until macOS allows it.
+    Either allow Docker in **System Settings → Privacy & Security → Files & Folders** and restart Docker Desktop,
+    or move the repository somewhere like `~/src/agentic-os`.
+  </TabItem>
+  <TabItem label="“required by secret … is not set”">
+    Your `.env` is missing the `OPENAI_API_KEY=` line. Add it back, even with an empty value.
+  </TabItem>
+  <TabItem label="Port 7700 already in use">
+    Something else on your computer uses 7700. Set `AOS_PORT=7701` (or any free port) in `.env`, run
+    `docker compose up -d`, and open `http://localhost:7701`.
+  </TabItem>
+  <TabItem label="Sign-in says the password is wrong">
+    Did you run `docker compose exec aos aos mode ui`? The Desktop has no account until you do. If you've lost
+    the one-time password, see [If you lose the password](/operate/lost-password/).
+  </TabItem>
+</Tabs>
+
+<CardGrid>
+  <LinkCard title="Sign in and set your password" description="What happens on first sign-in." href="/start/sign-in/" />
+  <LinkCard title="Ready for a real server?" description="Move to the native install." href="/start/install/" />
+</CardGrid>

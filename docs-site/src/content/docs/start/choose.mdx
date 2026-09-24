@@ -1,0 +1,60 @@
+---
+title: Which install should I use?
+description: Compare the native installer and Docker Compose across servers, laptops and single-board computers.
+---
+
+import { LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Agentic OS runs in two shapes. The right one depends on **the device you have** and **how much of it you
+want to hand to the Agents**.
+
+## At a glance
+
+| Your device | Recommended install | Guide |
+| --- | --- | --- |
+| A cloud VPS (AWS, Google Cloud, Azure, DigitalOcean, Hetzner, …) | **Native** | [Cloud providers](/start/cloud/) |
+| A Linux server or home lab box running Ubuntu or Debian | **Native** | [Linux server](/start/install/) |
+| A Raspberry Pi 4 or 5 (64-bit OS) | **Native** | [Raspberry Pi & ARM](/start/raspberry-pi/) |
+| A Mac (Apple silicon or Intel) | **Docker Compose** | [Docker on macOS](/start/macos/) |
+| A Windows 10 or 11 PC | **Docker Compose** (WSL 2) | [Docker on Windows](/start/windows/) |
+| A Linux desktop you use every day | **Docker Compose** | [Docker Compose](/start/compose/) |
+| A Linux machine without systemd | **Docker Compose** | [Docker Compose](/start/compose/) |
+
+## Native vs. Docker Compose
+
+| | Native install | Docker Compose |
+| --- | --- | --- |
+| **What Agents work on** | Your real server: its filesystem, packages and services | A container. Your host is never touched. |
+| **Where Agents may write** | All of `/`, except the Protected list | Only `/home/aos` inside the container |
+| **Operating systems** | Ubuntu 22.04+, Debian 12+ (with systemd) | Anything that runs Docker: macOS, Windows, Linux |
+| **CPU architectures** | amd64, arm64 | amd64, arm64 |
+| **Needs installed first** | Nothing but `curl` and `sudo` | Docker (Desktop or Engine) with Compose v2, and `git` |
+| **Desktop reachable from** | Any network that can route to port 7700 | `localhost` only, by default |
+| **Runs at boot** | Yes, as a systemd service | When Docker starts (`restart: unless-stopped`) |
+| **Upgrade** | Re-run the installer | `git pull` and `docker compose up -d --build` |
+| **Optional Browser app** | amd64 only | amd64 only (not on Apple silicon Macs) |
+| **Best for** | A server you want AI to administer | Trying it out safely, or laptops |
+
+## Hardware
+
+The daemon itself is small. What matters is the software your Agents will install and run.
+
+| | Required | Recommended |
+| --- | --- | --- |
+| **Memory** | No minimum is enforced | 2 GB or more |
+| **Free disk** | 250 MB on `/usr/local` for the binary | Several GB for the packages Agents install, plus 1 GB if you add the Browser |
+| **Linux kernel** | Any kernel that runs systemd | **5.13 or newer with Landlock enabled**, so Agents are sandboxed |
+
+:::note[Why the kernel version matters]
+Agents are sandboxed with **Landlock**, a Linux security module available from kernel 5.13. On an older kernel,
+or one with Landlock switched off, the installer warns you and Agents run under policy checks only. Run
+`aos doctor` at any time to see whether Landlock is active. To refuse to start without it, set
+`require_landlock: true` in the [configuration](/configure/config-file/).
+:::
+
+## Still unsure?
+
+<CardGrid>
+  <LinkCard title="Just want to try it?" description="Docker Compose on your laptop is the safest first run." href="/start/compose/" />
+  <LinkCard title="Ready for a real server?" description="The native installer takes one command." href="/start/install/" />
+</CardGrid>

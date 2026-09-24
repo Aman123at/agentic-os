@@ -1,0 +1,144 @@
+---
+title: Put nginx and HTTPS in front
+description: Serve the Desktop on your own domain over HTTPS with nginx and a free Let's Encrypt certificate, then close port 7700.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+Out of the box the Desktop is plain HTTP on port 7700, so **your password crosses the network unencrypted**. This
+guide puts **nginx** in front with a free **Let's Encrypt** certificate, so you reach the Desktop at
+`https://aos.example.com`, and then closes port 7700 to the internet.
+
+## Before you start
+
+- Agentic OS [installed natively](/start/install/) and running.
+- A **domain name** you control, for example `aos.example.com`.
+- A DNS **A record** (and AAAA for IPv6) pointing that name at your server's public IP.
+- Ports **80 and 443** open in your cloud firewall.
+
+## Set it up
+
+<Steps>
+
+1. **Install nginx and certbot.**
+
+   ```bash
+   sudo apt update
+   sudo apt install -y nginx certbot python3-certbot-nginx
+   ```
+
+2. **Create the site.** Save this as `/etc/nginx/sites-available/agentic-os`, replacing `aos.example.com`:
+
+   ```nginx title="/etc/nginx/sites-available/agentic-os"
+   map $http_upgrade $connection_upgrade {
+       default upgrade;
+       ''      close;
+   }
+
+   server {
+       listen 80;
+       listen [::]:80;
+       server_name aos.example.com;
+
+       # Uploads from Finder can be large.
+       client_max_body_size 0;
+
+       location / {
+           proxy_pass http://127.0.0.1:7700;
+           proxy_http_version 1.1;
+
+           # Required: the Desktop checks that Origin matches Host.
+           proxy_set_header Host $host;
+
+           # Required: the Terminal and live updates use WebSockets.
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection $connection_upgrade;
+
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+
+           # Keep long-lived streams open.
+           proxy_read_timeout 1h;
+           proxy_send_timeout 1h;
+           proxy_buffering off;
+       }
+   }
+   ```
+
+3. **Enable it and reload nginx.**
+
+   ```bash
+   sudo ln -s /etc/nginx/sites-available/agentic-os /etc/nginx/sites-enabled/
+   sudo nginx -t
+   sudo systemctl reload nginx
+   ```
+
+   Check `http://aos.example.com` now shows the sign-in page.
+
+4. **Get a certificate.** certbot edits the site for HTTPS and sets up automatic renewal:
+
+   ```bash
+   sudo certbot --nginx -d aos.example.com --redirect
+   ```
+
+   Open **`https://aos.example.com`**. You should see the padlock.
+
+5. **Close port 7700 to the internet.** The daemon always listens on 7700 on every interface, so block it at
+   the firewall and leave only nginx reachable:
+
+   <Tabs syncKey="firewall">
+     <TabItem label="Cloud firewall">
+       Remove the inbound rule for TCP **7700** from your security group or cloud firewall, and keep **80**,
+       **443** and **22**. See [Cloud providers](/start/cloud/).
+     </TabItem>
+     <TabItem label="ufw">
+       ```bash
+       sudo ufw allow OpenSSH
+       sudo ufw allow 'Nginx Full'
+       sudo ufw deny 7700/tcp
+       sudo ufw enable
+       ```
+     </TabItem>
+   </Tabs>
+
+   From your laptop, `http://<server-ip>:7700` should now time out, while `https://aos.example.com` still works.
+
+</Steps>
+
+:::caution[Keep the Host header]
+The Desktop refuses requests whose `Origin` doesn't match their `Host`, to stop other sites from driving it. If
+you see **"cross-origin requests are not allowed"**, your proxy isn't passing `Host $host`.
+:::
+
+## Other reverse proxies
+
+<Tabs>
+  <TabItem label="Caddy">
+    Caddy gets and renews a certificate automatically, and handles WebSockets and the Host header by default:
+
+    ```text title="/etc/caddy/Caddyfile"
+    aos.example.com {
+        reverse_proxy 127.0.0.1:7700
+    }
+    ```
+
+    ```bash
+    sudo systemctl reload caddy
+    ```
+  </TabItem>
+  <TabItem label="Cloudflare Tunnel">
+    With `cloudflared` you don't need to open **any** inbound port. Point a public hostname at the service
+    `http://localhost:7700` in your tunnel's configuration. Make sure **WebSockets** are enabled for the zone (they are by default).
+  </TabItem>
+  <TabItem label="Tailscale">
+    If only you need the Desktop, skip the public domain. Install Tailscale on the server and your laptop, and
+    open `http://<server-tailscale-name>:7700`. Close 7700 in the cloud firewall; Tailscale traffic doesn't
+    need it. `tailscale serve` can add HTTPS too.
+  </TabItem>
+</Tabs>
+
+## Services behind the proxy
+
+[Forwarded Services](/use/services/) are served under `/port/<n>/` on the same host, so they work through
+this proxy with no extra configuration.
