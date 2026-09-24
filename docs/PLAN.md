@@ -1790,7 +1790,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.3 built; M8.4 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.4 built; M8.5 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1905,6 +1905,9 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    already follows — Code adds no new way past them. In Root Mode every file is
    writable except AOS's own state (Hidden, §7.2 `rootPolicy()`). *Tests:*
    `files` — `writable` per Realm; Playwright — read-only tab and banner.
+   *As built:* aosd's `OwnState` is Root Mode's list of AOS's own state (the
+   root Agent policy's Hidden and read-only paths); it is shown read-only, not
+   refused — `FileService` refuses exactly what it refused before.
 
 5. **Sensitive System Files (Root Mode).** One list, `policy.Sensitive(path)
    (reason, ok)`, shared by the server, Code and the Agent's policy:
