@@ -14,7 +14,7 @@ import { Code as RpcCode, ConnectError } from "@connectrpc/connect";
 import { basicSetup } from "codemirror";
 import { lazy, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { files } from "../../api/client";
+import { code, files } from "../../api/client";
 import { friendlyError } from "../../api/error";
 import { sensitiveOf } from "../../api/sensitive";
 import { openWorkspace, type WorkspaceHandle } from "../../api/workspaces";
@@ -40,7 +40,9 @@ import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
 import { Explorer, type Relist } from "./Explorer";
 import { baseOf, dirOf, relative, within } from "./paths";
-import { QuickOpen } from "./QuickOpen";
+import { completion, modClick, wordAt } from "./navigate";
+import { Outline } from "./Outline";
+import { QuickOpen, symbolItem, type PaletteItem, type Preset, type Reveal } from "./QuickOpen";
 import { SearchView, type SearchRequest } from "./SearchView";
 
 // The Terminal panel brings xterm with it, so it loads when first opened (M8.6).
@@ -79,11 +81,14 @@ interface Doc {
   reveal?: Reveal;
 }
 
-// Reveal is a place in a file: a line, and optionally text on it to select.
-export interface Reveal {
-  line: number;
-  find?: string;
+// A place navigation can come back to (⌃- and ⌃⇧-).
+interface Loc {
+  path: string;
+  pos: number;
 }
+
+// How far back navigation remembers.
+const HISTORY = 50;
 
 // Ask is the unsaved-files dialog: for closing tabs or the window.
 interface Ask {
@@ -104,7 +109,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [autoSaveSetting, setAutoSave] = useWinState("autosave", "");
   const [sideSetting, setSide] = useWinState("side", "240");
   const [sideView, setSideView] = useWinState("view", "explorer");
-  const [quickOpen, setQuickOpen] = useState(false);
+  const [palette, setPalette] = useState<{ initial: string; preset?: Preset } | null>(null);
+  const [notice, setNotice] = useState("");
   const [searchReq, setSearchReq] = useState<SearchRequest>({ n: 0 });
   const [panelSetting, setPanel] = useWinState("panel", "");
   const [panelHeight, setPanelHeight] = useWinState("panelh", "220");
@@ -126,6 +132,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const bump = useCallback(() => setTick((n) => n + 1), []);
 
   const docs = useRef(new Map<string, Doc>());
+  const rootEl = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const host = useRef<HTMLDivElement>(null);
   const shown = useRef(""); // the Doc whose state is in the view
@@ -166,6 +173,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       c.readOnly.of([EditorState.readOnly.of(ro), EditorView.editable.of(!ro)]),
       d.crlf ? EditorState.lineSeparator.of("\r\n") : [],
       EditorView.updateListener.of((u) => onUpdate.current(u)),
+      // Navigation (M8.8): ⌘-click to a definition, and completion from the
+      // language's keywords and the Workspace's symbols.
+      modClick((pos) => void definitionRef.current(pos)),
+      completion(() => (wsRef.current ? { workspaceId: wsRef.current.id, root: wsRef.current.root, path: d.path } : null), d.path),
     ];
   };
 
@@ -187,6 +198,17 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     }
   }, []);
 
+  // focusEditor gives the editor focus a frame from now, once what was just
+  // shown is laid out; unless something else in the window has taken it
+  // meanwhile, such as the palette just opened.
+  const focusEditor = useCallback(() => {
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      const elsewhere = now && now !== document.body && now !== rootEl.current && rootEl.current?.contains(now) && !host.current?.contains(now);
+      if (!elsewhere) view.current?.focus();
+    });
+  }, []);
+
   // The Doc to focus once it has loaded: one opened before it was ready.
   const focusOnLoad = useRef("");
   const activate = useCallback(
@@ -194,10 +216,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       activeRef.current = p;
       setActive(p);
       show();
-      if (docs.current.get(p)?.load === "ready") requestAnimationFrame(() => view.current?.focus());
+      if (docs.current.get(p)?.load === "ready") focusEditor();
       else focusOnLoad.current = p;
     },
-    [show],
+    [show, focusEditor],
   );
 
   const onUpdate = useRef<(u: ViewUpdate) => void>(() => {});
@@ -325,7 +347,12 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const select = (d: Doc, at: Reveal) => {
     const st = current(d);
     if (!st) return;
-    const line = st.doc.line(Math.min(Math.max(1, at.line), st.doc.lines));
+    if (at.pos !== undefined) {
+      const pos = Math.min(at.pos, st.doc.length);
+      apply(d, { selection: { anchor: pos }, effects: EditorView.scrollIntoView(pos, { y: "center" }) });
+      return;
+    }
+    const line = st.doc.line(Math.min(Math.max(1, at.line ?? 1), st.doc.lines));
     let from = line.from;
     let to = line.from;
     if (at.find) {
@@ -347,9 +374,105 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     if (!d || !at) return;
     if (d.load === "ready") {
       select(d, at);
-      requestAnimationFrame(() => view.current?.focus());
+      focusEditor();
     } else d.reveal = at;
   };
+
+  // ------------------------------------------------------------ navigation
+
+  const back = useRef<Loc[]>([]);
+  const forward = useRef<Loc[]>([]);
+
+  // here is where the cursor is now, in the file in front.
+  const here = (): Loc | null => {
+    const d = docs.current.get(activeRef.current);
+    const st = d && current(d);
+    return d && st && d.load === "ready" ? { path: d.path, pos: st.selection.main.head } : null;
+  };
+
+  // jump goes somewhere, remembering where it came from for ⌃-.
+  const jump = (p: string, at?: Reveal) => {
+    const h = here();
+    if (h) {
+      back.current.push(h);
+      if (back.current.length > HISTORY) back.current.shift();
+      forward.current = [];
+    }
+    reveal(p, at);
+  };
+
+  // travel goes back (or forward) a place, opening its file again if it was
+  // closed since.
+  const travel = (from: Loc[], to: Loc[]) => {
+    const loc = from.pop();
+    if (!loc) return;
+    const h = here();
+    if (h) to.push(h);
+    reveal(loc.path, { pos: loc.pos });
+  };
+
+  // The word at the cursor, in the file in front.
+  const wordHere = (at?: number) => {
+    const v = view.current;
+    const d = docs.current.get(activeRef.current);
+    if (!v || !d || shown.current !== d.path) return null;
+    const w = wordAt(v.state, at ?? v.state.selection.main.head);
+    return w ? { ...w, path: d.path } : null;
+  };
+
+  const say = (err: unknown) => {
+    const e = ConnectError.from(err);
+    setNotice(e.code === RpcCode.FailedPrecondition ? e.rawMessage : friendlyError(err));
+  };
+
+  // F12 and ⌘-click: one definition is gone to; several are offered.
+  const goToDefinition = async (at?: number) => {
+    const w = wordHere(at);
+    const root = wsRef.current;
+    if (!w || !root) return;
+    try {
+      const found = (await code.definition({ workspaceId: root.id, name: w.name, path: w.path })).symbols;
+      if (found.length === 0) setNotice(`No definition found for ${w.name}.`);
+      else if (found.length === 1) jump(found[0].path, { line: found[0].line, find: w.name });
+      else setPalette({ initial: "", preset: { title: `${found.length} definitions of ${w.name}`, items: found.map((s) => symbolItem(s, root.root)) } });
+    } catch (err) {
+      say(err);
+    }
+  };
+  const definitionRef = useRef(goToDefinition);
+  definitionRef.current = goToDefinition;
+
+  // ⇧F12: the name's whole-word uses in files of the same language.
+  const findReferences = async () => {
+    const w = wordHere();
+    const root = wsRef.current;
+    if (!w || !root) return;
+    try {
+      const r = await code.references({ workspaceId: root.id, name: w.name, path: w.path });
+      const items: PaletteItem[] = r.files.flatMap((f) =>
+        f.matches.map((m) => ({
+          key: `${f.path}:${m.line}`,
+          label: m.text,
+          hits: m.ranges.flatMap((x) => Array.from({ length: x.end - x.start }, (_, i) => x.start + i)),
+          detail: `${relative(f.path, root.root)}:${m.line}`,
+          path: f.path,
+          at: { line: m.line, find: w.name },
+        })),
+      );
+      if (items.length === 0) return setNotice(`No references to ${w.name} found.`);
+      const title = `${items.length}${r.truncated ? "+" : ""} ${items.length === 1 ? "reference" : "references"} to ${w.name}`;
+      setPalette({ initial: "", preset: { title, items } });
+    } catch (err) {
+      say(err);
+    }
+  };
+
+  // A notice goes by itself.
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(""), 5000);
+    return () => clearTimeout(t);
+  }, [notice]);
 
   // ------------------------------------------------------------ save
 
@@ -558,11 +681,14 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   // A Doc opened before it had loaded takes focus once it is shown: after
   // the render that unhides the editor, since a hidden one cannot.
+  // It takes focus only from nothing in particular: not from the palette or
+  // an input opened while it loaded.
   useEffect(() => {
     const p = focusOnLoad.current;
     if (p && p === activeRef.current && shown.current === p && docs.current.get(p)?.load === "ready") {
       focusOnLoad.current = "";
-      view.current?.focus();
+      const now = document.activeElement;
+      if (!now || now === document.body || now === rootEl.current) view.current?.focus();
     }
   });
 
@@ -676,7 +802,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const togglePanel = (open = !panelOpen) => {
     setPanel(open ? "1" : "");
     if (open) setPanelMounted(true);
-    else requestAnimationFrame(() => view.current?.focus());
+    else focusEditor();
   };
   const side = Number(sideSetting) || 0;
   // showView shows a view in the side bar; its own button again hides the bar.
@@ -689,13 +815,41 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     const mod = e.metaKey || e.ctrlKey;
-    // ⌘P: Quick Open. ⌘⇧F: Find in Files, with the selection if there is one.
-    if (mod && !e.altKey && !e.shiftKey && e.code === "KeyP") {
+    const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
+    const take = () => {
       e.preventDefault();
       e.stopPropagation();
-      setQuickOpen(true);
+    };
+    // ⌘P Quick Open, ⌘T a symbol anywhere, ⌘⇧O a symbol in this file, ⌃G a
+    // line: one palette, in the mode its first character picks.
+    if (mod && !e.altKey && !e.shiftKey && (e.code === "KeyP" || e.code === "KeyT")) {
+      take();
+      setPalette({ initial: e.code === "KeyT" ? "#" : "" });
       return;
     }
+    if (mod && !e.altKey && e.shiftKey && e.code === "KeyO") {
+      take();
+      setPalette({ initial: "@" });
+      return;
+    }
+    if (e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && e.code === "KeyG") {
+      take();
+      setPalette({ initial: ":" });
+      return;
+    }
+    // F12 a definition, ⇧F12 references; ⌃- back and ⌃⇧- forward.
+    if (e.key === "F12" && (plain || (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey))) {
+      take();
+      void (e.shiftKey ? findReferences() : goToDefinition());
+      return;
+    }
+    if (e.ctrlKey && !e.metaKey && !e.altKey && e.code === "Minus") {
+      take();
+      if (e.shiftKey) travel(forward.current, back.current);
+      else travel(back.current, forward.current);
+      return;
+    }
+    // ⌘⇧F: Find in Files, with the selection if there is one.
     if (mod && !e.altKey && e.shiftKey && e.code === "KeyF") {
       e.preventDefault();
       e.stopPropagation();
@@ -744,7 +898,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   return (
     // Focusable, so the window's shortcuts work after a click anywhere in it.
-    <div className="code" tabIndex={-1} onKeyDownCapture={onKeyDown}>
+    <div className="code" ref={rootEl} tabIndex={-1} onKeyDownCapture={onKeyDown}>
       <div className="code__body">
         <div className="code__activity" role="tablist" aria-label="Views" aria-orientation="vertical">
           <button role="tab" aria-selected={side > 0 && sideView === "explorer"} aria-label="Explorer" title="Explorer (⌘⇧E)" className="code__activity-btn" onClick={() => showView("explorer")}>
@@ -753,14 +907,28 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           <button role="tab" aria-selected={side > 0 && sideView === "search"} aria-label="Search" title="Search (⌘⇧F)" className="code__activity-btn" onClick={() => showView("search")}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5.5 5.5" /></svg>
           </button>
+          <button role="tab" aria-selected={side > 0 && sideView === "outline"} aria-label="Outline" title="Outline" className="code__activity-btn" onClick={() => showView("outline")}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14M8 12h11M8 18h11M5 12h.01M5 18h.01" /></svg>
+          </button>
         </div>
         <div className="code__side" style={{ width: side }} hidden={side === 0}>
           <div className="code__view" hidden={sideView !== "explorer"}>
             <Explorer root={ws.root} active={active} subscribe={subscribe} onOpen={openDoc} onMoved={moved} onError={setError} onSensitive={askSensitive} />
           </div>
           <div className="code__view" hidden={sideView !== "search"}>
-            <SearchView workspaceId={ws.id} root={ws.root} request={searchReq} onReveal={(p, line, find) => reveal(p, { line, find })} />
+            <SearchView workspaceId={ws.id} root={ws.root} request={searchReq} onReveal={(p, line, find) => jump(p, { line, find })} />
           </div>
+          {/* Mounted only while shown: it asks aosd's index at each file switch. */}
+          {sideView === "outline" && side > 0 && (
+            <div className="code__view">
+              <Outline
+                workspaceId={ws.id}
+                path={d?.load === "ready" ? d.path : ""}
+                version={d?.stamp ?? ""}
+                onReveal={(p, line, name) => jump(p, { line, find: name })}
+              />
+            </div>
+          )}
         </div>
         <Splitter size={side} onSize={(w) => setSide(String(w))} min={160} max={520} label="Resize the Explorer" restore={240} />
         <div className="code__main">
@@ -798,6 +966,11 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
               <button className="finder__btn" onClick={() => setError("")}>
                 Dismiss
               </button>
+            </div>
+          )}
+          {notice && (
+            <div className="code__banner code__banner--info" role="status" aria-label="Notice">
+              <span>{notice}</span>
             </div>
           )}
           {d?.readOnly && <div className="code__banner code__banner--info">{d.readOnly}</div>}
@@ -887,14 +1060,17 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         onPanel={() => togglePanel()}
       />
 
-      {quickOpen && (
+      {palette && (
         <QuickOpen
           workspaceId={ws.id}
           root={ws.root}
-          onOpen={(p, line) => reveal(p, line ? { line } : undefined)}
+          active={d?.load === "ready" ? d.path : ""}
+          initial={palette.initial}
+          preset={palette.preset}
+          onOpen={jump}
           onClose={() => {
-            setQuickOpen(false);
-            requestAnimationFrame(() => view.current?.focus());
+            setPalette(null);
+            focusEditor();
           }}
         />
       )}

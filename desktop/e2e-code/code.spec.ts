@@ -542,3 +542,128 @@ test("without ripgrep, Find in Files says it searched on its own", async ({ page
   await win.getByLabel("Search for").fill("Project");
   await expect(win.getByRole("status", { name: "Search results summary" })).toContainText("ripgrep isn’t installed");
 });
+
+const NAV = {
+  "/home/aos/nav/main.go": "package main\n\nfunc main() {\n\tRun()\n}\n",
+  "/home/aos/nav/run.go": "package main\n\n// Run runs.\nfunc Run() {\n\thelper()\n}\n\nfunc helper() {}\n",
+  "/home/aos/nav/web/app.ts": "export function Run() {}\nRun()\n",
+  "/home/aos/nav/web/other.ts": "export function Run() {}\n",
+};
+
+async function openNav(page: Page): Promise<Locator> {
+  await page.locator('.dock__tile[title="Code"]').click();
+  const asking = page.locator('.window[aria-label="Code"]');
+  await asking.getByLabel("Folder to open").fill("~/nav");
+  await asking.getByRole("button", { name: "Open" }).click();
+  const win = page.locator('.window[aria-label="nav"]');
+  await expect(win.getByRole("treeitem", { name: /main\.go/ })).toBeVisible();
+  return win;
+}
+
+// goTo puts the cursor on a line with ⌃G, then at column col.
+async function goTo(page: Page, line: number, col: number) {
+  await page.keyboard.press("Control+g");
+  await page.keyboard.type(`:${line}`.slice(1));
+  await page.keyboard.press("Enter");
+  // The editor takes focus back once the palette has closed.
+  await page.waitForFunction(() => document.activeElement?.classList.contains("cm-content"));
+  for (let i = 1; i < col; i++) await page.keyboard.press("ArrowRight");
+}
+
+test("F12 goes to a definition in another file, and ⌃- comes back", async ({ page }) => {
+  await boot(page, { files: NAV });
+  const win = await openNav(page);
+  const status = win.getByRole("status", { name: "Status bar" });
+  await openFile(win, "main.go");
+  await goTo(page, 4, 4); // \tRu|n()
+  await expect(status).toContainText("Ln 4, Col 4");
+
+  await page.keyboard.press("F12");
+  await expect(win.getByRole("tab", { name: /run\.go/, selected: true })).toBeVisible();
+  await expect(status).toContainText("Ln 4, Col 9"); // Run selected in func Run() {
+
+  await page.keyboard.press("Control+Minus");
+  await expect(win.getByRole("tab", { name: /main\.go/, selected: true })).toBeVisible();
+  await expect(status).toContainText("Ln 4, Col 4");
+  await page.keyboard.press("Control+Shift+Minus");
+  await expect(win.getByRole("tab", { name: /run\.go/, selected: true })).toBeVisible();
+  await expect(status).toContainText("Ln 4");
+
+  // ⌘-click does the same.
+  await win.locator(".cm-line", { hasText: "helper()" }).first().getByText("helper").click({ modifiers: ["ControlOrMeta"] });
+  await expect(status).toContainText("Ln 8, Col 12");
+
+  // A name defined several times offers each.
+  await win.getByRole("treeitem", { name: /📁 web/ }).click();
+  await openFile(win, "app.ts");
+  await goTo(page, 2, 2);
+  await page.keyboard.press("F12");
+  const pick = win.getByRole("dialog", { name: "2 definitions of Run" }); // the TypeScript ones
+  await expect(pick.getByRole("option")).toHaveCount(2);
+  await pick.getByRole("option", { name: /other\.ts/ }).click();
+  await expect(win.getByRole("tab", { name: /other\.ts/, selected: true })).toBeVisible();
+});
+
+test("⇧F12, ⌘⇧O, ⌘T and the Outline find symbols and their uses", async ({ page }) => {
+  await boot(page, { files: NAV });
+  const win = await openNav(page);
+  const status = win.getByRole("status", { name: "Status bar" });
+  await openFile(win, "run.go");
+
+  // References: whole words, in Go files.
+  await goTo(page, 4, 7);
+  await page.keyboard.press("Shift+F12");
+  const refs = win.getByRole("dialog", { name: "3 references to Run" });
+  await expect(refs.getByRole("option")).toHaveCount(3);
+  await refs.getByRole("option", { name: /main\.go:4/ }).click();
+  await expect(win.getByRole("tab", { name: /main\.go/, selected: true })).toBeVisible();
+
+  // The file's symbols (⌘⇧O): the palette in @ mode.
+  await openFile(win, "run.go");
+  await page.keyboard.press("ControlOrMeta+Shift+o");
+  const palette = win.getByRole("dialog", { name: "Quick Open" });
+  await expect(palette.getByRole("option")).toHaveCount(2);
+  await page.keyboard.type("hel");
+  await page.keyboard.press("Enter");
+  await expect(status).toContainText("Ln 8");
+
+  // Symbols anywhere: ⌘P then #.
+  await openFile(win, "main.go");
+  await page.keyboard.press("ControlOrMeta+p");
+  await page.keyboard.type("#helper");
+  await expect(palette.getByRole("option").first()).toContainText("run.go:8");
+  await page.keyboard.press("Enter");
+  await expect(win.getByRole("tab", { name: /run\.go/, selected: true })).toBeVisible();
+
+  // The Outline lists the file in front's symbols.
+  await win.getByRole("tab", { name: "Outline" }).click();
+  const outline = win.getByRole("tree", { name: "Symbols" });
+  await expect(outline.getByRole("treeitem")).toHaveCount(2);
+  await outline.getByRole("treeitem", { name: "func Run" }).click();
+  await expect(status).toContainText("Ln 4");
+});
+
+test("completion offers the Workspace's symbols and the language's keywords", async ({ page }) => {
+  await boot(page, { files: NAV });
+  const win = await openNav(page);
+  await openFile(win, "main.go");
+  await autoSaveOff(win);
+  await goTo(page, 4, 7);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("hel");
+  const menu = page.locator(".cm-tooltip-autocomplete");
+  await expect(menu).toContainText("helper");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("defe");
+  await expect(menu).toContainText("defer");
+});
+
+test("without universal-ctags, F12 says to install it", async ({ page }) => {
+  await boot(page, { files: NAV, noCtags: true });
+  const win = await openNav(page);
+  await openFile(win, "main.go");
+  await goTo(page, 4, 3);
+  await page.keyboard.press("F12");
+  await expect(win.getByRole("status", { name: "Notice" })).toContainText("sudo apt install universal-ctags");
+});

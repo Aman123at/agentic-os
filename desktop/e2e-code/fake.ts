@@ -18,6 +18,8 @@ export interface FakeOptions {
   readOnly?: string[];
   // The search engine Find in Files reports (M8.7); ripgrep unless told.
   engine?: string;
+  // A Machine without universal-ctags (M8.8).
+  noCtags?: boolean;
 }
 
 // FakeMachine is what a spec reaches through page.evaluate(() => window.__aosd).
@@ -361,6 +363,37 @@ function fake(opts: FakeOptions) {
           .sort((a, b) => Number(b.inName) - Number(a.inName) || a.rel.length - b.rel.length || a.rel.localeCompare(b.rel));
         return { files: found.slice(0, Number(body.limit) || 50).map((f) => ({ path: `${w.root}/${f.rel}`, positions: f.pos })), total: all.length };
       }
+      case "CodeService/Definition": {
+        const w = symbolWorkspace(str("workspaceId"));
+        const from = str("path");
+        const dir = parent(from);
+        const named = allSymbols(w.root).filter((x) => x.name === str("name"));
+        // Those in the asking file's language, when there are any, as aosd.
+        const lang = from.slice(from.lastIndexOf(".") + 1);
+        const found = named.some((x) => x.language === lang) ? named.filter((x) => x.language === lang) : named;
+        found.sort((a, b) => Number(b.path === from) - Number(a.path === from) || Number(parent(b.path) === dir) - Number(parent(a.path) === dir) || a.path.localeCompare(b.path));
+        return { symbols: found, index: { files: 1, total: 1 } };
+      }
+      case "CodeService/DocumentSymbols":
+        symbolWorkspace(str("workspaceId"));
+        return { symbols: symbolsOf(str("path")), index: { files: 1, total: 1 } };
+      case "CodeService/WorkspaceSymbols": {
+        const w = symbolWorkspace(str("workspaceId"));
+        const q = str("query").toLowerCase();
+        const inOrder = (name: string) => {
+          let i = 0;
+          for (const c of name.toLowerCase()) if (c === q[i]) i++;
+          return i === q.length;
+        };
+        return { symbols: allSymbols(w.root).filter((x) => inOrder(x.name)).slice(0, Number(body.limit) || 100), index: { files: 1, total: 1 } };
+      }
+      case "CodeService/References": {
+        const w = workspaces[str("workspaceId")];
+        if (!w?.open) throw new RpcError("not_found", "no such open Workspace");
+        const ext = str("path").slice(str("path").lastIndexOf("."));
+        const res = searchText({ workspaceId: str("workspaceId"), query: `\\b${str("name")}\\b`, regex: true, caseSensitive: true });
+        return { files: res.files.filter((f) => f.path.endsWith(ext)) };
+      }
       case "CodeService/ReportDirty": {
         const id = str("workspaceId");
         if (!workspaces[id]?.open) throw new RpcError("not_found", "no such open Workspace");
@@ -370,6 +403,29 @@ function fake(opts: FakeOptions) {
     }
     return {};
   }
+
+  // The fake's ctags: definitions it can see by their keyword.
+  const SYMBOL = /^\s*(?:export\s+)?(?:(func)\s+(?:\([^)]*\)\s*)?|(function)\s+|(class)\s+|(def)\s+|(type)\s+|(const)\s+)([A-Za-z_$][\w$]*)/;
+  const symbolsOf = (p: string) => {
+    const n = fs.get(p);
+    if (!n || n.dir) return [];
+    return dec
+      .decode(n.data)
+      .split("\n")
+      .flatMap((text, i) => {
+        const m = SYMBOL.exec(text);
+        if (!m) return [];
+        const kind = m[1] ?? m[2] ?? m[3] ?? (m[4] ? "function" : undefined) ?? m[5] ?? m[6];
+        return [{ name: m[7], kind, path: p, line: i + 1, language: p.slice(p.lastIndexOf(".") + 1) }];
+      });
+  };
+  const allSymbols = (root: string) => [...fs.keys()].filter((k) => k.startsWith(root + "/")).sort().flatMap(symbolsOf);
+  const symbolWorkspace = (id: string) => {
+    const w = workspaces[id];
+    if (!w?.open) throw new RpcError("not_found", "no such open Workspace");
+    if (opts.noCtags) throw new RpcError("failed_precondition", "universal-ctags is not installed on this Machine; Go to Definition and symbols need it: sudo apt install universal-ctags");
+    return w;
+  };
 
   // searchText is Find in Files over the fake's tree, one file per result.
   function searchText(req: Record<string, unknown>) {
