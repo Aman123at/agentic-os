@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -25,6 +26,7 @@ import (
 // System File, since the real list names the real /etc.
 type sensitiveMachine struct {
 	c        aosv1connect.FileServiceClient
+	url      string
 	root     string
 	sudoers  string
 	log      *audit.Log
@@ -78,7 +80,7 @@ func newSensitiveMachine(t *testing.T) sensitiveMachine {
 	}
 	srv := httptest.NewServer(auth.TCP(s.Handler()))
 	t.Cleanup(srv.Close)
-	return sensitiveMachine{c: aosv1connect.NewFileServiceClient(&http.Client{Transport: bearer{}}, srv.URL), root: root, sudoers: sudoers, log: log, rootMode: &rootMode}
+	return sensitiveMachine{c: aosv1connect.NewFileServiceClient(&http.Client{Transport: bearer{}}, srv.URL), url: srv.URL, root: root, sudoers: sudoers, log: log, rootMode: &rootMode}
 }
 
 func (m sensitiveMachine) read(t *testing.T) string {
@@ -198,5 +200,21 @@ func TestStandardModeHasNoSensitiveSystemFiles(t *testing.T) {
 	}
 	if kept, _ := m.c.ListSensitiveBackups(ctx, connect.NewRequest(&aosv1.ListSensitiveBackupsRequest{Path: m.sudoers})); len(kept.Msg.Backups) != 0 {
 		t.Errorf("Standard kept a version: %v", kept.Msg.Backups)
+	}
+}
+
+func TestAnUploadNeverReplacesASensitiveSystemFileInRootMode(t *testing.T) {
+	m := newSensitiveMachine(t)
+	req, err := http.NewRequest(http.MethodPost, m.url+"/upload?overwrite=1&path="+url.QueryEscape(m.sudoers), strings.NewReader("oops\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := (&http.Client{Transport: bearer{}}).Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusPreconditionFailed || m.read(t) != "root ALL=(ALL) ALL\n" {
+		t.Errorf("upload over it: %d, file %q; want 412 and the file unchanged", resp.StatusCode, m.read(t))
 	}
 }
