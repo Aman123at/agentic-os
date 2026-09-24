@@ -1790,7 +1790,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.2 built; M8.3 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.3 built; M8.4 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1888,6 +1888,12 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    close with unsaved files asks (Save all / Discard / Cancel). *Tests:*
    Playwright on the faked aosd — open folder, edit, save, Auto Save, reload
    on outside change, close-with-unsaved prompt, TextEdit regression.
+   *As built:* New Folder needed `FileService.MakeFolder` (new); `Write` had
+   no size cap to raise, so Code enforces 4 MiB itself. The activity bar gains
+   Search and Changes with M8.7 and M8.12 rather than showing empty panes now.
+   "The faked aosd" is `desktop/e2e-code/fake.ts`, an in-page fake with a live
+   event stream (the `code-ui` CI stage), since the Docker suite's sign-in is
+   still the retired `desktop-url` flow.
 
 #### Rights
 
