@@ -239,6 +239,10 @@ const (
 	CodeServiceCloseWorkspaceProcedure = "/aos.v1.CodeService/CloseWorkspace"
 	// CodeServiceReportDirtyProcedure is the fully-qualified name of the CodeService's ReportDirty RPC.
 	CodeServiceReportDirtyProcedure = "/aos.v1.CodeService/ReportDirty"
+	// CodeServiceFindFilesProcedure is the fully-qualified name of the CodeService's FindFiles RPC.
+	CodeServiceFindFilesProcedure = "/aos.v1.CodeService/FindFiles"
+	// CodeServiceSearchTextProcedure is the fully-qualified name of the CodeService's SearchText RPC.
+	CodeServiceSearchTextProcedure = "/aos.v1.CodeService/SearchText"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -2761,6 +2765,16 @@ type CodeServiceClient interface {
 	// ReportDirty replaces the unsaved files of an open Workspace, which the
 	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
 	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+	// FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+	// a query, best first. The files are listed as the Realm's user once,
+	// honouring .gitignore, and kept current from the Workspace's watch.
+	FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error)
+	// SearchText is Find in Files (M8.7): matching lines under the Workspace,
+	// file by file as they are found, then a summary. ripgrep runs as the
+	// Realm's user when installed, AOS's own search otherwise; both honour
+	// .gitignore and skip binary files. A regular expression that does not
+	// compile is InvalidArgument.
+	SearchText(context.Context, *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error)
 }
 
 // NewCodeServiceClient constructs a client for the aos.v1.CodeService service. By default, it uses
@@ -2792,6 +2806,18 @@ func NewCodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
 			connect.WithClientOptions(opts...),
 		),
+		findFiles: connect.NewClient[v1.FindFilesRequest, v1.FindFilesResponse](
+			httpClient,
+			baseURL+CodeServiceFindFilesProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("FindFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		searchText: connect.NewClient[v1.SearchTextRequest, v1.SearchTextResponse](
+			httpClient,
+			baseURL+CodeServiceSearchTextProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("SearchText")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -2800,6 +2826,8 @@ type codeServiceClient struct {
 	openWorkspace  *connect.Client[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse]
 	closeWorkspace *connect.Client[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse]
 	reportDirty    *connect.Client[v1.ReportDirtyRequest, v1.ReportDirtyResponse]
+	findFiles      *connect.Client[v1.FindFilesRequest, v1.FindFilesResponse]
+	searchText     *connect.Client[v1.SearchTextRequest, v1.SearchTextResponse]
 }
 
 // OpenWorkspace calls aos.v1.CodeService.OpenWorkspace.
@@ -2815,6 +2843,16 @@ func (c *codeServiceClient) CloseWorkspace(ctx context.Context, req *connect.Req
 // ReportDirty calls aos.v1.CodeService.ReportDirty.
 func (c *codeServiceClient) ReportDirty(ctx context.Context, req *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
 	return c.reportDirty.CallUnary(ctx, req)
+}
+
+// FindFiles calls aos.v1.CodeService.FindFiles.
+func (c *codeServiceClient) FindFiles(ctx context.Context, req *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error) {
+	return c.findFiles.CallUnary(ctx, req)
+}
+
+// SearchText calls aos.v1.CodeService.SearchText.
+func (c *codeServiceClient) SearchText(ctx context.Context, req *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error) {
+	return c.searchText.CallServerStream(ctx, req)
 }
 
 // CodeServiceHandler is an implementation of the aos.v1.CodeService service.
@@ -2837,6 +2875,16 @@ type CodeServiceHandler interface {
 	// ReportDirty replaces the unsaved files of an open Workspace, which the
 	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
 	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+	// FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+	// a query, best first. The files are listed as the Realm's user once,
+	// honouring .gitignore, and kept current from the Workspace's watch.
+	FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error)
+	// SearchText is Find in Files (M8.7): matching lines under the Workspace,
+	// file by file as they are found, then a summary. ripgrep runs as the
+	// Realm's user when installed, AOS's own search otherwise; both honour
+	// .gitignore and skip binary files. A regular expression that does not
+	// compile is InvalidArgument.
+	SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error
 }
 
 // NewCodeServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -2864,6 +2912,18 @@ func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
 		connect.WithHandlerOptions(opts...),
 	)
+	codeServiceFindFilesHandler := connect.NewUnaryHandler(
+		CodeServiceFindFilesProcedure,
+		svc.FindFiles,
+		connect.WithSchema(codeServiceMethods.ByName("FindFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceSearchTextHandler := connect.NewServerStreamHandler(
+		CodeServiceSearchTextProcedure,
+		svc.SearchText,
+		connect.WithSchema(codeServiceMethods.ByName("SearchText")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.CodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case CodeServiceOpenWorkspaceProcedure:
@@ -2872,6 +2932,10 @@ func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption
 			codeServiceCloseWorkspaceHandler.ServeHTTP(w, r)
 		case CodeServiceReportDirtyProcedure:
 			codeServiceReportDirtyHandler.ServeHTTP(w, r)
+		case CodeServiceFindFilesProcedure:
+			codeServiceFindFilesHandler.ServeHTTP(w, r)
+		case CodeServiceSearchTextProcedure:
+			codeServiceSearchTextHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -2891,4 +2955,12 @@ func (UnimplementedCodeServiceHandler) CloseWorkspace(context.Context, *connect.
 
 func (UnimplementedCodeServiceHandler) ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.ReportDirty is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.FindFiles is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.SearchText is not implemented"))
 }

@@ -57,6 +57,8 @@ type Workspace struct {
 type entry struct {
 	Workspace
 	stop func()
+	// list is the Workspace's files for Quick Open (M8.7).
+	list *FileList
 }
 
 // Registry is the open Workspaces and the owners they belong to. The zero
@@ -120,6 +122,7 @@ func (r *Registry) Open(owner, root string, rootMode bool, stop func()) (Workspa
 		return Workspace{}, ErrTooMany
 	}
 	e := &entry{Workspace: Workspace{ID: NewID("ws_"), Owner: owner, Root: filepath.Clean(root), RootMode: rootMode, OpenedAt: now()}, stop: stop}
+	e.list = &FileList{Root: e.Root}
 	if r.m == nil {
 		r.m = make(map[string]*entry)
 	}
@@ -163,6 +166,19 @@ func (r *Registry) SetUnsaved(id string, paths []string) error {
 	}
 	e.Unsaved = clean
 	return nil
+}
+
+// Get returns an open Workspace and its file list.
+func (r *Registry) Get(id string) (Workspace, *FileList, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.m[id]
+	if !ok {
+		return Workspace{}, nil, ErrNoWorkspace
+	}
+	w := e.Workspace
+	w.Unsaved = slices.Clone(e.Unsaved)
+	return w, e.list, nil
 }
 
 // List returns the open Workspaces, oldest first.

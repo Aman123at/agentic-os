@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"time"
 
 	"connectrpc.com/connect"
@@ -84,15 +85,20 @@ func (c codeService) OpenWorkspace(ctx context.Context, req *connect.Request[aos
 		stop()
 		return nil, connectError(err)
 	}
-	go c.watch(watchCtx, watcher, ws, events)
+	_, list, _ := c.s.workspaces.Get(ws.ID)
+	go c.watch(watchCtx, watcher, ws, list, events)
 	return connect.NewResponse(&aosv1.OpenWorkspaceResponse{Id: ws.ID, Root: ws.Root, RootMode: ws.RootMode}), nil
 }
 
 // watch relays a Workspace's watch to its subscription until ctx ends. A
 // subscription that falls behind holds the watch back rather than losing
 // changes: the kernel's queue fills, and the watch then asks for a rescan.
-func (c codeService) watch(ctx context.Context, w files.Watcher, ws code.Workspace, events chan<- *aosv1.Event) {
+func (c codeService) watch(ctx context.Context, w files.Watcher, ws code.Workspace, list *code.FileList, events chan<- *aosv1.Event) {
 	send := func(ev files.WatchEvent) error {
+		// Quick Open's list follows the same changes (M8.7).
+		if list != nil && len(ev.Changes) > 0 {
+			list.Apply(ev.Changes)
+		}
 		select {
 		case events <- workspaceEvent(ws.ID, ev):
 			return nil
@@ -155,4 +161,101 @@ func (c codeService) ReportDirty(_ context.Context, req *connect.Request[aosv1.R
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 	return connect.NewResponse(&aosv1.ReportDirtyResponse{}), nil
+}
+
+// ---------------------------------------------------------------- Quick Open, Find in Files (M8.7)
+
+// workspace is an open Workspace, or NotFound.
+func (c codeService) workspace(id string) (code.Workspace, *code.FileList, error) {
+	ws, list, err := c.s.workspaces.Get(id)
+	if err != nil {
+		return code.Workspace{}, nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	return ws, list, nil
+}
+
+func (c codeService) FindFiles(ctx context.Context, req *connect.Request[aosv1.FindFilesRequest]) (*connect.Response[aosv1.FindFilesResponse], error) {
+	ws, list, err := c.workspace(req.Msg.WorkspaceId)
+	if err != nil {
+		return nil, err
+	}
+	paths, truncated, err := list.Paths(ctx, func(ctx context.Context) (files.Tree, error) {
+		var t files.Tree
+		err := c.s.UserFiles.Run(ctx, files.OpListTree, files.TreeArgs{Root: ws.Root}, &t, nil)
+		return t, err
+	})
+	if err != nil {
+		return nil, connectError(err)
+	}
+	limit := int(req.Msg.Limit)
+	switch {
+	case limit <= 0:
+		limit = 50
+	case limit > 500:
+		limit = 500
+	}
+	resp := &aosv1.FindFilesResponse{Total: uint32(len(paths)), Truncated: truncated}
+	for _, f := range code.Rank(req.Msg.Query, paths, limit) {
+		pos := make([]uint32, len(f.Positions))
+		for i, p := range f.Positions {
+			pos[i] = uint32(p)
+		}
+		resp.Files = append(resp.Files, &aosv1.FoundFile{Path: filepath.Join(ws.Root, filepath.FromSlash(f.Rel)), Positions: pos})
+	}
+	return connect.NewResponse(resp), nil
+}
+
+// searchFlush is how long found files wait to be sent together, so a search
+// with many small results is a few messages and the first ones come at once.
+const searchFlush = 100 * time.Millisecond
+
+func (c codeService) SearchText(ctx context.Context, req *connect.Request[aosv1.SearchTextRequest], stream *connect.ServerStream[aosv1.SearchTextResponse]) error {
+	ws, _, err := c.workspace(req.Msg.WorkspaceId)
+	if err != nil {
+		return err
+	}
+	searcher, ok := c.s.UserFiles.(files.TextSearcher)
+	if !ok {
+		return connect.NewError(connect.CodeUnimplemented, errors.New("this aosd cannot search text"))
+	}
+	var batch []*aosv1.TextFileMatches
+	last := time.Now()
+	flush := func() error {
+		if len(batch) == 0 {
+			return nil
+		}
+		err := stream.Send(&aosv1.SearchTextResponse{Files: batch})
+		batch, last = nil, time.Now()
+		return err
+	}
+	res, err := searcher.SearchText(ctx, files.TextSearchArgs{
+		Root: ws.Root, Query: req.Msg.Query, Regex: req.Msg.Regex, Case: req.Msg.CaseSensitive,
+		Include: req.Msg.Include, Exclude: req.Msg.Exclude,
+	}, func(f files.TextFile) error {
+		m := &aosv1.TextFileMatches{Path: f.Path}
+		for _, x := range f.Matches {
+			tm := &aosv1.TextMatch{Line: uint32(x.Line), Text: x.Text}
+			for _, r := range x.Ranges {
+				tm.Ranges = append(tm.Ranges, &aosv1.TextRange{Start: uint32(r[0]), End: uint32(r[1])})
+			}
+			m.Matches = append(m.Matches, tm)
+		}
+		batch = append(batch, m)
+		if len(batch) >= 32 || time.Since(last) >= searchFlush {
+			return flush()
+		}
+		return nil
+	})
+	if errors.Is(err, files.ErrBadQuery) {
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	if err != nil {
+		return connectError(err)
+	}
+	if err := flush(); err != nil {
+		return err
+	}
+	return stream.Send(&aosv1.SearchTextResponse{Summary: &aosv1.SearchTextSummary{
+		Files: uint32(res.Files), Matches: uint32(res.Matches), Truncated: res.Truncated, Engine: res.Engine,
+	}})
 }

@@ -1064,6 +1064,81 @@ service CodeService {
   // ReportDirty replaces the unsaved files of an open Workspace, which the
   // Realm switch lists when it refuses (M8.13). NotFound once it is closed.
   rpc ReportDirty(ReportDirtyRequest) returns (ReportDirtyResponse);
+  // FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+  // a query, best first. The files are listed as the Realm's user once,
+  // honouring .gitignore, and kept current from the Workspace's watch.
+  rpc FindFiles(FindFilesRequest) returns (FindFilesResponse);
+  // SearchText is Find in Files (M8.7): matching lines under the Workspace,
+  // file by file as they are found, then a summary. ripgrep runs as the
+  // Realm's user when installed, AOS's own search otherwise; both honour
+  // .gitignore and skip binary files. A regular expression that does not
+  // compile is InvalidArgument.
+  rpc SearchText(SearchTextRequest) returns (stream SearchTextResponse);
+}
+
+message FindFilesRequest {
+  string workspace_id = 1;
+  // Characters to find in order in a file's path; case and spaces are
+  // ignored. Empty lists the first files by path.
+  string query = 2;
+  // At most this many; 0 means 50, and more than 500 is 500.
+  uint32 limit = 3;
+}
+message FindFilesResponse {
+  repeated FoundFile files = 1;
+  // How many files the Workspace has, and whether there were more than Code
+  // lists (100 000).
+  uint32 total = 2;
+  bool truncated = 3;
+}
+message FoundFile {
+  // Absolute.
+  string path = 1;
+  // Which characters matched, as UTF-16 offsets into the path relative to
+  // the Workspace's root.
+  repeated uint32 positions = 2;
+}
+
+message SearchTextRequest {
+  string workspace_id = 1;
+  string query = 2;
+  bool regex = 3;
+  bool case_sensitive = 4;
+  // gitignore-style globs relative to the root, such as *.go or src/**: only
+  // files matching one of include, and none of exclude.
+  repeated string include = 5;
+  repeated string exclude = 6;
+}
+message SearchTextResponse {
+  repeated TextFileMatches files = 1;
+  // Set on the last message only.
+  SearchTextSummary summary = 2;
+}
+message TextFileMatches {
+  // Absolute.
+  string path = 1;
+  repeated TextMatch matches = 2;
+}
+message TextMatch {
+  // From 1.
+  uint32 line = 1;
+  // The line, trimmed, and cut to 400 characters around the first match
+  // with "…" where it was cut.
+  string text = 2;
+  // Where the query matched in text, as UTF-16 offsets.
+  repeated TextRange ranges = 3;
+}
+message TextRange {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+message SearchTextSummary {
+  uint32 files = 1;
+  uint32 matches = 2;
+  // The search stopped at 2000 matching lines.
+  bool truncated = 3;
+  // "ripgrep", or "built-in" on a Machine without it.
+  string engine = 4;
 }
 
 message OpenWorkspaceRequest {
