@@ -154,6 +154,8 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		return serveWriteStream(req, enc, io.MultiReader(dec.Buffered(), in))
 	case OpWatch:
 		return serveWatch(req, enc, io.MultiReader(dec.Buffered(), in))
+	case OpSearchText:
+		return serveSearchText(ctx, req, enc)
 	}
 	progress := func(n, total int64) { _ = enc.Encode(response{Progress: &[2]int64{n, total}}) }
 	result, err := dispatch(ctx, req.Ops, req.Op, req.Args, progress)
@@ -265,6 +267,12 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return ops.Delete(a.Path)
+	case OpListTree:
+		var a TreeArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return ops.ListTree(a)
 	case OpSearch:
 		var a SearchArgs
 		if err := decode(&a); err != nil {
@@ -307,6 +315,8 @@ func errorKind(err error) string {
 		return "permission"
 	case errors.Is(err, ErrNotFile):
 		return "not_file"
+	case errors.Is(err, ErrBadQuery):
+		return "bad_query"
 	}
 	return ""
 }
@@ -323,6 +333,8 @@ func kindError(kind, msg string) error {
 		base = fs.ErrPermission
 	case "not_file":
 		base = ErrNotFile
+	case "bad_query":
+		base = ErrBadQuery
 	default:
 		return errors.New(msg)
 	}
