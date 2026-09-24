@@ -95,10 +95,13 @@ COPY --from=node-dist /opt/node/ /usr/local/
 # Ubuntu images ship a `ubuntu` user with uid 1000; the Machine's user is `aos`.
 # aosd arranges the home layout (Protected dotfiles) at every start.
 # ~/Downloads is where downloads land and the Desktop's Downloads stack looks;
-# a new home volume is seeded with it from the image.
+# a new home volume is seeded with it from the image. The .aos-home marker says
+# the home is AOS's own, as install.sh's does, so aosd absorbs the stock skel
+# dotfiles into Protected rather than refusing a stranger's home (M6.8).
 RUN userdel -r ubuntu 2>/dev/null || true; \
     useradd --uid 1000 --user-group --create-home --shell /bin/bash aos \
  && install -d -o aos -g aos /home/aos/Downloads \
+ && install -m 0644 -o aos -g aos /dev/null /home/aos/.aos-home \
  && rm -f /etc/apt/apt.conf.d/docker-clean \
  && mkdir -p /var/cache/aos/apt/archives/partial /var/cache/aos/apt/lists/partial /var/lib/aos /run/aos \
  && chmod 0700 /var/lib/aos
