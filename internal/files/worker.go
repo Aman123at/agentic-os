@@ -267,6 +267,12 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return ops.Delete(a.Path)
+	case OpTags:
+		var a TagsArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return ops.Tags(ctx, a)
 	case OpListTree:
 		var a TreeArgs
 		if err := decode(&a); err != nil {
@@ -317,6 +323,8 @@ func errorKind(err error) string {
 		return "not_file"
 	case errors.Is(err, ErrBadQuery):
 		return "bad_query"
+	case errors.Is(err, ErrNoCtags):
+		return "no_ctags"
 	}
 	return ""
 }
@@ -335,6 +343,8 @@ func kindError(kind, msg string) error {
 		base = ErrNotFile
 	case "bad_query":
 		base = ErrBadQuery
+	case "no_ctags":
+		base = ErrNoCtags
 	default:
 		return errors.New(msg)
 	}
