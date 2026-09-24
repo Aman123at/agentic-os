@@ -1790,7 +1790,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.5 built; M8.6 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.6 built; M8.7 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1955,6 +1955,12 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    root in Root with the red strip (M7.5, M7.10) — no new rights. Sessions end
    with the window. *Tests:* `session` — `cwd` honoured and refused;
    Playwright — panel opens in the Workspace, `pwd`.
+   *As built:* the shell changes into `cwd` itself from its rc, so the kernel
+   checks it as the Realm's user (Landlock included), and reports where it
+   started (`SessionInfo.cwd`) — reading `/proc/<pid>/cwd` of another user's
+   shell needs `CAP_SYS_PTRACE`, which a container lacks. The panel says when a
+   shell started at home instead. Hiding the panel keeps its shells; a reload
+   takes them back; closing the window ends them.
 
 7. **Quick Open and Find in Files.** `CodeService.FindFiles(workspace, query)`
    — fuzzy file-name match over a per-Workspace file list (honours
