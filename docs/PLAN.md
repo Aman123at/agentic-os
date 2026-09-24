@@ -674,7 +674,7 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
 | `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4), `WorkspaceChanged` (M8.2, only to the subscription that opened the Workspace). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
-| `FileService` | `List`, `Stat`, `Read`, `Write`, `MakeFolder` (M8.3), `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
+| `FileService` | `List`, `Stat`, `Read`, `Write`, `MakeFolder` (M8.3), `CheckSensitive`, `ListSensitiveBackups`, `RestoreSensitiveBackup` (M8.5), `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
@@ -1790,7 +1790,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.4 built; M8.5 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.5 built; M8.6 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -1938,6 +1938,13 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    `policy` table (list + Risky in Root only); `api` — unconfirmed refused,
    confirmed written + audited + backed up, Standard unaffected; checker
    pass/fail; Playwright — banner, modal, Auto Save skips it, restore.
+   *As built:* the guard also covers `MakeFolder` and `Copy`'s destination, and
+   a `Move` or `Delete` of a folder holding one (`/etc` itself); `/upload`
+   refuses one outright (412, "open it in Code"). The checks and backups are
+   `FileService.CheckSensitive`, `ListSensitiveBackups` and
+   `RestoreSensitiveBackup`; a folder moved or deleted keeps no backup (the
+   Trash has it). A Task grant never covers an Agent's change to one — each
+   asks. Finder and TextEdit ask the same way Code does.
 
 #### Editor features
 
