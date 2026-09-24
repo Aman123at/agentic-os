@@ -34,6 +34,9 @@ __aos_c() { printf '\033]133;C;aos=%s\007' "$1" >/dev/tty; }
 __aos_d() { printf '\033]133;D;aos=%s;%s\007' "$1" "$2" >/dev/tty; }
 # Restores the folder and exported variables of a Session that was re-sandboxed.
 __aos_save() { { export -p; printf 'cd -- %q\n' "$PWD"; } > "$1"; }
+# Starts in the folder asked for, if this user can enter it (M8.6); else stays home.
+if [ -n "$AOS_CWD" ]; then cd -- "$AOS_CWD" 2>/dev/null; fi
+unset AOS_CWD
 if [ -n "$AOS_RESTORE" ] && [ -f "$AOS_RESTORE" ]; then source "$AOS_RESTORE" 2>/dev/null; rm -f "$AOS_RESTORE"; fi
 unset AOS_RESTORE
 `
@@ -44,6 +47,10 @@ type Options struct {
 	Dir      string
 	UID, GID uint32
 	Home     string
+	// Cwd is the folder to start in, such as a Code Workspace (M8.6). The
+	// shell changes into it itself, so the kernel checks it as UID; a folder
+	// UID cannot enter leaves the shell in Home. Cwd() says where it started.
+	Cwd string
 	// User is the account name for USER and LOGNAME, and picks the prompt: "" or
 	// "aos" is the ordinary `aos$ ` prompt, "root" the red-`#` root prompt of Root
 	// Mode (M7.5). It is cosmetic — the frame markers, not the prompt, delimit
@@ -63,6 +70,8 @@ type Session struct {
 	cmd  *exec.Cmd
 	pty  *os.File
 	seq  int
+	// startedIn is the folder the shell started in, as it said.
+	startedIn string
 
 	mu      sync.Mutex
 	current *Command
@@ -132,18 +141,23 @@ func Start(opts Options) (*Session, error) {
 	}
 	s := &Session{opts: opts, cmd: cmd, pty: f, exited: make(chan struct{}), viewers: map[chan []byte]struct{}{}}
 	go s.read()
-	// Synchronise with the shell: the first framed command drains rc output.
-	c, err := s.Run("true")
+	// Synchronise with the shell: the first framed command drains rc output,
+	// and says which folder the shell started in. The shell says it itself:
+	// /proc/<pid>/cwd of another user's process needs CAP_SYS_PTRACE, which a
+	// container lacks.
+	c, err := s.Run(`printf '%s' "$PWD"`)
 	if err != nil {
 		s.Close()
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if _, err := c.Wait(ctx, 0); err != nil {
+	res, err := c.Wait(ctx, 0)
+	if err != nil {
 		s.Close()
 		return nil, fmt.Errorf("session did not start: %w", err)
 	}
+	s.startedIn = string(res.Output)
 	// The shell echoed that synchronising line, so a viewer attaching later would
 	// open on `__aos_c …; source …; __aos_d … $?` instead of a prompt. Drop what
 	// the start-up produced and ask readline to redraw (Ctrl-L), so the first
@@ -181,6 +195,9 @@ func baseEnv(opts Options) []string {
 		"LANG=C.UTF-8", "TERM=xterm-256color",
 		"DEBIAN_FRONTEND=noninteractive", "GIT_TERMINAL_PROMPT=0", "PIP_NO_INPUT=1",
 		"npm_config_yes=true", "PAGER=cat",
+	}
+	if opts.Cwd != "" {
+		env = append(env, "AOS_CWD="+opts.Cwd)
 	}
 	return append(env, opts.Env...)
 }
@@ -253,6 +270,10 @@ func (s *Session) Watch() (recent []byte, output <-chan []byte, stop func()) {
 func (s *Session) Resize(cols, rows uint16) error {
 	return pty.Setsize(s.pty, &pty.Winsize{Cols: cols, Rows: rows})
 }
+
+// StartedIn returns the folder the shell started in: Options.Cwd if its user
+// could enter it, else the home folder.
+func (s *Session) StartedIn() string { return s.startedIn }
 
 // Cwd returns the shell's current folder.
 func (s *Session) Cwd() string {

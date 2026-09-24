@@ -55,7 +55,9 @@ type Terminal interface {
 
 // Sessions manages User Sessions and lists Agent Sessions.
 type Sessions interface {
-	Create(ctx context.Context, cols, rows uint16) (*aosv1.SessionInfo, error)
+	// Create starts a User Session in cwd, an absolute folder or "" for the
+	// home folder; one its user cannot enter starts at home instead.
+	Create(ctx context.Context, cols, rows uint16, cwd string) (*aosv1.SessionInfo, error)
 	List() []*aosv1.SessionInfo
 	Close(id string) error
 	Attach(id string) (Terminal, error)
@@ -763,7 +765,14 @@ func (ss sessionService) CreateSession(ctx context.Context, req *connect.Request
 	if cols == 0 || rows == 0 {
 		cols, rows = 120, 40
 	}
-	info, err := ss.s.Sessions.Create(ctx, cols, rows)
+	var cwd string
+	if req.Msg.Cwd != "" {
+		var err error
+		if cwd, err = (fileService{ss.s}).abs(req.Msg.Cwd); err != nil {
+			return nil, err
+		}
+	}
+	info, err := ss.s.Sessions.Create(ctx, cols, rows, cwd)
 	if err != nil {
 		return nil, connectError(err)
 	}

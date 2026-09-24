@@ -550,11 +550,17 @@ message SessionInfo {
   // An Agent Session whose Task has ended, kept a while so a viewer can still
   // replay what it showed. It takes no input.
   bool ended = 6;
+  // The folder the shell started in; set on CreateSession's response only.
+  string cwd = 7;
 }
 
 message CreateSessionRequest {
   uint32 cols = 1;
   uint32 rows = 2;
+  // The folder to start in, such as a Code Workspace's (M8.6). The shell
+  // starts there only if the Realm's user can enter it, and in the home
+  // folder otherwise; SessionInfo.cwd says which. Empty is the home folder.
+  string cwd = 3;
 }
 message CreateSessionResponse {
   SessionInfo session = 1;

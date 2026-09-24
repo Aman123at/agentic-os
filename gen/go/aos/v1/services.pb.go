@@ -4668,7 +4668,9 @@ type SessionInfo struct {
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// An Agent Session whose Task has ended, kept a while so a viewer can still
 	// replay what it showed. It takes no input.
-	Ended         bool `protobuf:"varint,6,opt,name=ended,proto3" json:"ended,omitempty"`
+	Ended bool `protobuf:"varint,6,opt,name=ended,proto3" json:"ended,omitempty"`
+	// The folder the shell started in; set on CreateSession's response only.
+	Cwd           string `protobuf:"bytes,7,opt,name=cwd,proto3" json:"cwd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4745,10 +4747,21 @@ func (x *SessionInfo) GetEnded() bool {
 	return false
 }
 
+func (x *SessionInfo) GetCwd() string {
+	if x != nil {
+		return x.Cwd
+	}
+	return ""
+}
+
 type CreateSessionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cols          uint32                 `protobuf:"varint,1,opt,name=cols,proto3" json:"cols,omitempty"`
-	Rows          uint32                 `protobuf:"varint,2,opt,name=rows,proto3" json:"rows,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Cols  uint32                 `protobuf:"varint,1,opt,name=cols,proto3" json:"cols,omitempty"`
+	Rows  uint32                 `protobuf:"varint,2,opt,name=rows,proto3" json:"rows,omitempty"`
+	// The folder to start in, such as a Code Workspace's (M8.6). The shell
+	// starts there only if the Realm's user can enter it, and in the home
+	// folder otherwise; SessionInfo.cwd says which. Empty is the home folder.
+	Cwd           string `protobuf:"bytes,3,opt,name=cwd,proto3" json:"cwd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4795,6 +4808,13 @@ func (x *CreateSessionRequest) GetRows() uint32 {
 		return x.Rows
 	}
 	return 0
+}
+
+func (x *CreateSessionRequest) GetCwd() string {
+	if x != nil {
+		return x.Cwd
+	}
+	return ""
 }
 
 type CreateSessionResponse struct {
@@ -9323,7 +9343,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"\x0e\n" +
 	"\fEmptyRequest\")\n" +
 	"\rEmptyResponse\x12\x18\n" +
-	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\xaf\x01\n" +
+	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\xc1\x01\n" +
 	"\vSessionInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x14\n" +
@@ -9331,10 +9351,12 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x03pid\x18\x04 \x01(\x05R\x03pid\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
-	"\x05ended\x18\x06 \x01(\bR\x05ended\">\n" +
+	"\x05ended\x18\x06 \x01(\bR\x05ended\x12\x10\n" +
+	"\x03cwd\x18\a \x01(\tR\x03cwd\"P\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04cols\x18\x01 \x01(\rR\x04cols\x12\x12\n" +
-	"\x04rows\x18\x02 \x01(\rR\x04rows\"F\n" +
+	"\x04rows\x18\x02 \x01(\rR\x04rows\x12\x10\n" +
+	"\x03cwd\x18\x03 \x01(\tR\x03cwd\"F\n" +
 	"\x15CreateSessionResponse\x12-\n" +
 	"\asession\x18\x01 \x01(\v2\x13.aos.v1.SessionInfoR\asession\"\x15\n" +
 	"\x13ListSessionsRequest\"G\n" +
