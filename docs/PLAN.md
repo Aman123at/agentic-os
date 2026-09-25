@@ -91,6 +91,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 | `sandbox` | Landlock rulesets, `no_new_privs`, capability detection and fallback |
 | `session` | PTY Sessions, command framing, background processes, attach/watch |
 | `files` | File operations, Trash, file watching (fsnotify, plus polling for the Shared Folder) |
+| `code` | Code's Workspaces (M8): which are open and their unsaved files, each one's recursive watch, Quick Open's file list, Find in Files (ripgrep or its own search) and the ctags symbol index |
 | `software` | Install Ledger; apt, pipx and npm adapters; Checkpoints; Restore; Replay |
 | `service` | Service supervisor, restart policies, logs, listening-port discovery |
 | `proxy` | Forwarding Services to the Host by subdomain and by path |
@@ -134,7 +135,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 
 ### 4.3 Desktop
 
-**Stack:** React + Vite + TypeScript, Zustand for state, `@connectrpc/connect-web` generated clients, `@xterm/xterm` with the WebGL renderer, CodeMirror 6, pdf.js.
+**Stack:** React + Vite + TypeScript, Zustand for state, `@connectrpc/connect-web` generated clients, `@xterm/xterm` with the WebGL renderer, CodeMirror 6 (with `@codemirror/merge` for Code's compares), pdf.js.
 
 **Shell**
 
@@ -153,6 +154,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 | Terminal | Tabs of User Sessions; "Watch" opens an Agent's Session |
 | Agent | Task list, live step feed, chat and Follow-ups, Approvals, cancel, Resume, tokens and cost, Audit Log browser, usage and Cost Limits. While it has the focus on a Task, that Task's Approvals are answered inline instead of in the pop-up (M4) |
 | TextEdit | CodeMirror 6 editor with syntax highlighting; one file per window, up to 1 MiB; asks before saving over a file that changed on disk since it was opened (M4) |
+| Code | A code editor over one folder of the Machine (its **Workspace**) per window, many windows (M8): Explorer, tabs, ⌘S and Auto Save, files up to 4 MiB; Quick Open (⌘P) and Find in Files (⌘⇧F); Go to Definition (F12), references (⇧F12), symbols (⌘⇧O, ⌘T) and an Outline from `universal-ctags`, by name rather than type; highlighting for 37 languages; gutter marks and *Compare with Saved*; a Terminal panel (⌃\`) in the Workspace; the Agent in a sidebar (⌘L) whose edits are kept or discarded hunk by hunk in **Change Review**. Acts with the Realm's rights, like Finder: files `aos` can't write open read-only in Standard Mode, and saving a **Sensitive System File** asks in Root Mode (§7.10). Opened from the Dock, Finder's *Open in Code* and Spotlight |
 | Preview | Images, PDF, audio, video; one file per window (M4) |
 | Activity Monitor | Processes, CPU, memory, disk, network; running Agents; Services and their ports |
 | Software | Install Ledger, Checkpoints, Restore, Replay progress |
@@ -167,7 +169,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 2. Animations touch only compositor-friendly properties (`transform`, `opacity`) through the Web Animations API.
 3. Each app is its own lazily loaded chunk. The first load of the shell is under 150 KB gzipped.
 4. Event-stream updates are batched to one store commit per animation frame.
-5. Long lists (Finder, Activity Monitor, Audit Log) are virtualised.
+5. Long lists (Finder, Activity Monitor, Audit Log, Code's Explorer and search results) are virtualised.
 6. Terminal output goes straight into xterm.js, never through React state.
 
 **Appearance**
@@ -365,7 +367,7 @@ There is deliberately **no step limit**.
 
 A plain `docker compose exec aos …` runs as root (aosd is the container's main process, so the container's user is root). The `aos` CLI works either way.
 
-**Root Mode.** A second **Realm** in which Agents, the Terminal and Finder act as root (§18 M7, ADR-0011): the §7.4 policy check drops its Protected-Path step, so locks and Protected Paths are not enforced and every file is writable; only AOS's own state stays hidden (§7.2). Its history is a separate database (§14) that the API never serves from Standard Mode. This is a **privacy boundary between the two histories, not a security boundary against a root Agent** — a root Agent can get around anything on the machine, AOS included. The switch restarts the Machine and shows a warning that says exactly this.
+**Root Mode.** A second **Realm** in which Agents, the Terminal, Finder and Code act as root (§18 M7, ADR-0011): the §7.4 policy check drops its Protected-Path step, so locks and Protected Paths are not enforced and every file is writable; only AOS's own state stays hidden (§7.2). Its history is a separate database (§14) that the API never serves from Standard Mode. This is a **privacy boundary between the two histories, not a security boundary against a root Agent** — a root Agent can get around anything on the machine, AOS included. The switch restarts the Machine and shows a warning that says exactly this.
 
 **M6.** On a native install `aosd` is run by systemd as root; the `aos` user is in sudoers with `NOPASSWD:ALL`, so a User Session — and the Desktop password behind it — is effectively root on the VPS. Kept deliberately (a single-user personal server), but said out loud (M6.17, ADR-0009). Agents stay confined: `no_new_privs` still blocks `sudo`, and the Landlock ruleset widens only to `/` minus the Protected list (M6.8, ADR-0004).
 
@@ -439,7 +441,7 @@ The built-in defaults below are read-only in System Settings — weakening `~/.s
 
 Shell analysis is only an early warning so the Agent can ask first. Landlock is the actual enforcement.
 
-**In Root Mode (M7.4)**, step 1 is dropped — Protected Paths, locks, `.env` and dirty-git rules are not checked — while step 2 is unchanged, so Risky Actions still follow the Autonomy level and `confirm-risky` still asks before `rm -rf` or a package removal (set Autonomy to `auto` for none).
+**In Root Mode (M7.4)**, step 1 is dropped — Protected Paths, locks, `.env` and dirty-git rules are not checked — while step 2 is unchanged, so Risky Actions still follow the Autonomy level and `confirm-risky` still asks before `rm -rf` or a package removal (set Autonomy to `auto` for none). A change to a Sensitive System File (§7.10) is a Risky Action there, and a Task-scoped grant never covers one (M8.5).
 
 **Running an approved call on a Protected Path**
 
@@ -501,6 +503,25 @@ by default, behind a username and password (one user, M6.3).
 ### 7.9 Audit Log
 
 Every Tool call is recorded with: Task, Tool, arguments (secrets redacted), policy decision, who approved, result summary, duration and time. It is append-only and kept forever. Full step output is kept for 90 days.
+
+### 7.10 Sensitive System Files (Root Mode, M8.5)
+
+In Root Mode root may write every file, and a few can lock everyone out or stop the Machine booting with one wrong line. One list, `policy.Sensitive(path)`, names them, each with a one-line *what can go wrong*:
+
+- **Accounts and login:** `/etc/{passwd,shadow,group,gshadow}`, `/etc/pam.d/`, `/etc/security/`, `/etc/sudoers`, `/etc/sudoers.d/`
+- **Booting:** `/etc/fstab`, `/etc/crypttab`, `/etc/default/grub`, `/boot/`; the kernel's settings `/etc/sysctl.conf`, `/etc/sysctl.d/`, `/etc/modprobe.d/`
+- **Network and SSH:** `/etc/{hosts,hostname,resolv.conf}`, `/etc/netplan/`, `/etc/network/`, `/etc/ssh/`, and every `~/.ssh/authorized_keys`, root's included
+- **Services, software and schedules:** `/etc/systemd/`, `/etc/apt/`, `/etc/crontab`, `/etc/cron.d/`
+- **Programs and libraries:** `/bin/`, `/sbin/`, `/lib*`, `/usr/{bin,sbin,lib}/`
+- **AOS itself:** `aosd`'s and `aos`'s binaries and `aos.service`
+
+What the list does, in Root Mode only (in Standard Mode `aos` can't write any of them, so nothing asks):
+
+- **The server enforces it.** `FileService.Write`, `MakeFolder`, `Move`, `Copy`'s destination and `Delete` — and a move or delete of a folder holding one, such as `/etc` — are refused (`FailedPrecondition`, detail `SensitivePath{path, reason}`) without `confirm_sensitive=true`, so no client changes one by accident; `/upload` refuses one outright. A confirmed write is audited as `write_sensitive`.
+- **A way back.** Before a confirmed write the previous version is copied to the Realm's `outputs/sensitive-backups/` (the last 5 per file); `RestoreSensitiveBackup` puts one back. A folder moved or deleted keeps no backup — the Trash has it.
+- **A check first, where one exists.** `CheckSensitive` runs `visudo -cf` for sudoers, `sshd -t -f` for `sshd_config` and `findmnt --verify` for `fstab` on the new content; a failed check is shown and the button becomes *Save anyway (check failed)*.
+- **The Desktop asks.** Code shows a yellow banner on the tab and a red *Save anyway* modal that names the file and the risk and says AOS can't undo it; **Auto Save never saves one**. Finder and TextEdit ask the same way.
+- **Agents too.** An Agent's change to one is a Risky Action (§7.4), asked under `confirm-risky` and never covered by a Task-scoped grant; `auto` still runs it, as for every Risky Action.
 
 ## 8. Agent runtime
 
@@ -564,6 +585,11 @@ stateDiagram-v2
 
 - **Machine Profile** (< 1 KB, rebuilt on change): Ubuntu version and architecture, Mode, Landlock status, installed software from the Ledger, running Services and ports, key folders, and hints (e.g. "avoid heavy work in `~/Shared`: slow on this Host").
 - **Memory:** the `remember` Tool only *proposes* an entry. It is saved when the user accepts it, or directly when the user says "remember …". Entries are editable in System Settings.
+
+### 8.6 Working in Code (M8.11–M8.12)
+
+- **`EditorContext`.** A Task started from Code's Agent sidebar, and each Follow-up sent from there, carries `EditorContext`: the Workspace, the file in front, the selection (capped at 16 KiB; ⌘L adds one) and the open files. It reaches the Agent as a message of its own in the transcript, `# Working in Code` — the Workspace root, read before editing, prefer `edit_file`, keep changes small, say what changed — **not** in the instructions, which stay the same for every Task so the prompt cache holds (§8.2). `Task.workspace` records the folder, and `ListTasks` filters by it for the sidebar. Such a Task is otherwise an ordinary Task in the Realm's history, with exactly the Agent's usual Tools and rights.
+- **Before-images.** The first time a Task changes a file with a Files Tool (`write_file`, `edit_file`, `move` — both ends — `copy`'s destination, `delete`), the file's previous content, or "did not exist", is kept in the Realm's `outputs/<task>/before/` and indexed in `task_file_changes`. The Tool reads it through the Task's own file worker, as the Realm's user inside the sandbox, and keeps it only once its change succeeds. Up to 64 MiB is kept; past 4 MiB or not UTF-8 text it is reviewed *whole*. Change Review compares each file with its **base** — the before-image plus the hunks you kept — and *Discard* puts that back as the Realm's user (stamp-checked, audited `discard_change`), or moves a file the Task created to the Trash. Files a `run_command` changed are noticed by the Workspace's watch, not kept by aosd.
 
 ## 9. Tool catalogue
 
@@ -672,17 +698,17 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | Service | RPCs |
 |---|---|
 | `AuthService` | `ExchangeLoginCode` |
-| `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
+| `TaskService` | `CreateTask` (M8.11: with `EditorContext` from Code, §8.6), `ListTasks` (by Workspace), `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll`, `DeleteTask`; Change Review (M8.11–M8.12): `ListChanges`, `GetBefore`, `ReviewChange` (records the hunks kept), `DiscardChange` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
 | `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4), `WorkspaceChanged` (M8.2, only to the subscription that opened the Workspace). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
-| `FileService` | `List`, `Stat`, `Read`, `Write`, `MakeFolder` (M8.3), `CheckSensitive`, `ListSensitiveBackups`, `RestoreSensitiveBackup` (M8.5), `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
+| `FileService` | `List`, `Stat`, `Read`, `Write`, `MakeFolder` (M8.3), `CheckSensitive`, `ListSensitiveBackups`, `RestoreSensitiveBackup` (M8.5; Sensitive System Files need `confirm_sensitive` in Root Mode, §7.10), `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
-| `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
-| `CodeService` | `OpenWorkspace`, `CloseWorkspace`, `ReportDirty` (M8.2): a Code window's Workspace belongs to its tab's `Subscribe` stream (`subscription_id`) and its file changes arrive there as `WorkspaceChanged` events, so Code holds no connection of its own |
+| `SessionService` | `Create` (M8.6: an optional `cwd` the shell changes into as the Realm's user, home when it can't), `List`, `Close` (I/O via WebSocket) |
+| `CodeService` | Code's Workspaces (M8), refused to Agent callers. `OpenWorkspace`, `CloseWorkspace`, `ReportDirty` (M8.2): a Code window's Workspace belongs to its tab's `Subscribe` stream (`subscription_id`) and its file changes arrive there as `WorkspaceChanged` events, so Code holds no connection of its own; at most 32 per tab. `FindFiles` (Quick Open) and `SearchText` (Find in Files, server stream; ripgrep or AOS's own search, M8.7). `Definition`, `References`, `DocumentSymbols`, `WorkspaceSymbols` (M8.8), from a per-Workspace `universal-ctags` index — `FailedPrecondition` saying to install it when it is missing; `References` is a word search and needs no ctags. Everything runs as the Realm's user |
 | `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `GetDesktopState`, `SaveDesktopState` (M3); `Get`, `Update` (M4: the settings that can change while AOS runs, §6.4, each with where its value comes from), `SetApiKey` (M4) |
-| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes` (M4: read from /proc when asked; a process belongs to a Task when it, an ancestor, its process group or its session is a process that Task's Agent started, matched by pid and start time; "confined" means no_new_privs), `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart), `Metrics` (M4: the Machine's CPU, memory, disks and network, read from its own cgroup first; polled by Activity Monitor while open), `ListNotifications` and `DismissNotification` (M4: notifications are kept, newest 200, until dismissed; a dismissal is published as a `Notification` event with `dismissed` set, so every tab drops it) |
+| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes` (M4: read from /proc when asked; a process belongs to a Task when it, an ancestor, its process group or its session is a process that Task's Agent started, matched by pid and start time; "confined" means no_new_privs), `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart), `Metrics` (M4: the Machine's CPU, memory, disks and network, read from its own cgroup first; polled by Activity Monitor while open), `ListNotifications` and `DismissNotification` (M4: notifications are kept, newest 200, until dismissed; a dismissal is published as a `Notification` event with `dismissed` set, so every tab drops it); `Restart`, `SetRootMode`, `ClearRootHistory` (M7) — `SetRootMode` is refused, both ways, while a Task is active or any Code window has a Workspace open, listing both (`RootModeBlocked`, M8.13) |
 
 **Plain HTTP routes:**
 - `GET /` serves the Desktop.
@@ -695,8 +721,8 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 
 - **SQLite at `/var/lib/aos/aos.db`:**
   - WAL mode, a single writer goroutine, migrations embedded in the binary.
-  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
-- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
+  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`, `task_file_changes` (M8.11: each file a Task changed, its before-image and what Change Review kept).
+- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days; Tasks' before-images in `outputs/<task>/before/`, M8.11; Sensitive System Files' previous versions in `outputs/sensitive-backups/`, M8.5), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
 - **Root Mode's Realm (M7.2)** is a second Realm with the same shape under `/var/lib/aos/root/` (mode 0700): its own `aos.db` and `outputs/`, created empty on the first Root start and never opened while in Standard Mode, so the two histories never mix. *Clear Root Mode history* (M7.12, `aos root clear`) deletes this subtree; the next Root start recreates it empty. What root already did to the server's files and packages is real and stays — only AOS's record of it is cleared.
 
 ## 15. Install shapes and clients
