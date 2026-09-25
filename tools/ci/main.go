@@ -124,6 +124,9 @@ func lint() error {
 	if err := readmeLinks(); err != nil {
 		return err
 	}
+	if err := docsLinks(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -186,6 +189,61 @@ func readmeLinks() error {
 			len(broken), strings.Join(broken, "\n"))
 	}
 	return nil
+}
+
+// docsLinks fails when a page of the docs site links to a page the site does
+// not have (M8.15). Starlight builds a broken internal link without a word, so
+// this is the site's link-check, pure Go beside readmeLinks. Only root-absolute
+// targets ("/use/code/") are pages of the site; each must be a .md or .mdx file
+// under docs-site/src/content/docs, or a folder's index.
+func docsLinks() error {
+	pages := filepath.Join(docsDir, "src", "content", "docs")
+	var broken []string
+	err := filepath.WalkDir(pages, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || (filepath.Ext(path) != ".md" && filepath.Ext(path) != ".mdx") {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range mdLink.FindAllStringSubmatch(string(data), -1) {
+			target := strings.TrimSpace(m[1])
+			if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
+				continue // external, relative or in-page
+			}
+			page := target
+			if i := strings.IndexAny(page, "#?"); i >= 0 {
+				page = page[:i]
+			}
+			page = strings.Trim(page, "/")
+			if page == "" {
+				page = "index"
+			}
+			if !docsPageExists(filepath.Join(pages, filepath.FromSlash(page))) {
+				broken = append(broken, fmt.Sprintf("%s: %s", path, target))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(broken) > 0 {
+		sort.Strings(broken)
+		return fmt.Errorf("the docs site links to %d missing page(s):\n%s", len(broken), strings.Join(broken, "\n"))
+	}
+	return nil
+}
+
+// docsPageExists reports whether a site path, without its extension, is a page.
+func docsPageExists(base string) bool {
+	for _, p := range []string{base + ".md", base + ".mdx", filepath.Join(base, "index.md"), filepath.Join(base, "index.mdx")} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // desktopProductLanguage guards the M6.14 sweep: "Host" is retired product
