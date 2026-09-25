@@ -768,7 +768,7 @@ func (ss sessionService) CreateSession(ctx context.Context, req *connect.Request
 	var cwd string
 	if req.Msg.Cwd != "" {
 		var err error
-		if cwd, err = (fileService{ss.s}).abs(req.Msg.Cwd); err != nil {
+		if cwd, err = fileService(ss).abs(req.Msg.Cwd); err != nil {
 			return nil, err
 		}
 	}

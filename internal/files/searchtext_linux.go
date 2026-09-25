@@ -2,7 +2,9 @@ package files
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 )
 
@@ -31,4 +33,33 @@ func (u AsUser) SearchText(ctx context.Context, a TextSearchArgs, emit func(Text
 		return res, ctx.Err()
 	}
 	return res, err
+}
+
+// readSearchText reads a search worker's lines: files, then the result.
+func readSearchText(r io.Reader, emit func(TextFile) error, res *TextSearchResult) error {
+	dec := json.NewDecoder(r)
+	for {
+		var line struct {
+			Text *TextFile `json:"text,omitempty"`
+			response
+		}
+		if err := dec.Decode(&line); err != nil {
+			if errors.Is(err, io.EOF) {
+				return errors.New("file worker exited without a result")
+			}
+			return fmt.Errorf("file worker: %w", err)
+		}
+		if line.Text != nil {
+			if err := emit(*line.Text); err != nil {
+				return err
+			}
+			continue
+		}
+		if line.Done {
+			if line.Error != "" {
+				return kindError(line.Kind, line.Error)
+			}
+			return decodeResult(line.Result, res)
+		}
+	}
 }

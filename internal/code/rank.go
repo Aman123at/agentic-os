@@ -79,7 +79,6 @@ func Rank(query string, paths []string, limit int) []Found {
 type scorer struct {
 	d, m  [][]float64
 	bonus []float64
-	hay   []rune
 	lower []rune
 }
 
