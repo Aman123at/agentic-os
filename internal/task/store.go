@@ -41,7 +41,7 @@ func millisOf(t *timestamppb.Timestamp) sql.NullInt64 {
 }
 
 const taskColumns = `id, title, prompt, state, autonomy, interactive, summary, model, awaiting_approval_id, awaiting_question, awaiting_kind,
-	input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, cost_usd, cost_known, checkpoint_id, created_at, updated_at, finished_at`
+	input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, cost_usd, cost_known, checkpoint_id, created_at, updated_at, finished_at, workspace`
 
 func scanTask(row interface{ Scan(...any) error }) (*aosv1.Task, error) {
 	t := &aosv1.Task{Usage: &aosv1.Usage{}, Awaiting: &aosv1.Awaiting{}}
@@ -51,7 +51,7 @@ func scanTask(row interface{ Scan(...any) error }) (*aosv1.Task, error) {
 	err := row.Scan(&t.Id, &t.Title, &t.Prompt, &state, &autonomy, &t.Interactive, &t.Summary, &t.Model,
 		&t.Awaiting.ApprovalId, &t.Awaiting.Question, &kind,
 		&t.Usage.InputTokens, &t.Usage.CachedInputTokens, &t.Usage.OutputTokens, &t.Usage.ReasoningTokens,
-		&t.Usage.CostUsd, &t.Usage.CostKnown, &t.CheckpointId, &created, &updated, &finished)
+		&t.Usage.CostUsd, &t.Usage.CostKnown, &t.CheckpointId, &created, &updated, &finished, &t.Workspace)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -67,10 +67,10 @@ func scanTask(row interface{ Scan(...any) error }) (*aosv1.Task, error) {
 }
 
 func insertTask(ctx context.Context, tx *sql.Tx, t *aosv1.Task) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO tasks (id, title, prompt, state, autonomy, interactive, model, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := tx.ExecContext(ctx, `INSERT INTO tasks (id, title, prompt, state, autonomy, interactive, model, created_at, updated_at, workspace)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		t.Id, t.Title, t.Prompt, int32(t.State), int32(t.Autonomy), t.Interactive, t.Model,
-		store.Millis(t.CreatedAt.AsTime()), store.Millis(t.UpdatedAt.AsTime()))
+		store.Millis(t.CreatedAt.AsTime()), store.Millis(t.UpdatedAt.AsTime()), t.Workspace)
 	return err
 }
 
@@ -112,11 +112,11 @@ func listTasks(ctx context.Context, db *sql.DB, where string, limit int, args ..
 }
 
 // deleteTask removes a Task and everything that hangs off it. foreign_keys is
-// ON and none of the three children cascade, so they go first, in any order,
-// then the Task. The audit_log is untouched: its task_id is a plain column with
+// ON and none of the children cascade, so they go first, in any order, then
+// the Task. The audit_log is untouched: its task_id is a plain column with
 // no FK, and it is append-only by trigger, so the Task's record survives it.
 func deleteTask(ctx context.Context, tx *sql.Tx, id string) error {
-	for _, table := range []string{"grants", "approvals", "task_steps"} {
+	for _, table := range []string{"grants", "approvals", "task_steps", "task_file_changes"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE task_id = ?`, id); err != nil {
 			return err
 		}
@@ -242,4 +242,43 @@ func now(cfg Config) time.Time {
 		return cfg.Now()
 	}
 	return time.Now()
+}
+
+const changeColumns = `path, tool, existed, folder, size, blob, whole, changed_at`
+
+// insertChange records the first change a Task made to a file; a later one
+// is ignored.
+func insertChange(ctx context.Context, tx *sql.Tx, taskID string, c *aosv1.TaskFileChange, blob string) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO task_file_changes (task_id, `+changeColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		taskID, c.Path, c.Tool, c.Existed, c.Folder, c.Size, blob, c.Whole, store.Millis(c.ChangedAt.AsTime()))
+	return err
+}
+
+// listChanges returns a Task's changed files in the order it first changed
+// them, with the blob holding each one's before-image ("" for none). path
+// narrows it to one file.
+func listChanges(ctx context.Context, db *sql.DB, taskID, path string) ([]*aosv1.TaskFileChange, []string, error) {
+	q, args := `SELECT `+changeColumns+` FROM task_file_changes WHERE task_id = ?`, []any{taskID}
+	if path != "" {
+		q, args = q+` AND path = ?`, append(args, path)
+	}
+	rows, err := db.QueryContext(ctx, q+` ORDER BY changed_at, rowid`, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+	var out []*aosv1.TaskFileChange
+	var blobs []string
+	for rows.Next() {
+		c := &aosv1.TaskFileChange{}
+		var blob string
+		var at int64
+		if err := rows.Scan(&c.Path, &c.Tool, &c.Existed, &c.Folder, &c.Size, &blob, &c.Whole, &at); err != nil {
+			return nil, nil, err
+		}
+		c.Kept, c.ChangedAt = blob != "", ts(at)
+		out = append(out, c)
+		blobs = append(blobs, blob)
+	}
+	return out, blobs, rows.Err()
 }

@@ -90,6 +90,10 @@ const (
 	TaskServiceStopAllProcedure = "/aos.v1.TaskService/StopAll"
 	// TaskServiceDeleteTaskProcedure is the fully-qualified name of the TaskService's DeleteTask RPC.
 	TaskServiceDeleteTaskProcedure = "/aos.v1.TaskService/DeleteTask"
+	// TaskServiceListChangesProcedure is the fully-qualified name of the TaskService's ListChanges RPC.
+	TaskServiceListChangesProcedure = "/aos.v1.TaskService/ListChanges"
+	// TaskServiceGetBeforeProcedure is the fully-qualified name of the TaskService's GetBefore RPC.
+	TaskServiceGetBeforeProcedure = "/aos.v1.TaskService/GetBefore"
 	// ApprovalServiceListPendingProcedure is the fully-qualified name of the ApprovalService's
 	// ListPending RPC.
 	ApprovalServiceListPendingProcedure = "/aos.v1.ApprovalService/ListPending"
@@ -508,6 +512,11 @@ type TaskServiceClient interface {
 	// is queued, running or waiting: cancel it first. The Audit Log keeps its
 	// record (it is append-only).
 	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
+	// The files a Task changed with its Tools, each with its before-image: the
+	// content it had before the Task first changed it (M8.11).
+	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
+	// One changed file's before-image.
+	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
 }
 
 // NewTaskServiceClient constructs a client for the aos.v1.TaskService service. By default, it uses
@@ -575,6 +584,18 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
 			connect.WithClientOptions(opts...),
 		),
+		listChanges: connect.NewClient[v1.ListChangesRequest, v1.ListChangesResponse](
+			httpClient,
+			baseURL+TaskServiceListChangesProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("ListChanges")),
+			connect.WithClientOptions(opts...),
+		),
+		getBefore: connect.NewClient[v1.GetBeforeRequest, v1.GetBeforeResponse](
+			httpClient,
+			baseURL+TaskServiceGetBeforeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -589,6 +610,8 @@ type taskServiceClient struct {
 	resumeTask     *connect.Client[v1.ResumeTaskRequest, v1.ResumeTaskResponse]
 	stopAll        *connect.Client[v1.StopAllRequest, v1.StopAllResponse]
 	deleteTask     *connect.Client[v1.DeleteTaskRequest, v1.DeleteTaskResponse]
+	listChanges    *connect.Client[v1.ListChangesRequest, v1.ListChangesResponse]
+	getBefore      *connect.Client[v1.GetBeforeRequest, v1.GetBeforeResponse]
 }
 
 // CreateTask calls aos.v1.TaskService.CreateTask.
@@ -636,6 +659,16 @@ func (c *taskServiceClient) DeleteTask(ctx context.Context, req *connect.Request
 	return c.deleteTask.CallUnary(ctx, req)
 }
 
+// ListChanges calls aos.v1.TaskService.ListChanges.
+func (c *taskServiceClient) ListChanges(ctx context.Context, req *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error) {
+	return c.listChanges.CallUnary(ctx, req)
+}
+
+// GetBefore calls aos.v1.TaskService.GetBefore.
+func (c *taskServiceClient) GetBefore(ctx context.Context, req *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error) {
+	return c.getBefore.CallUnary(ctx, req)
+}
+
 // TaskServiceHandler is an implementation of the aos.v1.TaskService service.
 type TaskServiceHandler interface {
 	CreateTask(context.Context, *connect.Request[v1.CreateTaskRequest]) (*connect.Response[v1.CreateTaskResponse], error)
@@ -651,6 +684,11 @@ type TaskServiceHandler interface {
 	// is queued, running or waiting: cancel it first. The Audit Log keeps its
 	// record (it is append-only).
 	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
+	// The files a Task changed with its Tools, each with its before-image: the
+	// content it had before the Task first changed it (M8.11).
+	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
+	// One changed file's before-image.
+	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
 }
 
 // NewTaskServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -714,6 +752,18 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceListChangesHandler := connect.NewUnaryHandler(
+		TaskServiceListChangesProcedure,
+		svc.ListChanges,
+		connect.WithSchema(taskServiceMethods.ByName("ListChanges")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceGetBeforeHandler := connect.NewUnaryHandler(
+		TaskServiceGetBeforeProcedure,
+		svc.GetBefore,
+		connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.TaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskServiceCreateTaskProcedure:
@@ -734,6 +784,10 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceStopAllHandler.ServeHTTP(w, r)
 		case TaskServiceDeleteTaskProcedure:
 			taskServiceDeleteTaskHandler.ServeHTTP(w, r)
+		case TaskServiceListChangesProcedure:
+			taskServiceListChangesHandler.ServeHTTP(w, r)
+		case TaskServiceGetBeforeProcedure:
+			taskServiceGetBeforeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -777,6 +831,14 @@ func (UnimplementedTaskServiceHandler) StopAll(context.Context, *connect.Request
 
 func (UnimplementedTaskServiceHandler) DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.DeleteTask is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.ListChanges is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.GetBefore is not implemented"))
 }
 
 // ApprovalServiceClient is a client for the aos.v1.ApprovalService service.

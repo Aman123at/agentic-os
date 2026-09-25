@@ -703,7 +703,9 @@ type Task struct {
 	UpdatedAt  *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	FinishedAt *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
 	// The Checkpoint taken before the Task's first software change, if any.
-	CheckpointId  string `protobuf:"bytes,14,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	CheckpointId string `protobuf:"bytes,14,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
+	// The Code Workspace folder it was started from, if any (M8.11).
+	Workspace     string `protobuf:"bytes,15,opt,name=workspace,proto3" json:"workspace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -832,6 +834,13 @@ func (x *Task) GetFinishedAt() *timestamppb.Timestamp {
 func (x *Task) GetCheckpointId() string {
 	if x != nil {
 		return x.CheckpointId
+	}
+	return ""
+}
+
+func (x *Task) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
 	}
 	return ""
 }
@@ -2071,7 +2080,7 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"\vapproval_id\x18\x01 \x01(\tR\n" +
 	"approvalId\x12\x1a\n" +
 	"\bquestion\x18\x02 \x01(\tR\bquestion\x12(\n" +
-	"\x04kind\x18\x03 \x01(\x0e2\x14.aos.v1.AwaitingKindR\x04kind\"\x98\x04\n" +
+	"\x04kind\x18\x03 \x01(\x0e2\x14.aos.v1.AwaitingKindR\x04kind\"\xb6\x04\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12\x16\n" +
@@ -2090,7 +2099,8 @@ const file_aos_v1_types_proto_rawDesc = "" +
 	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12;\n" +
 	"\vfinished_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x12#\n" +
-	"\rcheckpoint_id\x18\x0e \x01(\tR\fcheckpointId\"\xbd\x02\n" +
+	"\rcheckpoint_id\x18\x0e \x01(\tR\fcheckpointId\x12\x1c\n" +
+	"\tworkspace\x18\x0f \x01(\tR\tworkspace\"\xbd\x02\n" +
 	"\bToolCall\x12\x17\n" +
 	"\acall_id\x18\x01 \x01(\tR\x06callId\x12\x12\n" +
 	"\x04tool\x18\x02 \x01(\tR\x04tool\x12%\n" +

@@ -100,6 +100,11 @@ service TaskService {
   // is queued, running or waiting: cancel it first. The Audit Log keeps its
   // record (it is append-only).
   rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
+  // The files a Task changed with its Tools, each with its before-image: the
+  // content it had before the Task first changed it (M8.11).
+  rpc ListChanges(ListChangesRequest) returns (ListChangesResponse);
+  // One changed file's before-image.
+  rpc GetBefore(GetBeforeRequest) returns (GetBeforeResponse);
 }
 
 message CreateTaskRequest {
@@ -107,6 +112,26 @@ message CreateTaskRequest {
   // Unspecified uses the configured Autonomy.
   Autonomy autonomy = 2;
   bool interactive = 3;
+  // Set when the Task is started from Code's Agent sidebar (M8.11): the
+  // Agent is told where the user is working, and the Task belongs to the
+  // Workspace.
+  EditorContext editor = 4;
+}
+
+// EditorContext is what Code tells the Agent about where the user is working
+// (M8.11).
+message EditorContext {
+  // The Workspace's folder.
+  string workspace = 1;
+  // The file in front, if any.
+  string active_file = 2;
+  // Text the user added to the chat from the file in front (⌘L), capped at
+  // 16 KiB, and the lines it spans.
+  string selection = 3;
+  int32 selection_start_line = 4;
+  int32 selection_end_line = 5;
+  // Every file open in the window.
+  repeated string open_files = 6;
 }
 message CreateTaskResponse {
   Task task = 1;
@@ -114,6 +139,8 @@ message CreateTaskResponse {
 
 message ListTasksRequest {
   int32 limit = 1;
+  // Only the Tasks started from Code on this Workspace folder (M8.11).
+  string workspace = 2;
 }
 message ListTasksResponse {
   repeated Task tasks = 1;
@@ -133,6 +160,8 @@ message SendFollowUpRequest {
   string text = 2;
   // Whether someone can answer Approvals and questions from now on.
   bool interactive = 3;
+  // Where the user is working now, for a Follow-up from Code (M8.11).
+  EditorContext editor = 4;
 }
 message SendFollowUpResponse {
   Task task = 1;
@@ -166,6 +195,43 @@ message DeleteTaskRequest {
   string id = 1;
 }
 message DeleteTaskResponse {}
+
+// TaskFileChange is a file a Task changed with its Tools (M8.11). The first
+// change keeps what the file was before; later ones by the same Task don't.
+message TaskFileChange {
+  string path = 1;
+  // The Tool whose call first changed it: write_file, edit_file, move, copy
+  // or delete.
+  string tool = 2;
+  // False when the Task created the file: it did not exist before.
+  bool existed = 3;
+  // It was a folder (moved or deleted): nothing to compare, and no content kept.
+  bool folder = 4;
+  // Its size before.
+  int64 size = 5;
+  // Whether the before-image was kept. Files over 64 MiB are not.
+  bool kept = 6;
+  // Too big to compare line by line (over 4 MiB), or not text: it can be kept
+  // or put back whole, not hunk by hunk.
+  bool whole = 7;
+  google.protobuf.Timestamp changed_at = 8;
+}
+message ListChangesRequest {
+  string task_id = 1;
+}
+message ListChangesResponse {
+  repeated TaskFileChange changes = 1;
+}
+message GetBeforeRequest {
+  string task_id = 1;
+  string path = 2;
+}
+message GetBeforeResponse {
+  TaskFileChange change = 1;
+  // The file's content before the Task changed it; empty when it did not
+  // exist, was a folder, or is too big to send (whole).
+  bytes content = 2;
+}
 
 // ---------------------------------------------------------------- Approvals
 

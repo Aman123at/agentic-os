@@ -78,6 +78,8 @@ message Task {
   google.protobuf.Timestamp finished_at = 13;
   // The Checkpoint taken before the Task's first software change, if any.
   string checkpoint_id = 14;
+  // The Code Workspace folder it was started from, if any (M8.11).
+  string workspace = 15;
 }
 
 enum StepKind {

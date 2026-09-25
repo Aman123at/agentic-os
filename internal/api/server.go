@@ -329,7 +329,7 @@ func (a authService) CreateTicket(_ context.Context, _ *connect.Request[aosv1.Cr
 type taskService struct{ s *Server }
 
 func (t taskService) CreateTask(ctx context.Context, req *connect.Request[aosv1.CreateTaskRequest]) (*connect.Response[aosv1.CreateTaskResponse], error) {
-	created, err := t.s.Tasks.Create(ctx, req.Msg.Prompt, req.Msg.Autonomy, req.Msg.Interactive)
+	created, err := t.s.Tasks.CreateInEditor(ctx, req.Msg.Prompt, req.Msg.Autonomy, req.Msg.Interactive, req.Msg.Editor)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -338,7 +338,7 @@ func (t taskService) CreateTask(ctx context.Context, req *connect.Request[aosv1.
 }
 
 func (t taskService) ListTasks(ctx context.Context, req *connect.Request[aosv1.ListTasksRequest]) (*connect.Response[aosv1.ListTasksResponse], error) {
-	tasks, err := t.s.Tasks.List(ctx, int(req.Msg.Limit))
+	tasks, err := t.s.Tasks.ListIn(ctx, int(req.Msg.Limit), req.Msg.Workspace)
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -354,7 +354,7 @@ func (t taskService) GetTask(ctx context.Context, req *connect.Request[aosv1.Get
 }
 
 func (t taskService) SendFollowUp(ctx context.Context, req *connect.Request[aosv1.SendFollowUpRequest]) (*connect.Response[aosv1.SendFollowUpResponse], error) {
-	continued, err := t.s.Tasks.FollowUp(ctx, req.Msg.Id, req.Msg.Text, req.Msg.Interactive)
+	continued, err := t.s.Tasks.FollowUpInEditor(ctx, req.Msg.Id, req.Msg.Text, req.Msg.Interactive, req.Msg.Editor)
 	if err != nil {
 		return nil, stateError(err)
 	}
@@ -403,6 +403,26 @@ func (t taskService) DeleteTask(ctx context.Context, req *connect.Request[aosv1.
 	}
 	_ = t.s.Audit.Record(ctx, audit.Entry{TaskID: req.Msg.Id, Tool: "delete_task", Actor: ActorFrom(ctx), Decision: "allow", DecidedBy: ActorFrom(ctx)})
 	return connect.NewResponse(&aosv1.DeleteTaskResponse{}), nil
+}
+
+// ListChanges lists the files a Task changed with its Tools (M8.11). Like
+// GetTask it reads the Realm's own history, so it is Realm-scoped by the
+// database it reads.
+func (t taskService) ListChanges(ctx context.Context, req *connect.Request[aosv1.ListChangesRequest]) (*connect.Response[aosv1.ListChangesResponse], error) {
+	changes, err := t.s.Tasks.Changes(ctx, req.Msg.TaskId)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.ListChangesResponse{Changes: changes}), nil
+}
+
+// GetBefore returns what a file was before a Task changed it (M8.11).
+func (t taskService) GetBefore(ctx context.Context, req *connect.Request[aosv1.GetBeforeRequest]) (*connect.Response[aosv1.GetBeforeResponse], error) {
+	change, content, err := t.s.Tasks.Before(ctx, req.Msg.TaskId, req.Msg.Path)
+	if err != nil {
+		return nil, connectError(err)
+	}
+	return connect.NewResponse(&aosv1.GetBeforeResponse{Change: change, Content: content}), nil
 }
 
 func (t taskService) StopAll(ctx context.Context, _ *connect.Request[aosv1.StopAllRequest]) (*connect.Response[aosv1.StopAllResponse], error) {

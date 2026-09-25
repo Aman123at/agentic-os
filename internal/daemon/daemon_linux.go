@@ -239,7 +239,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
 		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.agentHome, Root: d.realm.IsRoot(),
 		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit, Context: d.agentContext,
-		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values,
+		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values, Outputs: d.outputs.Dir,
 	})
 	if err != nil {
 		return err
