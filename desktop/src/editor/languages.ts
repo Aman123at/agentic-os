@@ -1,91 +1,69 @@
-// Syntax highlighting for TextEdit and Code, chosen by the file's name. Each
-// language is its own chunk, fetched when a file of that kind opens.
+// Syntax highlighting for TextEdit and Code (PLAN.md M8.9). detect.ts says
+// which language a file is in, by name and then #! line; each grammar here is
+// its own chunk, fetched when a file of that kind opens. Lezer grammars where
+// CodeMirror has one, its legacy modes for the rest.
 import { StreamLanguage, type StreamParser } from "@codemirror/language";
 import type { Extension } from "@codemirror/state";
 
-import { extOf } from "../apps/filetypes";
+import { detect, type LangId } from "./detect";
+
+export { languageName } from "./detect";
 
 async function legacy(load: () => Promise<StreamParser<unknown>>): Promise<Extension> {
   return StreamLanguage.define(await load());
 }
 
-export async function languageFor(name: string): Promise<Extension | null> {
-  const base = name.slice(name.lastIndexOf("/") + 1).toLowerCase();
-  if (base === "dockerfile" || base.startsWith("dockerfile.")) return legacy(async () => (await import("@codemirror/legacy-modes/mode/dockerfile")).dockerFile);
-  switch (extOf(base)) {
-    case "js":
-    case "mjs":
-    case "cjs":
-    case "jsx":
-      return (await import("@codemirror/lang-javascript")).javascript({ jsx: true });
-    case "ts":
-    case "mts":
-    case "cts":
-      return (await import("@codemirror/lang-javascript")).javascript({ typescript: true });
-    case "tsx":
-      return (await import("@codemirror/lang-javascript")).javascript({ jsx: true, typescript: true });
-    case "json":
-      return (await import("@codemirror/lang-json")).json();
-    case "md":
-    case "markdown":
-      return (await import("@codemirror/lang-markdown")).markdown();
-    case "py":
-      return (await import("@codemirror/lang-python")).python();
-    case "html":
-    case "htm":
-      return (await import("@codemirror/lang-html")).html();
-    case "css":
-      return (await import("@codemirror/lang-css")).css();
-    case "go":
-      return (await import("@codemirror/lang-go")).go();
-    case "yaml":
-    case "yml":
-      return (await import("@codemirror/lang-yaml")).yaml();
-    case "sh":
-    case "bash":
-    case "zsh":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/shell")).shell);
-    case "toml":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/toml")).toml);
-    case "rs":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/rust")).rust);
-    case "c":
-    case "h":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/clike")).c);
-    case "cc":
-    case "cpp":
-    case "hpp":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/clike")).cpp);
-    case "java":
-      return legacy(async () => (await import("@codemirror/legacy-modes/mode/clike")).java);
-  }
-  return null;
+const clike = () => import("@codemirror/legacy-modes/mode/clike");
+
+const LOADERS: Record<LangId, () => Promise<Extension>> = {
+  javascript: async () => (await import("@codemirror/lang-javascript")).javascript({ jsx: true }),
+  jsx: async () => (await import("@codemirror/lang-javascript")).javascript({ jsx: true }),
+  typescript: async () => (await import("@codemirror/lang-javascript")).javascript({ typescript: true }),
+  tsx: async () => (await import("@codemirror/lang-javascript")).javascript({ jsx: true, typescript: true }),
+  python: async () => (await import("@codemirror/lang-python")).python(),
+  go: async () => (await import("@codemirror/lang-go")).go(),
+  rust: async () => (await import("@codemirror/lang-rust")).rust(),
+  c: async () => (await import("@codemirror/lang-cpp")).cpp(),
+  cpp: async () => (await import("@codemirror/lang-cpp")).cpp(),
+  java: async () => (await import("@codemirror/lang-java")).java(),
+  php: async () => (await import("@codemirror/lang-php")).php(),
+  sql: async () => (await import("@codemirror/lang-sql")).sql(),
+  html: async () => (await import("@codemirror/lang-html")).html(),
+  css: async () => (await import("@codemirror/lang-css")).css(),
+  scss: async () => (await import("@codemirror/lang-sass")).sass(),
+  sass: async () => (await import("@codemirror/lang-sass")).sass({ indented: true }),
+  less: async () => (await import("@codemirror/lang-less")).less(),
+  json: async () => (await import("@codemirror/lang-json")).json(),
+  yaml: async () => (await import("@codemirror/lang-yaml")).yaml(),
+  xml: async () => (await import("@codemirror/lang-xml")).xml(),
+  markdown: async () => (await import("@codemirror/lang-markdown")).markdown(),
+
+  csharp: () => legacy(async () => (await clike()).csharp),
+  kotlin: () => legacy(async () => (await clike()).kotlin),
+  swift: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/swift")).swift),
+  ruby: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/ruby")).ruby),
+  perl: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/perl")).perl),
+  lua: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/lua")).lua),
+  r: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/r")).r),
+  toml: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/toml")).toml),
+  shell: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/shell")).shell),
+  powershell: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/powershell")).powerShell),
+  dockerfile: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/dockerfile")).dockerFile),
+  nginx: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/nginx")).nginx),
+  ini: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/properties")).properties),
+  protobuf: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/protobuf")).protobuf),
+  diff: () => legacy(async () => (await import("@codemirror/legacy-modes/mode/diff")).diff),
+  makefile: () => legacy(async () => (await import("./makefile")).makefile as StreamParser<unknown>),
+};
+
+// loadLanguage fetches one language's highlighting.
+export function loadLanguage(id: LangId): Promise<Extension> {
+  return LOADERS[id]();
 }
 
-// languageName is what Code's status bar calls a file's language.
-export function languageName(name: string): string {
-  const base = name.slice(name.lastIndexOf("/") + 1).toLowerCase();
-  if (base === "dockerfile" || base.startsWith("dockerfile.")) return "Dockerfile";
-  if (base === "makefile") return "Makefile";
-  return NAMES[extOf(base)] ?? "Plain Text";
+// languageFor is the highlighting for a file, given its path (or name) and
+// first line, or null for plain text.
+export async function languageFor(path: string, firstLine = ""): Promise<Extension | null> {
+  const id = detect(path, firstLine);
+  return id ? loadLanguage(id) : null;
 }
-
-const NAMES: Record<string, string> = {};
-const named = (name: string, exts: string) => exts.split(" ").forEach((e) => (NAMES[e] = name));
-named("JavaScript", "js mjs cjs");
-named("JavaScript JSX", "jsx");
-named("TypeScript", "ts mts cts");
-named("TypeScript JSX", "tsx");
-named("JSON", "json");
-named("Markdown", "md markdown");
-named("Python", "py");
-named("HTML", "html htm");
-named("CSS", "css");
-named("Go", "go");
-named("YAML", "yaml yml");
-named("Shell", "sh bash zsh");
-named("TOML", "toml");
-named("Rust", "rs");
-named("C", "c h");
-named("C++", "cc cpp hpp");
-named("Java", "java");
