@@ -1820,7 +1820,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.14 built; M8.15 pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.15 built: code-complete; the acceptance walkthrough below is Aman's.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2202,6 +2202,14 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     a docs-site page **Use it → Code** (editing per Realm, the switch rule,
     Change Review, Sensitive System Files, what navigation can't do). *Tests:*
     lint (docsgen drift, link check).
+    *Built:* §6.3 already had the two packages (M8.7–M8.8). Sensitive System
+    Files are §7.10 and Code's Agent is §8.6; §4.1 gained the `code` package,
+    §13 the rest of `CodeService`, Change Review's RPCs and `cwd`, and §14
+    `task_file_changes` and the new `outputs/` folders. The docs site's Root
+    Mode page now says Code acts as root and blocks the switch too. There was
+    no link check for the site's own pages (only the README's), so lint gained
+    one: every root-absolute link in `docs-site/src/content/docs` must name a
+    page there.
 
 **Accepted when:** on the Mac (Compose) and then the VPS, Aman opens a Go or TS
 project in Code, finds a file with ⌘P and a string with ⌘⇧F, jumps to a
