@@ -1736,6 +1736,75 @@ button.stack__item:hover {
   background: rgba(217, 48, 37, 0.14);
 }
 
+/* Compare with Saved, and a file changed on disk under unsaved edits (M8.10). */
+.code-compare {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.code-compare[hidden] {
+  display: none;
+}
+.code-compare__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+}
+.code-compare__side {
+  flex: 1;
+  color: var(--muted);
+}
+.code-compare__side--right {
+  text-align: right;
+}
+.code-compare__what {
+  padding: 0 6px;
+}
+.code-compare__view {
+  flex: 1;
+  min-height: 0;
+}
+.code-compare__view .cm-mergeView {
+  height: 100%;
+}
+.code-compare .cm-merge-revert {
+  width: 26px;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+.code-compare .cm-merge-revert .code-compare__acts {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.code-compare .cm-merge-revert button.code-compare__act {
+  position: static;
+  width: 20px;
+  height: 18px;
+  padding: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #fff;
+}
+.code-compare__act--take {
+  background: var(--accent) !important;
+}
+.code-compare__act--keep {
+  background: #2ea043 !important;
+}
+
 .code__panel {
   flex: none;
   display: flex;

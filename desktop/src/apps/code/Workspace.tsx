@@ -7,8 +7,11 @@
 // and the version of the file on disk it came from (its stamp): a save checks
 // the stamp first and asks rather than overwrite a change made meanwhile, and
 // the Workspace's watch reloads a clean tab when its file changes on disk.
+// The gutter marks what changed since that text (M8.10), and a side-by-side
+// compare shows it, or settles a change on disk under unsaved edits hunk by
+// hunk.
 import { indentUnit } from "@codemirror/language";
-import { Compartment, EditorState, type Extension, type Text, type TransactionSpec } from "@codemirror/state";
+import { Compartment, EditorState, type ChangeSet, type Extension, type Text, type TransactionSpec } from "@codemirror/state";
 import { EditorView, type ViewUpdate } from "@codemirror/view";
 import { Code as RpcCode, ConnectError } from "@connectrpc/connect";
 import { basicSetup } from "codemirror";
@@ -48,6 +51,9 @@ import { SearchView, type SearchRequest } from "./SearchView";
 
 // The Terminal panel brings xterm with it, so it loads when first opened (M8.6).
 const TerminalPanel = lazy(() => import("./TerminalPanel"));
+// @codemirror/merge comes with the first file opened (M8.10).
+const Compare = lazy(() => import("./Compare"));
+type ChangesModule = typeof import("../../editor/changes");
 
 // AUTO_SAVE_MS is how long typing has to pause before Auto Save saves.
 const AUTO_SAVE_MS = 1000;
@@ -81,6 +87,10 @@ interface Doc {
   // Where to put the cursor once the Doc has loaded: a jump from Quick Open
   // or a search result to a file not yet open.
   reveal?: Reveal;
+  // The compare shown in place of the editor (M8.10): with the saved text, or
+  // with the version on disk (theirs) the tab's unsaved edits are settling
+  // against. left is that side as decided so far.
+  compare?: { kind: "saved" | "disk"; left: Text; line?: number; theirs?: { text: Text; stamp: string } };
 }
 
 // A place navigation can come back to (⌃- and ⌃⇧-).
@@ -141,7 +151,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const activeRef = useRef("");
   const handle = useRef<WorkspaceHandle | null>(null);
   const relisters = useRef(new Set<Relist>());
-  const compartments = useRef({ lang: new Compartment(), indent: new Compartment(), readOnly: new Compartment() });
+  const compartments = useRef({ lang: new Compartment(), indent: new Compartment(), readOnly: new Compartment(), marks: new Compartment() });
+  const changesMod = useRef<ChangesModule | null>(null);
   const restored = useRef(false);
 
   const autoSave = autoSaveSetting ? autoSaveSetting === "on" : !ws?.rootMode;
@@ -173,6 +184,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       c.lang.of(d.lang ?? []),
       c.indent.of([indentUnit.of(d.indent.tabs ? "\t" : " ".repeat(d.indent.size)), EditorState.tabSize.of(d.indent.tabs ? d.indent.size : 4)]),
       c.readOnly.of([EditorState.readOnly.of(ro), EditorView.editable.of(!ro)]),
+      c.marks.of(marks()),
       d.crlf ? EditorState.lineSeparator.of("\r\n") : [],
       EditorView.updateListener.of((u) => onUpdate.current(u)),
       // Navigation (M8.8): ⌘-click to a definition, and completion from the
@@ -180,6 +192,29 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       modClick((pos) => void definitionRef.current(pos)),
       completion(() => (wsRef.current ? { workspaceId: wsRef.current.id, root: wsRef.current.root, path: d.path } : null), detect(d.path, d.first)),
     ];
+  };
+
+  // marks is the gutter of changes since saved, once its module is here:
+  // against the text a state was made from, or saved when given.
+  const marks = (saved?: Text): Extension => {
+    const m = changesMod.current;
+    return m ? [m.changeTheme, m.changeMarks(saved, (line) => compareRef.current(line))] : [];
+  };
+
+  // loadMarks fetches the gutter's module once, and gives it to the files
+  // already open.
+  const loadMarks = async () => {
+    if (changesMod.current) return;
+    const m = await import("../../editor/changes").catch(() => null);
+    if (!m || changesMod.current) return;
+    changesMod.current = m;
+    for (const d of docs.current.values()) if (d.load === "ready" && d.saved) apply(d, { effects: compartments.current.marks.reconfigure(marks(d.saved)) });
+  };
+
+  // markSaved tells a Doc's gutter the text it is now compared with.
+  const markSaved = (d: Doc, text: Text) => {
+    const m = changesMod.current;
+    if (m) apply(d, { effects: m.setSaved.of(text) });
   };
 
   // show puts the active Doc's state in the view, keeping the one it replaces.
@@ -287,6 +322,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         d.stamp = stamp(got.info);
         d.dirty = false;
         d.disk = undefined;
+        d.compare = undefined;
         d.load = "ready";
         d.note = "";
         if (activeRef.current === d.path) {
@@ -299,6 +335,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         }
         bump();
         void loadBackups(d);
+        void loadMarks();
         if (!d.lang) {
           const lang = await languageFor(d.path, d.first).catch(() => null);
           if (lang && docs.current.get(d.path) === d) {
@@ -516,6 +553,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       await files.write({ path: d.path, content: bytes, overwrite: true, confirmSensitive: Boolean(opts.confirmed) });
       d.stamp = stamp((await files.stat({ path: d.path })).info);
       d.saved = st.doc;
+      markSaved(d, st.doc);
       d.disk = undefined;
       d.dirty = !current(d)?.doc.eq(st.doc);
       if (opts.confirmed) void loadBackups(d);
@@ -585,16 +623,70 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   const scheduleAutoSave = (d: Doc) => {
     clearTimeout(d.timer);
-    // Auto Save never saves a Sensitive System File (M8.5).
-    if (!autoSaveRef.current || d.sensitive) return;
+    // Auto Save never saves a Sensitive System File (M8.5), nor a file being
+    // compared (M8.10).
+    if (!autoSaveRef.current || d.sensitive || d.compare) return;
     d.timer = setTimeout(() => {
-      if (autoSaveRef.current && d.dirty && !d.disk && !d.readOnly && !d.sensitive && docs.current.get(d.path) === d) void save(d);
+      if (autoSaveRef.current && d.dirty && !d.disk && !d.readOnly && !d.sensitive && !d.compare && docs.current.get(d.path) === d) void save(d);
     }, AUTO_SAVE_MS);
   };
 
   const saveAll = async (paths: string[]) => {
     const results = await Promise.all(paths.map((p) => docs.current.get(p)).map((d) => (d ? save(d) : Promise.resolve(true))));
     return results.every(Boolean);
+  };
+
+  // ------------------------------------------------------------ compare
+
+  // Compare with Saved, from the status bar or a mark in the gutter.
+  const compareWithSaved = (line?: number) => {
+    const d = docs.current.get(activeRef.current);
+    if (!d || d.load !== "ready" || !d.saved || d.compare) return;
+    clearTimeout(d.timer);
+    d.compare = { kind: "saved", left: d.saved, line };
+    bump();
+  };
+  const compareRef = useRef(compareWithSaved);
+  compareRef.current = compareWithSaved;
+
+  // compareWithDisk shows the version on disk beside a tab's unsaved edits.
+  const compareWithDisk = async (d: Doc) => {
+    try {
+      const got = await readText(d.path);
+      if (docs.current.get(d.path) !== d || d.load !== "ready") return;
+      if (got.kind !== "text") {
+        d.error = `the version on disk is ${got.kind === "binary" ? "not text" : "too big to compare"}.`;
+        bump();
+        return;
+      }
+      clearTimeout(d.timer);
+      const text = EditorState.create({ doc: got.text, extensions: d.crlf ? EditorState.lineSeparator.of("\r\n") : [] }).doc;
+      const st = current(d);
+      d.compare = { kind: "disk", left: text, theirs: { text, stamp: stamp(got.info) }, line: st?.doc.lineAt(st.selection.main.head).number };
+      bump();
+    } catch (err) {
+      d.error = friendlyError(err);
+      bump();
+    }
+  };
+
+  // endCompare closes a Doc's compare. A settled change on disk makes the
+  // version on disk the one the tab's edits are against, so a save no longer
+  // asks.
+  const endCompare = (d: Doc, settled: boolean) => {
+    const c = d.compare;
+    if (!c) return;
+    d.compare = undefined;
+    if (settled && c.theirs) {
+      d.saved = c.theirs.text;
+      d.stamp = c.theirs.stamp;
+      d.disk = undefined;
+      markSaved(d, d.saved);
+      d.dirty = !current(d)?.doc.eq(d.saved);
+    }
+    if (d.dirty) scheduleAutoSave(d);
+    bump();
+    focusEditor();
   };
 
   // ------------------------------------------------------------ changes on disk
@@ -993,6 +1085,11 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           {d?.disk === "changed" && (
             <div className="code__banner code__banner--warn" role="alertdialog" aria-label="The file changed on disk">
               <span>{baseOf(d.path)} changed on disk, and you have unsaved changes.</span>
+              {d.compare?.kind !== "disk" && (
+                <button className="finder__btn finder__btn--on" onClick={() => void compareWithDisk(d)}>
+                  Compare…
+                </button>
+              )}
               <button className="finder__btn" onClick={() => void load(d, current(d)?.selection.main.head)}>
                 Take Theirs
               </button>
@@ -1017,7 +1114,26 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
             </div>
           )}
 
-          <div className="code__editor" ref={host} hidden={d?.load !== "ready"} />
+          <div className="code__editor" ref={host} hidden={d?.load !== "ready" || Boolean(d?.compare)} />
+          {d?.load === "ready" && d.compare && (
+            <Suspense fallback={<div className="preview__note">Loading…</div>}>
+              <Compare
+                key={`${d.path}\n${d.compare.kind}`}
+                kind={d.compare.kind}
+                name={baseOf(d.path)}
+                left={d.compare.left}
+                right={current(d)!.doc}
+                line={d.compare.line}
+                extensions={[theme, highlight, d.lang ?? [], d.crlf ? EditorState.lineSeparator.of("\r\n") : []]}
+                onLeft={(text) => {
+                  if (d.compare) d.compare.left = text;
+                }}
+                onRight={(changes: ChangeSet) => apply(d, { changes, userEvent: "input.compare" })}
+                onDone={() => endCompare(d, true)}
+                onClose={() => endCompare(d, false)}
+              />
+            </Suspense>
+          )}
           {!d && <div className="preview__note">{order.length ? "" : "Open a file from the Explorer."}</div>}
           {d?.load === "loading" && <div className="preview__note">Loading…</div>}
           {d && (d.load === "binary" || d.load === "too-big" || d.load === "error") && (
@@ -1062,6 +1178,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         onAutoSave={(on) => setAutoSave(on ? "on" : "off")}
         panelOpen={panelOpen}
         onPanel={() => togglePanel()}
+        onCompare={() => compareWithSaved()}
       />
 
       {palette && (
@@ -1123,6 +1240,7 @@ function StatusBar({
   onAutoSave,
   panelOpen,
   onPanel,
+  onCompare,
 }: {
   ws: OpenWorkspaceResponse;
   watch?: WorkspaceWatch;
@@ -1132,6 +1250,7 @@ function StatusBar({
   onAutoSave: (on: boolean) => void;
   panelOpen: boolean;
   onPanel: () => void;
+  onCompare: () => void;
 }) {
   const ready = doc?.load === "ready";
   return (
@@ -1144,6 +1263,11 @@ function StatusBar({
       <span className="code__status-gap" />
       {ready && (
         <>
+          {doc.dirty && !doc.compare && (
+            <button className="code__status-btn" onClick={onCompare} title="Show what changed since the file was saved">
+              Compare with Saved
+            </button>
+          )}
           <span>
             Ln {cursor.line}, Col {cursor.col}
           </span>

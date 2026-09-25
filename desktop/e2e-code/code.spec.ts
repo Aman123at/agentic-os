@@ -429,6 +429,118 @@ test("a script is highlighted by its #! line, in Code and TextEdit, and the stat
   await expect(te.locator(".cm-line span", { hasText: /^def$/ })).toBeVisible();
 });
 
+// Seeing your own changes (M8.10).
+const LIST = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\n";
+
+// toLine puts the cursor at the end of a line of the editor in front.
+async function toLine(page: Page, win: Locator, n: number) {
+  await win.locator(".cm-content").click();
+  await page.keyboard.press("ControlOrMeta+Home");
+  for (let i = 1; i < n; i++) await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("End");
+}
+
+const marks = (win: Locator, kind: string) => win.locator(`.cm-savedGutter .cm-change--${kind}`);
+
+test("the gutter marks lines changed since saved, and Compare with Saved reverts them", async ({ page }) => {
+  await boot(page, { files: { ...PROJECT, "/home/aos/project/list.txt": LIST } });
+  const win = await openProject(page);
+  await autoSaveOff(win);
+  await openFile(win, "list.txt");
+
+  // c changed, a line added after e, i deleted.
+  await toLine(page, win, 3);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type("C");
+  await toLine(page, win, 5);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("new");
+  await toLine(page, win, 10);
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Escape");
+  await expect(marks(win, "changed")).toHaveCount(1);
+  await expect(marks(win, "added")).toHaveCount(1);
+  await expect(marks(win, "deleted")).toHaveCount(1);
+
+  // Compare with Saved shows the three; one taken back goes back in the tab.
+  // (The Dock covers the middle of the status bar in the test's window.)
+  await win.getByRole("status", { name: "Status bar" }).getByRole("button", { name: "Compare with Saved" }).dispatchEvent("click");
+  const cmp = win.getByRole("region", { name: "list.txt compared with saved" });
+  await expect(cmp).toContainText("3 differences");
+  await cmp.getByRole("button", { name: "Revert to saved" }).first().click();
+  await expect(cmp).toContainText("2 differences");
+  await cmp.getByRole("button", { name: "Close" }).click();
+  await expect(cmp).toBeHidden();
+  await expect(win.locator(".cm-content")).toContainText("c");
+  await expect(marks(win, "changed")).toHaveCount(0);
+  await expect(marks(win, "added")).toHaveCount(1);
+
+  // A mark in the gutter opens the compare too; Revert All leaves the tab
+  // as saved.
+  await marks(win, "added").click();
+  await expect(cmp).toContainText("2 differences");
+  await cmp.getByRole("button", { name: "Revert All" }).click();
+  await expect(cmp).toContainText("No changes since saved.");
+  await cmp.getByRole("button", { name: "Close" }).click();
+  await expect(win.getByRole("button", { name: "Close list.txt" })).toBeVisible();
+  await expect(win.locator(".cm-savedGutter .cm-change")).toHaveCount(0);
+
+  // Saving makes what was saved the new mark of nothing changed.
+  await typeAtEnd(page, win, "k"); // on the empty last line: changed
+  await page.keyboard.press("Escape");
+  await expect(marks(win, "changed")).toHaveCount(1);
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect.poll(() => disk(page, "/home/aos/project/list.txt")).toBe(LIST + "k");
+  await expect(win.locator(".cm-savedGutter .cm-change")).toHaveCount(0);
+});
+
+test("a change on disk under unsaved edits is settled hunk by hunk: Keep mine, Take theirs", async ({ page }) => {
+  await boot(page, { files: { ...PROJECT, "/home/aos/project/list.txt": LIST } });
+  const win = await openProject(page);
+  await autoSaveOff(win);
+  await openFile(win, "list.txt");
+  await toLine(page, win, 2);
+  await page.keyboard.type(" mine");
+  await toLine(page, win, 8);
+  await page.keyboard.type(" mine");
+  await page.keyboard.press("Escape");
+
+  await aosd(page, (m) => m.write("/home/aos/project/list.txt", "a\nb theirs\nc\nd\ne\nf\ng\nh theirs\ni\nj\nk\n"));
+  const ask = win.getByRole("alertdialog", { name: "The file changed on disk" });
+  await ask.getByRole("button", { name: "Compare…" }).click();
+  const cmp = win.getByRole("region", { name: "list.txt changed on disk" });
+  await expect(cmp).toContainText("3 differences");
+
+  // Keep mine for b, take theirs for h, and the rest (their k) stays mine.
+  await cmp.getByRole("button", { name: "Keep mine" }).first().click();
+  await expect(cmp).toContainText("2 differences");
+  await cmp.getByRole("button", { name: "Take theirs" }).first().click();
+  await expect(cmp).toContainText("1 difference");
+  await cmp.getByRole("button", { name: "Keep the Rest Mine" }).click();
+  await expect(cmp).toBeHidden();
+  await expect(ask).toBeHidden();
+  await expect(win.locator(".cm-content")).toContainText("h theirs");
+  await expect(win.locator(".cm-content")).toContainText("b mine");
+
+  // Settled: the save goes through without asking again.
+  await page.keyboard.press("ControlOrMeta+s");
+  await expect.poll(() => disk(page, "/home/aos/project/list.txt")).toBe("a\nb mine\nc\nd\ne\nf\ng\nh theirs\ni\nj\n");
+  await expect(ask).toBeHidden();
+
+  // Take All Theirs takes every difference left.
+  await typeAtEnd(page, win, "mine");
+  await page.keyboard.press("Escape");
+  await aosd(page, (m) => m.write("/home/aos/project/list.txt", "all theirs\n"));
+  await ask.getByRole("button", { name: "Compare…" }).click();
+  await cmp.getByRole("button", { name: "Take All Theirs" }).click();
+  await expect(cmp).toContainText("All differences decided.");
+  await cmp.getByRole("button", { name: "Done" }).click();
+  await expect(win.locator(".cm-content")).toHaveText("all theirs");
+  await expect(win.getByRole("button", { name: "Close list.txt" })).toBeVisible();
+});
+
 // termText is what the newest xterm shows (term.ts hands it over under test).
 const termText = (page: Page) =>
   page.evaluate(() => {
