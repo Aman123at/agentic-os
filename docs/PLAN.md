@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.8 built; M8.9 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.9 built; M8.10 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2018,6 +2018,19 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
    name, then by `#!` line. Each is its own lazy chunk; TextEdit gets them all
    through the shared module. *Tests:* a table from names/shebangs to
    languages.
+   *As built:* also C# and Protocol Buffers (legacy modes already shipped)
+   and indented Sass (SCSS's grammar); C uses the C++ grammar. CodeMirror has
+   no Makefile mode, so Code has a small one of its own
+   (`desktop/src/editor/makefile.ts`). Exact names come first (`Dockerfile`,
+   `Makefile`, `Gemfile`, `.bashrc`, `.env`), then the extension; in an
+   `nginx/` folder, files with no extension or `.conf` are Nginx, and systemd
+   units are INI. A `#!` line counts only when the name says nothing: `env`,
+   its options and `VAR=value` are skipped and a version dropped
+   (`python3.12` → Python; `deno` and `bun` → TypeScript). The status bar and
+   completion keywords take the same answer. The shared theme gained colours
+   for a diff's added and removed lines and for `$variables`. Besides the
+   table, a test loads every grammar in the page and checks what it
+   highlights; each is its own chunk and the initial bundle stays 147 KB.
 
 10. **Seeing your own changes.** Gutter marks for added / changed / deleted
     lines against the saved version, *Compare with Saved*, and — when a file
