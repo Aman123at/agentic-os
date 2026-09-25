@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.9 built; M8.10 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.10 built; M8.11 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2038,6 +2038,21 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     mine* / *Take theirs* per hunk. Built on `@codemirror/merge` (new
     dependency, lazily loaded). *Tests:* Playwright — marks, compare, per-hunk
     choice.
+    *As built:* the gutter diffs by whole lines (each line one character
+    through `@codemirror/merge`'s diff; past ~63 000 distinct lines, by
+    character) and catches up 150 ms after typing pauses; a deleted run is
+    marked on the line after it. `desktop/src/editor/changes.ts` is its own
+    10 KB chunk, fetched with the first file Code opens. *Compare with Saved*
+    is in the status bar while a tab has unsaved changes, and a click on a
+    gutter mark opens it at that line; the right side is editable and every
+    change there — typed or a hunk reverted — goes straight into the tab, so
+    ⌘Z undoes it. A change on disk under unsaved edits gains *Compare…* in its
+    banner: per hunk *Take theirs* or *Keep mine* (the left side is a scratch
+    copy that takes your lines), *Take All Theirs*, and *Keep the Rest Mine* /
+    *Done*, which makes the disk's version the one the tab's edits are
+    against, so the next save doesn't ask again. Auto Save waits while a
+    compare is open. The compare groups differences one line apart into one
+    hunk (the merge view's rule); the gutter marks them separately.
 
 #### The Agent in Code
 
