@@ -52,6 +52,9 @@ func TestTheIndexRetagsOnlyWhatChanged(t *testing.T) {
 	if got := len(x.Definitions("Run", "a.go")); got != 2 {
 		t.Errorf("Run is defined twice, got %d", got)
 	}
+	if got := names(x.Search("", 10)); !slices.Equal(got, []string{"Helper", "Run", "Run", "Stop"}) {
+		t.Errorf("⌘T lists %q", got)
+	}
 
 	// A change re-tags that file alone; a deletion forgets it at once.
 	ft.content["pkg/b.go"] = "Start"
@@ -76,6 +79,10 @@ func TestTheIndexRetagsOnlyWhatChanged(t *testing.T) {
 	if len(x.Definitions("Run", "a.go")) != 1 || len(x.Definitions("Start", "a.go")) != 1 || len(x.Definitions("Fresh", "a.go")) != 1 {
 		t.Error("the changed files' symbols are not current")
 	}
+	// ⌘T's names follow: Helper went with its file, Start and Fresh came.
+	if got := names(x.Search("", 10)); !slices.Equal(got, []string{"Fresh", "Run", "Start", "Stop"}) {
+		t.Errorf("⌘T after the changes lists %q", got)
+	}
 
 	// Nothing changed: nothing is tagged.
 	ft.asked = nil
@@ -89,6 +96,14 @@ func TestTheIndexRetagsOnlyWhatChanged(t *testing.T) {
 	if _, err := x.Ensure(ctx, ft.list, ft.tag, ""); err != nil || len(ft.asked) != 1 || len(ft.asked[0]) != 3 {
 		t.Errorf("after a rescan tagged %q (%v)", ft.asked, err)
 	}
+}
+
+func names(tags []files.Tag) []string {
+	var out []string
+	for _, t := range tags {
+		out = append(out, t.Name)
+	}
+	return out
 }
 
 func sorted(batches [][]string) [][]string {

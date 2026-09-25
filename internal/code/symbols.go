@@ -168,19 +168,29 @@ func (x *Index) update(ctx context.Context, list Lister, tag Tagger, near string
 		if x.dirty == nil {
 			x.dirty = make(map[string]bool)
 		}
+		x.names, x.byName = nil, nil
 	} else if all != nil {
 		x.total = len(all)
 	}
 	for _, d := range dirs {
 		x.dirs[d] = true
 	}
+	// Only the files re-tagged change: F12 after a save must not re-sort every
+	// symbol of a large Workspace (M8.14).
+	gone := make(map[string]bool, len(todo))
 	for _, f := range todo {
-		delete(x.byFile, f)
+		gone[f] = true
 	}
+	x.dropLocked(gone)
 	for _, t := range tags {
 		x.byFile[t.Path] = append(x.byFile[t.Path], t)
+		if x.byName != nil {
+			if _, ok := x.byName[t.Name]; !ok {
+				x.names = nil
+			}
+			x.byName[t.Name] = append(x.byName[t.Name], t)
+		}
 	}
-	x.names, x.byName = nil, nil
 	return nil
 }
 
@@ -211,17 +221,18 @@ func (x *Index) Apply(changes []files.Change) {
 		case !ok:
 		case ch.Kind == files.Deleted:
 			prefix := rel + "/"
+			gone := map[string]bool{}
 			for f := range x.byFile {
 				if f == rel || strings.HasPrefix(f, prefix) {
-					delete(x.byFile, f)
+					gone[f] = true
 				}
 			}
+			x.dropLocked(gone)
 			for f := range x.dirty {
 				if f == rel || strings.HasPrefix(f, prefix) {
 					delete(x.dirty, f)
 				}
 			}
-			x.names, x.byName = nil, nil
 		case !ch.Dir:
 			x.dirty[rel] = true
 		}
@@ -230,6 +241,38 @@ func (x *Index) Apply(changes []files.Change) {
 
 // ---------------------------------------------------------------- questions
 
+// dropLocked forgets some files' symbols. Each name they had is filtered
+// once, so dropping a folder of files that share names stays cheap.
+func (x *Index) dropLocked(gone map[string]bool) {
+	if x.byName != nil {
+		affected := map[string]bool{}
+		for f := range gone {
+			for _, t := range x.byFile[f] {
+				affected[t.Name] = true
+			}
+		}
+		for n := range affected {
+			kept := x.byName[n][:0]
+			for _, t := range x.byName[n] {
+				if !gone[t.Path] {
+					kept = append(kept, t)
+				}
+			}
+			if len(kept) == 0 {
+				delete(x.byName, n)
+				x.names = nil
+			} else {
+				x.byName[n] = kept
+			}
+		}
+	}
+	for f := range gone {
+		delete(x.byFile, f)
+	}
+}
+
+// indexByName builds the by-name table, once per build; later changes keep
+// it up to date.
 func (x *Index) indexByName() {
 	if x.byName != nil {
 		return
@@ -240,11 +283,21 @@ func (x *Index) indexByName() {
 			x.byName[t.Name] = append(x.byName[t.Name], t)
 		}
 	}
-	x.names = make([]string, 0, len(x.byName))
-	for n := range x.byName {
-		x.names = append(x.names, n)
+	x.names = nil
+}
+
+// sortedNames are the names, sorted, for ⌘T; rebuilt only when a name comes
+// or goes. The slice is never changed once made, so it may be read unlocked.
+func (x *Index) sortedNames() []string {
+	x.indexByName()
+	if x.names == nil {
+		x.names = make([]string, 0, len(x.byName))
+		for n := range x.byName {
+			x.names = append(x.names, n)
+		}
+		sort.Strings(x.names)
 	}
-	sort.Strings(x.names)
+	return x.names
 }
 
 // Definitions are the symbols called name, nearest to from (a file, relative)
@@ -274,12 +327,20 @@ func rankDefinitions(found []files.Tag, from, lang string) []files.Tag {
 			found = same
 		}
 	}
+	// Each file's distance is worked out once: a name like New can be defined
+	// in thousands of files (M8.14).
+	far := make(map[string]int)
+	for _, t := range found {
+		if _, ok := far[t.Path]; !ok {
+			far[t.Path] = distance(from, t.Path)
+		}
+	}
 	sort.SliceStable(found, func(i, j int) bool {
 		a, b := found[i], found[j]
 		if pa, pb := weakKind(a.Kind), weakKind(b.Kind); pa != pb {
 			return !pa
 		}
-		if da, db := distance(from, a.Path), distance(from, b.Path); da != db {
+		if da, db := far[a.Path], far[b.Path]; da != db {
 			return da < db
 		}
 		if a.Path != b.Path {
@@ -327,13 +388,14 @@ func (x *Index) FileSymbols(rel string) []files.Tag {
 // most limit.
 func (x *Index) Search(query string, limit int) []files.Tag {
 	x.mu.Lock()
-	x.indexByName()
-	names := x.names
-	byName := x.byName
+	names := x.sortedNames()
 	x.mu.Unlock()
+	found := Rank(query, names, limit)
 	var out []files.Tag
-	for _, f := range Rank(query, names, limit) {
-		tags := append([]files.Tag(nil), byName[f.Rel]...)
+	for _, f := range found {
+		x.mu.Lock()
+		tags := append([]files.Tag(nil), x.byName[f.Rel]...)
+		x.mu.Unlock()
 		sort.Slice(tags, func(i, j int) bool {
 			if tags[i].Path != tags[j].Path {
 				return tags[i].Path < tags[j].Path
