@@ -946,9 +946,11 @@ service SystemService {
   // root_mode key, which SettingsService.Update refuses. Turning it on needs the
   // Desktop account's password (verified like sign-in, M6.3); turning it off
   // needs none, since it lowers privilege. It is refused while any Task is
-  // Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-  // before the password is even checked, so a wrong-password try is never spent
-  // on a switch that cannot happen. A wrong password is Unauthenticated (detail
+  // Queued, Running or AwaitingUser, and while any Code window has a Workspace
+  // open (M8.13), since the restart would drop its unsaved files
+  // (FailedPrecondition, detail RootModeBlocked, listing both), before the
+  // password is even checked, so a wrong-password try is never spent on a
+  // switch that cannot happen. A wrong password is Unauthenticated (detail
   // RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
   // the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
   // unlock time). On success it audits the switch in the Realm it is made from
@@ -987,9 +989,22 @@ message SetRootModeRequest {
 message SetRootModeResponse {}
 
 // RootModeBlocked is the FailedPrecondition detail on SetRootMode: the Tasks that
-// must finish or be cancelled before the Realm can be switched.
+// must finish or be cancelled, and the Code Workspaces that must be closed
+// (M8.13), before the Realm can be switched. ClearRootHistory is refused for
+// Tasks only, so it lists no Workspaces.
 message RootModeBlocked {
   repeated BlockingTask tasks = 1;
+  repeated BlockingWorkspace workspaces = 2;
+}
+
+// BlockingWorkspace names one open Code Workspace, in any of the Desktop's tabs,
+// that blocks a Realm switch (M8.13), with its window's unsaved files.
+message BlockingWorkspace {
+  string id = 1;
+  // The Workspace's folder.
+  string path = 2;
+  // Absolute paths of the window's files with unsaved edits, sorted.
+  repeated string unsaved = 3;
 }
 
 // BlockingTask names one Task that blocks a Realm switch, enough for the Desktop

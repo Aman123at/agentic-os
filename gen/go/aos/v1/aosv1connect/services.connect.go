@@ -2532,9 +2532,11 @@ type SystemServiceClient interface {
 	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
 	// Desktop account's password (verified like sign-in, M6.3); turning it off
 	// needs none, since it lowers privilege. It is refused while any Task is
-	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-	// before the password is even checked, so a wrong-password try is never spent
-	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// Queued, Running or AwaitingUser, and while any Code window has a Workspace
+	// open (M8.13), since the restart would drop its unsaved files
+	// (FailedPrecondition, detail RootModeBlocked, listing both), before the
+	// password is even checked, so a wrong-password try is never spent on a
+	// switch that cannot happen. A wrong password is Unauthenticated (detail
 	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
 	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
 	// unlock time). On success it audits the switch in the Realm it is made from
@@ -2722,9 +2724,11 @@ type SystemServiceHandler interface {
 	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
 	// Desktop account's password (verified like sign-in, M6.3); turning it off
 	// needs none, since it lowers privilege. It is refused while any Task is
-	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-	// before the password is even checked, so a wrong-password try is never spent
-	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// Queued, Running or AwaitingUser, and while any Code window has a Workspace
+	// open (M8.13), since the restart would drop its unsaved files
+	// (FailedPrecondition, detail RootModeBlocked, listing both), before the
+	// password is even checked, so a wrong-password try is never spent on a
+	// switch that cannot happen. A wrong password is Unauthenticated (detail
 	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
 	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
 	// unlock time). On success it audits the switch in the Realm it is made from

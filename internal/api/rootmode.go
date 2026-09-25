@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -104,8 +105,9 @@ func (s *Server) rootModeGateOf() *rootModeGate {
 
 // SetRootMode turns Root Mode on or off (M7.7). See services.proto for the full
 // contract; the order here is deliberate: the no-active-Task gate (inside
-// SwitchRealm, under the queue lock) runs before the password is checked, so a
-// switch that cannot happen never spends a password attempt or an audit line.
+// SwitchRealm, under the queue lock) and the no-open-Workspace gate (M8.13) run
+// before the password is checked, so a switch that cannot happen never spends a
+// password attempt or an audit line.
 func (sys systemService) SetRootMode(ctx context.Context, req *connect.Request[aosv1.SetRootModeRequest]) (*connect.Response[aosv1.SetRootModeResponse], error) {
 	switcher := sys.s.switcher()
 	if switcher == nil || sys.s.Settings == nil {
@@ -130,7 +132,13 @@ func (sys systemService) SetRootMode(ctx context.Context, req *connect.Request[a
 	// none either.
 	needPassword := req.Msg.Enabled && actor != "user:cli"
 
+	// Open Code Workspaces are asked for up front, so a refusal for a Task lists
+	// them too, and again under the queue lock, just before the commit.
+	open := sys.s.blockingWorkspaces()
 	active, err := switcher.SwitchRealm(ctx, func() error {
+		if open = sys.s.blockingWorkspaces(); len(open) > 0 {
+			return errCodeOpen
+		}
 		if needPassword {
 			if err := sys.checkRootPassword(ctx, req.Msg.Password); err != nil {
 				return err
@@ -148,11 +156,11 @@ func (sys systemService) SetRootMode(ctx context.Context, req *connect.Request[a
 		_ = sys.s.Audit.Record(ctx, audit.Entry{Tool: "root_mode", Result: result, Decision: "allow", DecidedBy: actor, Actor: actor})
 		return sys.s.Restart()
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, errCodeOpen) {
 		return nil, connectError(err)
 	}
-	if len(active) > 0 {
-		return nil, rootModeBlockedError(active)
+	if len(active) > 0 || len(open) > 0 {
+		return nil, rootModeBlockedError(active, open)
 	}
 	return connect.NewResponse(&aosv1.SetRootModeResponse{}), nil
 }
@@ -208,18 +216,36 @@ func (sys systemService) ClearRootHistory(ctx context.Context, _ *connect.Reques
 		return nil, connectError(err)
 	}
 	if len(active) > 0 {
-		return nil, rootModeBlockedError(active)
+		return nil, rootModeBlockedError(active, nil)
 	}
 	return connect.NewResponse(&aosv1.ClearRootHistoryResponse{}), nil
 }
 
-func rootModeBlockedError(active []*aosv1.Task) error {
-	detail := &aosv1.RootModeBlocked{}
+// errCodeOpen stops a switch's commit while a Code Workspace is open (M8.13).
+var errCodeOpen = errors.New("a Code Workspace is open")
+
+// blockingWorkspaces lists the open Code Workspaces, in every tab (M8.13).
+func (s *Server) blockingWorkspaces() []*aosv1.BlockingWorkspace {
+	var out []*aosv1.BlockingWorkspace
+	for _, w := range s.workspaces.List() {
+		out = append(out, &aosv1.BlockingWorkspace{Id: w.ID, Path: w.Root, Unsaved: w.Unsaved})
+	}
+	return out
+}
+
+func rootModeBlockedError(active []*aosv1.Task, open []*aosv1.BlockingWorkspace) error {
+	detail := &aosv1.RootModeBlocked{Workspaces: open}
 	for _, t := range active {
 		detail.Tasks = append(detail.Tasks, &aosv1.BlockingTask{Id: t.Id, Title: t.Title, State: t.State})
 	}
-	err := connect.NewError(connect.CodeFailedPrecondition,
-		fmt.Errorf("an Agent is still working (%d Task(s)); let it finish or cancel it, then switch Root Mode", len(active)))
+	var why []string
+	if len(active) > 0 {
+		why = append(why, fmt.Sprintf("an Agent is still working (%d Task(s)); let it finish or cancel it", len(active)))
+	}
+	if len(open) > 0 {
+		why = append(why, fmt.Sprintf("Code is open (%d folder(s)); save your files and close Code", len(open)))
+	}
+	err := connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("%s, then switch Root Mode", strings.Join(why, "; ")))
 	if d, e := connect.NewErrorDetail(detail); e == nil {
 		err.AddDetail(d)
 	}

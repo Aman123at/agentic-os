@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -175,16 +176,38 @@ func blockedDetail(err error) *aosv1.RootModeBlocked {
 	return nil
 }
 
-// printBlocked lists the Tasks that must finish or be cancelled before the Realm
-// can switch, and points at `aos cancel`.
+// printBlocked lists what stands in the way of a Realm switch: the Tasks that
+// must finish or be cancelled, pointing at `aos cancel`, and the Code windows
+// that must be closed (M8.13), with their unsaved files.
 func printBlocked(out io.Writer, b *aosv1.RootModeBlocked) {
-	fmt.Fprintln(out, "An Agent is still working — Root Mode can't be switched until it finishes or you cancel it:")
-	w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
-	for _, t := range b.Tasks {
-		fmt.Fprintf(w, "  %s\t%s\t%s\n", t.Id, stateName(t.State), t.Title)
+	if len(b.Tasks) > 0 {
+		fmt.Fprintln(out, "An Agent is still working — Root Mode can't be switched until it finishes or you cancel it:")
+		w := tabwriter.NewWriter(out, 0, 4, 2, ' ', 0)
+		for _, t := range b.Tasks {
+			fmt.Fprintf(w, "  %s\t%s\t%s\n", t.Id, stateName(t.State), t.Title)
+		}
+		_ = w.Flush()
+		fmt.Fprintln(out, "Cancel it with aos cancel <id>, then try again.")
 	}
-	_ = w.Flush()
-	fmt.Fprintln(out, "Cancel it with aos cancel <id>, then try again.")
+	if len(b.Workspaces) > 0 {
+		fmt.Fprintln(out, "Code is open. Please save your files and close Code before switching mode:")
+		for _, ws := range b.Workspaces {
+			switch n := len(ws.Unsaved); n {
+			case 0:
+				fmt.Fprintf(out, "  %s\n", ws.Path)
+			case 1:
+				fmt.Fprintf(out, "  %s — 1 unsaved file\n", ws.Path)
+			default:
+				fmt.Fprintf(out, "  %s — %d unsaved files\n", ws.Path, n)
+			}
+			for _, f := range ws.Unsaved {
+				if rel, err := filepath.Rel(ws.Path, f); err == nil && !strings.HasPrefix(rel, "..") {
+					f = rel
+				}
+				fmt.Fprintf(out, "      %s\n", f)
+			}
+		}
+	}
 }
 
 func onOff(rootMode bool) string {

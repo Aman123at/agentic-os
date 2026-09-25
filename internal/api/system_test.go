@@ -3,7 +3,9 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -245,6 +247,95 @@ func TestRootModeRefusedWhileActiveWithoutSpendingAPassword(t *testing.T) {
 	}
 }
 
+// TestRootModeRefusedWhileCodeIsOpen: an open Code Workspace, in any tab,
+// refuses the switch either way (M8.13), listing the folder and its unsaved
+// files, before the password is checked; once it closes the switch goes ahead.
+func TestRootModeRefusedWhileCodeIsOpen(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		t.Run(fmt.Sprintf("on=%v", on), func(t *testing.T) {
+			r := newRootRig(t)
+			*r.rootMode = !on
+			ws := r.sys.s.Workspaces()
+			detach := ws.Attach("sub_tab")
+			defer detach()
+			w, err := ws.Open("sub_tab", "/home/aos/project/", false, func() {})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := ws.SetUnsaved(w.ID, []string{"/home/aos/project/main.go", "/home/aos/project/a.go"}); err != nil {
+				t.Fatal(err)
+			}
+
+			err = r.set(desktopCtx, on, "wrong")
+			if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+				t.Fatalf("with Code open: %v, want FailedPrecondition", err)
+			}
+			b := blocked(t, err)
+			if len(b.Tasks) != 0 || len(b.Workspaces) != 1 {
+				t.Fatalf("blocked detail = %+v, want the one Workspace", b)
+			}
+			if got := b.Workspaces[0]; got.Id != w.ID || got.Path != "/home/aos/project" ||
+				strings.Join(got.Unsaved, ",") != "/home/aos/project/a.go,/home/aos/project/main.go" {
+				t.Errorf("Workspace = %+v", got)
+			}
+			if !strings.Contains(err.Error(), "close Code") {
+				t.Errorf("message %q does not say to close Code", err)
+			}
+			if *r.restarts != 0 || r.savedRootMode(t) != "false" {
+				t.Fatalf("restarted (%d) or saved root_mode with Code open", *r.restarts)
+			}
+
+			// Closing the window lets it through; no password attempt was spent.
+			if err := ws.Close(w.ID); err != nil {
+				t.Fatal(err)
+			}
+			if on {
+				if n := attemptsLeft(t, r.set(desktopCtx, on, "wrong")); n != rootModeMaxAttempts-1 {
+					t.Errorf("attempts left = %d, want %d (none spent while Code was open)", n, rootModeMaxAttempts-1)
+				}
+			}
+			if err := r.set(desktopCtx, on, testPassword); err != nil {
+				t.Fatalf("after closing Code: %v", err)
+			}
+			if *r.restarts != 1 {
+				t.Errorf("restarts = %d, want 1", *r.restarts)
+			}
+		})
+	}
+}
+
+// TestRootModeBlockedListsTasksAndCodeTogether: one refusal names everything in
+// the way, so the Desktop's popup is complete the first time.
+func TestRootModeBlockedListsTasksAndCodeTogether(t *testing.T) {
+	r := newRootRig(t)
+	r.sw.active = []*aosv1.Task{{Id: "t_1", Title: "long job", State: aosv1.TaskState_TASK_STATE_RUNNING}}
+	ws := r.sys.s.Workspaces()
+	defer ws.Attach("sub_tab")()
+	if _, err := ws.Open("sub_tab", "/srv/app", false, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	b := blocked(t, r.set(cliCtx, true, ""))
+	if len(b.Tasks) != 1 || len(b.Workspaces) != 1 || b.Workspaces[0].Path != "/srv/app" {
+		t.Errorf("blocked detail = %+v, want the Task and the Workspace", b)
+	}
+}
+
+// TestClearRootHistoryIsNotBlockedByCode: only the switch waits for Code; a
+// clear restarts into the same Realm, and the Desktop's confirm names what is
+// unsaved (M8.13).
+func TestClearRootHistoryIsNotBlockedByCode(t *testing.T) {
+	r := newRootRig(t)
+	*r.rootMode = true
+	ws := r.sys.s.Workspaces()
+	defer ws.Attach("sub_tab")()
+	if _, err := ws.Open("sub_tab", "/srv/app", true, func() {}); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.clear(desktopCtx); err != nil || *r.cleared != 1 {
+		t.Errorf("clear with Code open: %v, cleared %d", err, *r.cleared)
+	}
+}
+
 // TestRootModeAlreadyInRealmDoesNothing: asking for the Realm already in force
 // neither restarts nor asks for a password (M7.7).
 func TestRootModeAlreadyInRealmDoesNothing(t *testing.T) {
@@ -360,9 +451,14 @@ func attemptsLeft(t *testing.T, err error) int {
 
 func blockedTasks(t *testing.T, err error) []*aosv1.BlockingTask {
 	t.Helper()
+	return blocked(t, err).Tasks
+}
+
+func blocked(t *testing.T, err error) *aosv1.RootModeBlocked {
+	t.Helper()
 	for _, d := range details(t, err) {
 		if b, ok := d.(*aosv1.RootModeBlocked); ok {
-			return b.Tasks
+			return b
 		}
 	}
 	t.Fatalf("no RootModeBlocked detail on %v", err)
