@@ -2,6 +2,7 @@
 // the flex row and sizes the pane *before* it: the Agent app's view sidebar and
 // Task list, and Finder's Places sidebar. With axis "y" it lies between two
 // stacked panes and sizes the one *after* it, by height: Code's Terminal panel.
+// With side "after" it sizes the pane after it, by width: Code's Agent sidebar.
 //
 // A drag writes the pane's width straight to the DOM inside
 // requestAnimationFrame and commits to the caller once, on pointer-up (PLAN.md
@@ -28,6 +29,7 @@ export function Splitter({
   label,
   restore = min,
   axis = "x",
+  side = "before",
 }: {
   // The pane's current width in pixels; 0 means collapsed.
   size: number;
@@ -40,8 +42,11 @@ export function Splitter({
   restore?: number;
   // "y" sizes the pane below by height; dragging up grows it.
   axis?: "x" | "y";
+  // "after" sizes the pane to the right; dragging left grows it.
+  side?: "before" | "after";
 }) {
   const y = axis === "y";
+  const after = y || side === "after";
   const el = useRef<HTMLDivElement>(null);
   const drag = useRef<{ px: number; from: number; at: number } | null>(null);
   const frame = useRef(0);
@@ -52,8 +57,8 @@ export function Splitter({
   // The pane being sized is the element in front of the divider. Reaching for
   // it beats threading a ref through every caller, and keeps the two in step by
   // construction: the divider can only ever size the pane it is next to.
-  const pane = () => (y ? el.current?.nextElementSibling : el.current?.previousElementSibling) as HTMLElement | null;
-  const at = (e: ReactPointerEvent) => (y ? -e.clientY : e.clientX);
+  const pane = () => (after ? el.current?.nextElementSibling : el.current?.previousElementSibling) as HTMLElement | null;
+  const at = (e: ReactPointerEvent) => (y ? -e.clientY : after ? -e.clientX : e.clientX);
 
   function clamp(w: number) {
     if (w < min - COLLAPSE) return 0;
@@ -108,9 +113,10 @@ export function Splitter({
   }
 
   function onKeyDown(e: ReactKeyboardEvent) {
+    const [shrink, grow] = y ? ["ArrowDown", "ArrowUp"] : after ? ["ArrowRight", "ArrowLeft"] : ["ArrowLeft", "ArrowRight"];
     const keys: Record<string, number> = {
-      [y ? "ArrowDown" : "ArrowLeft"]: Math.max(min, size - STEP),
-      [y ? "ArrowUp" : "ArrowRight"]: size === 0 ? min : Math.min(max, size + STEP),
+      [shrink]: Math.max(min, size - STEP),
+      [grow]: size === 0 ? min : Math.min(max, size + STEP),
       Home: min,
       End: max,
     };

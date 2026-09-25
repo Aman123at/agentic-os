@@ -40,7 +40,16 @@ export interface FakeMachine {
   backups: Record<string, string[]>;
   // User Sessions (M8.6): where each started, and whether it is still open.
   sessions: Record<string, { cwd: string; open: boolean }>;
+  // The Agent (M8.11): what the next run of a Task does, taken by each
+  // CreateTask or SendFollowUp; and what the Desktop asked for.
+  agent: AgentAct[];
+  taskRequests: { method: string; body: Record<string, unknown> }[];
 }
+
+// AgentAct is one thing the fake Agent does in a run: change a file with a
+// Files Tool (keeping its before-image, as aosd does), change one with a
+// command (keeping none), delete one, or say something.
+export type AgentAct = { write: string; text: string } | { command: string; text: string } | { remove: string } | { say: string };
 
 export async function installFakeAosd(page: Page, opts: FakeOptions = {}): Promise<void> {
   await page.addInitScript(() => {
@@ -101,6 +110,8 @@ function fake(opts: FakeOptions) {
     backups: {},
     // A spec carries Sessions over a reload, as aosd keeps them running.
     sessions: JSON.parse(sessionStorage.getItem("fake.sessions") ?? "{}") as FakeMachine["sessions"],
+    agent: [],
+    taskRequests: [],
     write(p, text) {
       const existed = fs.has(p);
       mkdirp(parent(p));
@@ -199,6 +210,75 @@ function fake(opts: FakeOptions) {
     return Boolean(why);
   };
 
+  // ------------------------------------------------------------ the Agent (M8.11)
+  type FTask = {
+    task: Record<string, unknown>;
+    steps: Record<string, unknown>[];
+    changes: { change: Record<string, unknown>; before: Uint8Array | null }[];
+  };
+  const ftasks = new Map<string, FTask>();
+  let taskCount = 0;
+  let stepCount = 0;
+  const broadcast = (event: Record<string, unknown>) => {
+    for (const s of subs) s.push({ event: { time: new Date().toISOString(), ...event } });
+  };
+  const setTaskState = (id: string, state: string, summary?: string) => {
+    const t = ftasks.get(id);
+    if (!t) return;
+    t.task = { ...t.task, state, updatedAt: new Date(tick()).toISOString(), ...(summary !== undefined ? { summary } : {}) };
+    broadcast({ taskChanged: { task: t.task } });
+  };
+  const addStep = (id: string, step: Record<string, unknown>) => {
+    const t = ftasks.get(id);
+    if (!t) return;
+    const full = { id: `s_${++stepCount}`, taskId: id, seq: String(t.steps.length + 1), createdAt: new Date(tick()).toISOString(), ...step };
+    t.steps.push(full);
+    broadcast({ taskStep: { step: full } });
+  };
+  const toolStep = (id: string, tool: string, args: Record<string, unknown>, result: string) =>
+    addStep(id, { kind: "STEP_KIND_TOOL_CALL", text: "", toolCall: { callId: `c_${stepCount}`, tool, argumentsJson: JSON.stringify(args), status: "TOOL_CALL_STATUS_SUCCEEDED", result } });
+  // keepBefore keeps a file's before-image the first time the Task changes it.
+  const keepBefore = (t: FTask, p: string, tool: string) => {
+    if (t.changes.some((c) => c.change.path === p)) return;
+    const n = fs.get(p);
+    t.changes.push({
+      change: { path: p, tool, existed: Boolean(n), folder: Boolean(n?.dir), size: String(n?.data.length ?? 0), kept: Boolean(n && !n.dir), whole: false, changedAt: new Date(clock).toISOString() },
+      before: n && !n.dir ? n.data.slice() : null,
+    });
+  };
+  const pause = () => new Promise((r) => setTimeout(r, 40));
+  async function runTask(id: string) {
+    const acts = machine.agent.splice(0);
+    await pause();
+    setTaskState(id, "TASK_STATE_RUNNING");
+    let said = "";
+    for (const act of acts) {
+      await pause();
+      const t = ftasks.get(id);
+      if (!t) return;
+      if ("write" in act) {
+        const p = abs(act.write);
+        const tool = fs.has(p) ? "edit_file" : "write_file";
+        keepBefore(t, p, tool);
+        machine.write(p, act.text);
+        toolStep(id, tool, { path: p }, `Wrote ${p}.`);
+      } else if ("command" in act) {
+        machine.write(abs(act.command), act.text);
+        toolStep(id, "run_command", { command: `generate ${act.command}` }, "exit 0");
+      } else if ("remove" in act) {
+        const p = abs(act.remove);
+        keepBefore(t, p, "delete");
+        machine.remove(p);
+        toolStep(id, "delete", { path: p }, `Moved ${p} to the Trash.`);
+      } else {
+        said = act.say;
+        addStep(id, { kind: "STEP_KIND_AGENT_TEXT", text: act.say });
+      }
+    }
+    await pause();
+    setTaskState(id, "TASK_STATE_SUCCEEDED", said);
+  }
+
   let subCount = 0;
   let wsCount = 0;
   let sessionCount = Object.keys(machine.sessions).length;
@@ -210,8 +290,53 @@ function fake(opts: FakeOptions) {
         return { accessToken: "access", refreshToken: "refresh-token" };
       case "SystemService/Info":
         return { rootMode: Boolean(opts.rootMode), version: "fake" };
-      case "TaskService/ListTasks":
-        return { tasks: [] };
+      case "TaskService/ListTasks": {
+        const ws = str("workspace");
+        return { tasks: [...ftasks.values()].map((t) => t.task).filter((t) => !ws || t.workspace === ws).reverse() };
+      }
+      case "TaskService/CreateTask": {
+        machine.taskRequests.push({ method: "CreateTask", body });
+        const editor = body.editor as { workspace?: string } | undefined;
+        const id = `t_${++taskCount}`;
+        const at = new Date(tick()).toISOString();
+        const task = { id, title: str("prompt").slice(0, 60), prompt: str("prompt"), state: "TASK_STATE_QUEUED", autonomy: "AUTONOMY_CONFIRM_RISKY", interactive: true, model: "gpt-fake", usage: { costKnown: true }, createdAt: at, updatedAt: at, workspace: editor?.workspace ? abs(editor.workspace) : "" };
+        ftasks.set(id, { task, steps: [], changes: [] });
+        addStep(id, { kind: "STEP_KIND_USER_MESSAGE", text: str("prompt") });
+        void runTask(id);
+        return { task };
+      }
+      case "TaskService/SendFollowUp": {
+        machine.taskRequests.push({ method: "SendFollowUp", body });
+        const t = ftasks.get(str("id"));
+        if (!t) throw new RpcError("not_found", "no such Task");
+        addStep(t.task.id as string, { kind: "STEP_KIND_USER_MESSAGE", text: str("text") });
+        setTaskState(t.task.id as string, "TASK_STATE_QUEUED");
+        void runTask(t.task.id as string);
+        return { task: t.task };
+      }
+      case "TaskService/GetTask": {
+        const t = ftasks.get(str("id"));
+        if (!t) throw new RpcError("not_found", "no such Task");
+        return { task: t.task, steps: t.steps, approvals: [] };
+      }
+      case "TaskService/DeleteTask": {
+        const t = ftasks.get(str("id"));
+        if (!t) throw new RpcError("not_found", "no such Task");
+        ftasks.delete(str("id"));
+        broadcast({ taskChanged: { task: { id: str("id") }, removed: true } });
+        return {};
+      }
+      case "TaskService/ListChanges": {
+        const t = ftasks.get(str("taskId"));
+        if (!t) throw new RpcError("not_found", "no such Task");
+        return { changes: t.changes.map((c) => c.change) };
+      }
+      case "TaskService/GetBefore": {
+        const t = ftasks.get(str("taskId"));
+        const c = t?.changes.find((x) => x.change.path === abs(str("path")));
+        if (!c) throw new RpcError("not_found", `the Task did not change ${str("path")}`);
+        return { change: c.change, content: c.before ? b64(c.before) : "" };
+      }
       case "ApprovalService/ListPending":
         return { approvals: [] };
       case "SystemService/ListNotifications":

@@ -541,6 +541,63 @@ test("a change on disk under unsaved edits is settled hunk by hunk: Keep mine, T
   await expect(win.getByRole("button", { name: "Close list.txt" })).toBeVisible();
 });
 
+// The Agent in Code (M8.11).
+test("the Agent sidebar starts a Task with where you are working, and ⌘L adds the selection", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  await openFile(win, "README.md");
+  await openFile(win, "main.go");
+
+  // ⌘L: the line goes to the chat, and the sidebar opens with the composer ready.
+  await toLine(page, win, 3);
+  await page.keyboard.press("Shift+Home");
+  await page.keyboard.press("ControlOrMeta+l");
+  const agent = win.getByRole("complementary", { name: "Agent" });
+  await expect(agent).toBeVisible();
+  await expect(agent.getByText("main.go:3")).toBeVisible();
+  await expect(agent.getByRole("textbox", { name: "Message the Agent" })).toBeFocused();
+
+  await aosd(page, (m) => void m.agent.push({ say: "`main` does nothing yet." }));
+  await page.keyboard.type("What does main do?");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(agent.getByText("does nothing yet.")).toBeVisible();
+  await expect(agent.getByRole("combobox", { name: "Chat" })).toHaveValue(/^t_/);
+  await expect(agent.getByRole("combobox", { name: "Chat" }).locator("option:checked")).toHaveText("What does main do? — Done");
+  await expect(agent.getByText("main.go:3")).toBeHidden();
+
+  const sent = await aosd(page, (m) => JSON.stringify(m.taskRequests));
+  const [create] = JSON.parse(sent) as { method: string; body: { prompt: string; editor: Record<string, unknown> } }[];
+  expect(create.method).toBe("CreateTask");
+  expect(create.body.editor).toEqual({
+    workspace: "/home/aos/project",
+    activeFile: "/home/aos/project/main.go",
+    openFiles: ["/home/aos/project/README.md", "/home/aos/project/main.go"],
+    selection: "func main() {}",
+    selectionStartLine: 3,
+    selectionEndLine: 3,
+  });
+
+  // A Follow-up carries where the user is now.
+  await aosd(page, (m) => void m.agent.push({ say: "Glad to help." }));
+  await openFile(win, "README.md");
+  const reply = agent.getByRole("textbox", { name: "Message the Agent" });
+  await reply.fill("Thanks");
+  await reply.press("ControlOrMeta+Enter");
+  await expect(agent.getByText("Glad to help.")).toBeVisible();
+  const follow = JSON.parse(await aosd(page, (m) => JSON.stringify(m.taskRequests[1]))) as { method: string; body: { editor: Record<string, unknown> } };
+  expect(follow.method).toBe("SendFollowUp");
+  expect(follow.body.editor).toMatchObject({ workspace: "/home/aos/project", activeFile: "/home/aos/project/README.md" });
+
+  // New chat, and the Workspace's chats listed; the sidebar hides and comes back.
+  await agent.getByRole("button", { name: "New chat" }).click();
+  await expect(agent.getByRole("combobox", { name: "Chat" })).toHaveValue("");
+  await expect(agent.getByRole("combobox", { name: "Chat" }).locator("option")).toHaveCount(2);
+  await agent.getByRole("button", { name: "Hide the Agent" }).click();
+  await expect(agent).toBeHidden();
+  await win.getByRole("status", { name: "Status bar" }).getByRole("button", { name: "✦ Agent" }).dispatchEvent("click");
+  await expect(agent).toBeVisible();
+});
+
 // termText is what the newest xterm shows (term.ts hands it over under test).
 const termText = (page: Page) =>
   page.evaluate(() => {

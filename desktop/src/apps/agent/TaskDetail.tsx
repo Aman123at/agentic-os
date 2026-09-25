@@ -1,9 +1,11 @@
 // One Task in the Agent app: its live step feed with tokens and cost, its pending
 // Approvals inline, and a composer for Follow-ups and answers, plus Cancel and
 // Resume. State flows in through the store's event stream (§4.3 rule 4); this
-// component only reads a slice and renders.
-import { useEffect, useMemo, useRef, useState } from "react";
+// component only reads a slice and renders. Code's Agent sidebar shows a Task
+// with the same TaskFeed (M8.11).
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 
+import type { EditorContext } from "../../gen/aos/v1/services_pb";
 import type { TaskStep } from "../../gen/aos/v1/types_pb";
 import { AwaitingKind, StepKind, TaskState } from "../../gen/aos/v1/types_pb";
 import { ApprovalCard, sortApprovals } from "../../shell/Approvals";
@@ -15,8 +17,35 @@ import { Markdown } from "./Markdown";
 
 export default function TaskDetail() {
   const openTask = useDesktop((s) => s.openTask);
-  const task = useDesktop((s) => (s.openTask ? s.tasks[s.openTask] : undefined));
   const steps = useDesktop((s) => s.steps);
+  const known = useDesktop((s) => Boolean(s.openTask && s.tasks[s.openTask]));
+  if (!openTask || !known) {
+    return (
+      <div className="tasks tasks--empty">
+        <p className="tasks__emoji">🤖</p>
+        <p>{openTask ? "Loading the Task…" : "No Task selected."}</p>
+        <p className="tasks__hint">Pick one from the list, or start one from Spotlight (⌥Space, or ^Space on Windows).</p>
+      </div>
+    );
+  }
+  return <TaskFeed taskId={openTask} steps={steps} />;
+}
+
+export interface TaskFeedProps {
+  taskId: string;
+  steps: TaskStep[];
+  // Where the user is working, sent with each Follow-up from Code.
+  editor?: () => EditorContext | undefined;
+  // Shown above the composer: what goes with the next message.
+  above?: ReactNode;
+  // Told a Follow-up or answer went.
+  onSent?: () => void;
+  composer?: RefObject<HTMLTextAreaElement | null>;
+}
+
+// TaskFeed is one Task's feed, Approvals and composer.
+export function TaskFeed({ taskId: openTask, steps, editor, above, onSent, composer }: TaskFeedProps) {
+  const task = useDesktop((s) => s.tasks[openTask]);
   const allApprovals = useDesktop((s) => s.approvals);
   const { answerQuestion, sendFollowUp, cancelTask, resumeTask, deleteTask } = useDesktop();
   const [reply, setReply] = useState("");
@@ -45,15 +74,7 @@ export default function TaskDetail() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [steps, approvals.length, working]);
 
-  if (!openTask || !task) {
-    return (
-      <div className="tasks tasks--empty">
-        <p className="tasks__emoji">🤖</p>
-        <p>{openTask ? "Loading the Task…" : "No Task selected."}</p>
-        <p className="tasks__hint">Pick one from the list, or start one from Spotlight (⌥Space, or ^Space on Windows).</p>
-      </div>
-    );
-  }
+  if (!task) return <div className="tasks tasks--empty">Loading the Task…</div>;
 
   const st = stateLabel(task.state);
   const awaiting = task.awaiting;
@@ -78,8 +99,9 @@ export default function TaskDetail() {
     setBusy(true);
     await act(async () => {
       if (question) await answerQuestion(openTask, text);
-      else await sendFollowUp(openTask, text);
+      else await sendFollowUp(openTask, text, editor?.());
       setReply("");
+      onSent?.();
     });
     setBusy(false);
   }
@@ -147,7 +169,9 @@ export default function TaskDetail() {
       )}
 
       <footer className="tasks__foot">
+        {above}
         <textarea
+          ref={composer}
           className="tasks__reply"
           aria-label="Message the Agent"
           placeholder={question ? "Type your answer…" : canReply ? "Ask a follow-up… (⌘Enter to send)" : "The Agent is working. You can reply when it asks or finishes."}

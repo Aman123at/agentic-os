@@ -1736,6 +1736,102 @@ button.stack__item:hover {
   background: rgba(217, 48, 37, 0.14);
 }
 
+/* The Agent sidebar (M8.11). */
+.code__agent {
+  flex: none;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+}
+.code-agent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--window-bg);
+}
+.code-agent > .tasks {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+.code-agent .tasks__head {
+  display: none;
+}
+.code-agent__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 32px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.code-agent__pick {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--window-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+}
+.code-agent__new {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.code-agent__intro {
+  flex: 1;
+  overflow: auto;
+  padding: 14px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.code-agent__hint {
+  font-size: 11.5px;
+}
+.code-agent__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.code-agent__chips:empty {
+  display: none;
+}
+.code-agent__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--window-bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.code-agent__chip--sel {
+  color: var(--text);
+}
+.code-agent__chip-x {
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
 /* Compare with Saved, and a file changed on disk under unsaved edits (M8.10). */
 .code-compare {
   flex: 1;

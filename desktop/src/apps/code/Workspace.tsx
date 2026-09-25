@@ -34,6 +34,7 @@ import {
   type SensitivePath,
   type WorkspaceChanged,
   type WorkspaceWatch,
+  type EditorContext,
 } from "../../gen/aos/v1/services_pb";
 import { setCloseGuard } from "../../shell/closeGuard";
 import { WinContext, useWinState } from "../../shell/win";
@@ -42,6 +43,7 @@ import { SensitiveConfirm, type SensitiveAsk } from "../../ui/SensitiveConfirm";
 import { Splitter } from "../../ui/Splitter";
 import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
+import { CodeAgent, type Added } from "./CodeAgent";
 import { Explorer, type Relist } from "./Explorer";
 import { baseOf, dirOf, relative, within } from "./paths";
 import { completion, modClick, wordAt } from "./navigate";
@@ -127,6 +129,11 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [panelSetting, setPanel] = useWinState("panel", "");
   const [panelHeight, setPanelHeight] = useWinState("panelh", "220");
   const panelOpen = panelSetting === "1";
+  // The Agent sidebar (M8.11): its width, 0 when hidden.
+  const [agentSetting, setAgentWidth] = useWinState("agentw", "0");
+  const agentWidth = Number(agentSetting) || 0;
+  const [added, setAdded] = useState<Added | null>(null);
+  const [agentFocus, setAgentFocus] = useState(0);
   // Once opened, the panel stays mounted while hidden, so its shells keep
   // running and their output keeps arriving.
   const [panelMounted, setPanelMounted] = useState(panelOpen);
@@ -895,6 +902,33 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   // ------------------------------------------------------------ render
 
   const d = docs.current.get(active);
+
+  // editorContext is where the user is working, for the Agent (M8.11).
+  const editorContext = () => {
+    const front = docs.current.get(activeRef.current);
+    return { workspace: wsRef.current?.root ?? path, activeFile: front?.load === "ready" ? front.path : "", openFiles: order, selection: "", selectionStartLine: 0, selectionEndLine: 0 } as EditorContext;
+  };
+  const showAgent = (open = agentWidth === 0) => {
+    setAgentWidth(open ? "340" : "0");
+    if (!open) focusEditor();
+  };
+  // addToChat adds the selection, or the cursor's line, to the Agent's chat.
+  const addToChat = () => {
+    const v = view.current;
+    const front = docs.current.get(activeRef.current);
+    if (v && front && shown.current === front.path) {
+      const sel = v.state.selection.main;
+      const first = v.state.doc.lineAt(sel.from);
+      // A selection ending at the start of a line doesn't take that line.
+      const end = !sel.empty && v.state.doc.lineAt(sel.to).from === sel.to ? sel.to - 1 : sel.to;
+      const last = v.state.doc.lineAt(Math.max(sel.from, end));
+      const text = sel.empty ? first.text : v.state.sliceDoc(sel.from, sel.to);
+      if (text.trim()) setAdded({ path: front.path, text, from: first.number, to: last.number });
+    }
+    if (agentWidth === 0) setAgentWidth("340");
+    setAgentFocus((n) => n + 1);
+  };
+
   const togglePanel = (open = !panelOpen) => {
     setPanel(open ? "1" : "");
     if (open) setPanelMounted(true);
@@ -943,6 +977,12 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       take();
       if (e.shiftKey) travel(forward.current, back.current);
       else travel(back.current, forward.current);
+      return;
+    }
+    // ⌘L: the selected lines (or the cursor's line) go to the Agent's chat.
+    if (mod && !e.altKey && !e.shiftKey && e.code === "KeyL") {
+      take();
+      addToChat();
       return;
     }
     // ⌘⇧F: Find in Files, with the selection if there is one.
@@ -1167,6 +1207,22 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
             </>
           )}
         </div>
+        {agentWidth > 0 && (
+          <>
+            <Splitter side="after" size={agentWidth} onSize={(w) => (w > 0 ? setAgentWidth(String(w)) : showAgent(false))} min={260} max={720} label="Resize the Agent" restore={340} />
+            <div className="code__agent" style={{ width: agentWidth }}>
+              <CodeAgent
+                root={ws.root}
+                rootMode={ws.rootMode}
+                editor={editorContext}
+                added={added}
+                onClearAdded={() => setAdded(null)}
+                focus={agentFocus}
+                onHide={() => showAgent(false)}
+              />
+            </div>
+          </>
+        )}
       </div>
 
       <StatusBar
@@ -1178,6 +1234,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         onAutoSave={(on) => setAutoSave(on ? "on" : "off")}
         panelOpen={panelOpen}
         onPanel={() => togglePanel()}
+        agentOpen={agentWidth > 0}
+        onAgent={() => showAgent()}
         onCompare={() => compareWithSaved()}
       />
 
@@ -1240,6 +1298,8 @@ function StatusBar({
   onAutoSave,
   panelOpen,
   onPanel,
+  agentOpen,
+  onAgent,
   onCompare,
 }: {
   ws: OpenWorkspaceResponse;
@@ -1250,6 +1310,8 @@ function StatusBar({
   onAutoSave: (on: boolean) => void;
   panelOpen: boolean;
   onPanel: () => void;
+  agentOpen: boolean;
+  onAgent: () => void;
   onCompare: () => void;
 }) {
   const ready = doc?.load === "ready";
@@ -1259,6 +1321,9 @@ function StatusBar({
       <WatchState watch={watch} />
       <button className="code__status-btn" aria-pressed={panelOpen} onClick={onPanel} title="Show or hide the Terminal panel (⌃`)">
         ⌨ Terminal
+      </button>
+      <button className="code__status-btn" aria-pressed={agentOpen} onClick={onAgent} title="Show or hide the Agent (⌘L adds the selection)">
+        ✦ Agent
       </button>
       <span className="code__status-gap" />
       {ready && (

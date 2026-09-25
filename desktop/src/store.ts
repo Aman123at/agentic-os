@@ -7,7 +7,7 @@ import { create as createMessage } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
-import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
+import type { DownloadProgress, EditorContext, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
 import { NotificationSchema } from "./gen/aos/v1/services_pb";
 import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, Autonomy, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
@@ -107,6 +107,9 @@ interface DesktopState {
   approvals: Record<string, Approval>; // pending only
   openTask: string;
   steps: TaskStep[];
+  // The step feeds of the Tasks Code's Agent sidebars show (M8.11), by Task
+  // id, kept live while any sidebar watches one.
+  feeds: Record<string, TaskStep[]>;
   // Downloads still in progress, by the Tool call's step id, for the Dock's
   // Downloads stack.
   downloads: Record<string, DownloadProgress>;
@@ -166,7 +169,8 @@ interface DesktopState {
   /** Counts the Trash again, after a change to it. */
   refreshTrashCount: () => Promise<void>;
 
-  createTask: (prompt: string, autonomy?: Autonomy) => Promise<void>;
+  /** Starts a Task. From Code it carries the editor's context and stays in Code, not opening the Agent app (M8.11). */
+  createTask: (prompt: string, autonomy?: Autonomy, from?: { editor: EditorContext }) => Promise<Task | undefined>;
   /** Removes a finished Task and everything under it; the Audit Log keeps its record. */
   deleteTask: (id: string) => Promise<void>;
   /** Opens the Agent app at a Task. */
@@ -174,11 +178,13 @@ interface DesktopState {
   /** Makes a Task the one whose step feed is live; the Agent app calls it. */
   selectTask: (id: string) => void;
   loadTask: (id: string) => Promise<void>;
-  /** Loads more of the Task history than boot does, for the Agent app's list. */
-  loadTasks: (limit: number) => Promise<void>;
+  /** Loads more of the Task history than boot does, for the Agent app's list; or a Workspace's, for Code's sidebar. */
+  loadTasks: (limit: number, workspace?: string) => Promise<void>;
+  /** Keeps a Task's step feed live in feeds until the returned function is called (M8.11). */
+  watchTask: (id: string) => () => void;
   decideApproval: (id: string, decision: ApprovalDecision) => Promise<void>;
   answerQuestion: (id: string, text: string) => Promise<void>;
-  sendFollowUp: (id: string, text: string) => Promise<void>;
+  sendFollowUp: (id: string, text: string, editor?: EditorContext) => Promise<void>;
   cancelTask: (id: string) => Promise<void>;
   resumeTask: (id: string) => Promise<void>;
   stopAll: () => Promise<void>;
@@ -194,6 +200,8 @@ interface DesktopState {
 }
 
 let nextId = 1;
+// How many of Code's sidebars watch each Task's feed (M8.11).
+const watchers = new Map<string, number>();
 // Ids for client-only notifications (the watchdog's), namespaced so they never
 // collide with the server's and so dismissal can tell them apart.
 let localNoteId = 1;
@@ -257,6 +265,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   approvals: {},
   openTask: "",
   steps: [],
+  feeds: {},
   downloads: {},
   spotlight: false,
   notifCenter: false,
@@ -372,6 +381,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       tasks: {},
       approvals: {},
       steps: [],
+      feeds: {},
       downloads: {},
       openTask: "",
       conn: "connecting",
@@ -546,18 +556,19 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
   // ------------------------------------------------------------- Agent surface
 
-  createTask: async (prompt, autonomy) => {
+  createTask: async (prompt, autonomy, from) => {
     const text = prompt.trim();
-    if (!text) return;
+    if (!text) return undefined;
     // interactive: someone (this Desktop) is here to answer Approvals and
     // questions, so the Agent may ask rather than deny (PLAN.md §7). autonomy
     // is left Unspecified when the caller gives none, so the configured
     // Autonomy applies, exactly as `aos run` without --autonomy.
-    const resp = await taskApi.createTask({ prompt: text, interactive: true, autonomy: autonomy ?? Autonomy.UNSPECIFIED });
+    const resp = await taskApi.createTask({ prompt: text, interactive: true, autonomy: autonomy ?? Autonomy.UNSPECIFIED, editor: from?.editor });
     const task = resp.task;
-    if (!task) return;
+    if (!task) return undefined;
     set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }));
-    get().openTaskView(task.id);
+    if (!from) get().openTaskView(task.id);
+    return task;
   },
 
   deleteTask: async (id) => {
@@ -587,8 +598,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     if (id) void get().loadTask(id);
   },
 
-  loadTasks: async (limit) => {
-    const resp = await taskApi.listTasks({ limit }).catch(() => null);
+  loadTasks: async (limit, workspace) => {
+    const resp = await taskApi.listTasks({ limit, workspace }).catch(() => null);
     if (!resp) return;
     // Events may have brought newer copies of some Tasks meanwhile; keep those.
     set((s) => ({ tasks: { ...Object.fromEntries(resp.tasks.map((t) => [t.id, t])), ...s.tasks } }));
@@ -611,10 +622,33 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       return {
         tasks: current && newerTask(current, loaded) === current ? s.tasks : { ...s.tasks, [id]: loaded },
         approvals,
-        // Only the open Task keeps a live step feed.
+        // Only the open Task, and those Code shows, keep a live step feed.
         steps: s.openTask === id ? mergeSteps(resp.steps, s.steps) : s.steps,
+        feeds: s.feeds[id] ? { ...s.feeds, [id]: mergeSteps(resp.steps, s.feeds[id]) } : s.feeds,
       };
     });
+  },
+
+  watchTask: (id) => {
+    const n = watchers.get(id) ?? 0;
+    watchers.set(id, n + 1);
+    if (n === 0) {
+      set((s) => ({ feeds: { ...s.feeds, [id]: s.feeds[id] ?? [] } }));
+      void get().loadTask(id);
+    }
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const left = (watchers.get(id) ?? 1) - 1;
+      if (left > 0) return void watchers.set(id, left);
+      watchers.delete(id);
+      set((s) => {
+        const feeds = { ...s.feeds };
+        delete feeds[id];
+        return { feeds };
+      });
+    };
   },
 
   decideApproval: async (id, decision) => {
@@ -633,8 +667,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     void get().loadTask(id);
   },
 
-  sendFollowUp: async (id, text) => {
-    const resp = await taskApi.sendFollowUp({ id, text, interactive: true });
+  sendFollowUp: async (id, text, editor) => {
+    const resp = await taskApi.sendFollowUp({ id, text, interactive: true, editor });
     if (resp.task) set((s) => ({ tasks: { ...s.tasks, [id]: resp.task! } }));
   },
 
@@ -746,6 +780,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let tasks = s.tasks;
   let approvals = s.approvals;
   let steps = s.steps;
+  let feeds = s.feeds;
   let downloads = s.downloads;
   let replay = s.replay;
   let serviceEpoch = s.serviceEpoch;
@@ -777,6 +812,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
             openTask = "";
             steps = [];
           }
+          if (t && feeds[t.id]) feeds = { ...feeds, [t.id]: [] };
           if (t) dropDownloads((d) => d.taskId !== t.id);
           break;
         }
@@ -802,6 +838,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "taskStep": {
         const step = k.value.step;
         if (step && step.taskId === s.openTask) steps = upsertStep(steps, step);
+        if (step && feeds[step.taskId]) feeds = { ...feeds, [step.taskId]: upsertStep(feeds[step.taskId], step) };
         // A download is over when its Tool call is.
         if (step && downloads[step.id] && (step.toolCall?.status ?? 0) >= ToolCallStatus.SUCCEEDED) dropDownloads((_, id) => id !== step.id);
         break;
@@ -814,6 +851,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "textDelta": {
         const d = k.value;
         if (d.taskId === s.openTask) steps = appendDelta(steps, d.stepId, d.delta);
+        if (feeds[d.taskId]) feeds = { ...feeds, [d.taskId]: appendDelta(feeds[d.taskId], d.stepId, d.delta) };
         break;
       }
       case "replayProgress": {
@@ -834,6 +872,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (tasks !== s.tasks) out.tasks = tasks;
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
+  if (feeds !== s.feeds) out.feeds = feeds;
   if (downloads !== s.downloads) out.downloads = downloads;
   if (openTask !== s.openTask) out.openTask = openTask;
   if (replay !== s.replay) out.replay = replay;
