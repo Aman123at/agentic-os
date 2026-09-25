@@ -692,8 +692,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       d.dirty = !current(d)?.doc.eq(d.saved);
     }
     if (d.dirty) scheduleAutoSave(d);
+    // Focus once the render that shows the editor again is done: a hidden
+    // editor can't take it.
+    focusOnLoad.current = d.path;
     bump();
-    focusEditor();
   };
 
   // ------------------------------------------------------------ changes on disk
