@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.10 built; M8.11 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.11 built; M8.12 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2077,6 +2077,23 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     *Tests:* `tool` — before-image kept once per Task and path, "did not
     exist", size cap; `api` — ListChanges/GetBefore Realm-scoped, deleted with
     the Task; instructions golden with `EditorContext`.
+    *As built:* each Files Tool reads the before-image itself, through the
+    Task's own file worker (so as the Realm's user, inside the sandbox), and
+    keeps it only once its change succeeds — a refused or failed call keeps
+    nothing. `move` keeps both ends, `copy` its destination. Kept up to
+    64 MiB; past 4 MiB, or not UTF-8 text, it is `whole` (kept or put back
+    whole, not hunk by hunk); a folder or a link keeps no content. A
+    Follow-up's change to a file the Task already changed is not a first
+    change. `EditorContext` reaches the Agent as a message of its own,
+    `# Working in Code`, at the start and with each Follow-up from Code —
+    not in the instructions, which stay the same for every Task so the
+    prompt cache holds; the selection is capped at 16 KiB. `Task.workspace`
+    records the folder and `ListTasks` filters by it. The sidebar is ✦ Agent
+    in the status bar (or ⌘L), reusing the Agent app's feed as `TaskFeed`;
+    the store keeps a live feed for each Task a sidebar shows. The lines ⌘L
+    added go as the selection, with their file as the active file. Files
+    changed by a command are listed with Change Review (M8.12), where the
+    list of changed files is.
 
 12. **Change Review: keep or discard, hunk by hunk.** While and after a Task
     runs, the sidebar shows *"3 files changed — Review"*. Each opens as an
