@@ -402,6 +402,33 @@ test("TextEdit still edits and saves a file on the shared editor", async ({ page
   await expect.poll(() => disk(page, "/home/aos/notes.md")).toBe("line one\nline two");
 });
 
+test("a script is highlighted by its #! line, in Code and TextEdit, and the status bar names it", async ({ page }) => {
+  await boot(page, {
+    files: {
+      ...PROJECT,
+      "/home/aos/project/deploy": "#!/usr/bin/env python3\ndef main():\n    pass\n",
+      "/home/aos/project/Makefile": "all:\n\tgo build ./...\n",
+    },
+  });
+  const win = await openProject(page);
+  const status = win.getByRole("status", { name: "Status bar" });
+  await openFile(win, "deploy");
+  await expect(status).toContainText("Python");
+  // Highlighted runs are spans; plain text is not.
+  await expect(win.locator(".cm-line span", { hasText: /^def$/ })).toBeVisible();
+  await openFile(win, "Makefile");
+  await expect(status).toContainText("Makefile");
+  await expect(win.locator(".cm-line span", { hasText: /^all$/ })).toBeVisible();
+
+  await page.locator('.dock__tile[title="Finder"]').click();
+  const finder = page.locator('.window[aria-label="Finder"]');
+  await finder.locator(".finder__sidebar").getByText("Home").click();
+  await finder.getByText("project", { exact: true }).dblclick();
+  await finder.getByText("deploy", { exact: true }).dblclick();
+  const te = page.locator('.window[aria-label="deploy"]');
+  await expect(te.locator(".cm-line span", { hasText: /^def$/ })).toBeVisible();
+});
+
 // termText is what the newest xterm shows (term.ts hands it over under test).
 const termText = (page: Page) =>
   page.evaluate(() => {

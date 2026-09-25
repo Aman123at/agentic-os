@@ -18,8 +18,9 @@ import { code, files } from "../../api/client";
 import { friendlyError } from "../../api/error";
 import { sensitiveOf } from "../../api/sensitive";
 import { openWorkspace, type WorkspaceHandle } from "../../api/workspaces";
+import { detect, firstLine, languageName } from "../../editor/detect";
 import { detectIndent, MAX_TEXT, readText, stamp, type Indent } from "../../editor/document";
-import { languageFor, languageName } from "../../editor/languages";
+import { languageFor } from "../../editor/languages";
 import { highlight, theme } from "../../editor/theme";
 import {
   FileChange_Kind,
@@ -74,6 +75,7 @@ interface Doc {
   backups: SensitiveBackup[];
   indent: Indent;
   crlf: boolean;
+  first: string; // the first line as opened: its #! names the language when the name doesn't
   lang: Extension | null;
   timer?: ReturnType<typeof setTimeout>;
   // Where to put the cursor once the Doc has loaded: a jump from Quick Open
@@ -176,7 +178,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
       // Navigation (M8.8): ⌘-click to a definition, and completion from the
       // language's keywords and the Workspace's symbols.
       modClick((pos) => void definitionRef.current(pos)),
-      completion(() => (wsRef.current ? { workspaceId: wsRef.current.id, root: wsRef.current.root, path: d.path } : null), d.path),
+      completion(() => (wsRef.current ? { workspaceId: wsRef.current.id, root: wsRef.current.root, path: d.path } : null), detect(d.path, d.first)),
     ];
   };
 
@@ -276,6 +278,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         }
         d.indent = detectIndent(got.text, d.path);
         d.crlf = got.text.includes("\r\n");
+        d.first = firstLine(got.text);
         d.readOnly = readOnlyReason(wsRef.current, got.info);
         d.sensitive = got.info.sensitiveReason;
         const anchor = Math.min(keepSelection ?? 0, got.text.length);
@@ -297,7 +300,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
         bump();
         void loadBackups(d);
         if (!d.lang) {
-          const lang = await languageFor(baseOf(d.path)).catch(() => null);
+          const lang = await languageFor(d.path, d.first).catch(() => null);
           if (lang && docs.current.get(d.path) === d) {
             d.lang = lang;
             apply(d, { effects: compartments.current.lang.reconfigure(lang) });
@@ -332,6 +335,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           backups: [],
           indent: { tabs: false, size: 2 },
           crlf: false,
+          first: "",
           lang: null,
         };
         docs.current.set(p, d);
@@ -1146,7 +1150,7 @@ function StatusBar({
           <span>{doc.indent.tabs ? `Tab Size: ${doc.indent.size}` : `Spaces: ${doc.indent.size}`}</span>
           <span>UTF-8</span>
           <span>{doc.crlf ? "CRLF" : "LF"}</span>
-          <span>{languageName(doc.path)}</span>
+          <span>{languageName(doc.path, doc.first)}</span>
         </>
       )}
       <button className="code__status-btn" aria-pressed={autoSave} onClick={() => onAutoSave(!autoSave)} title="Save each file a second after you stop typing">

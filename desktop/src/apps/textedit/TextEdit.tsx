@@ -13,6 +13,7 @@ import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
 import { sensitiveOf } from "../../api/sensitive";
+import { firstLine } from "../../editor/detect";
 import { languageFor } from "../../editor/languages";
 import { highlight, theme } from "../../editor/theme";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
@@ -112,7 +113,7 @@ export default function TextEdit() {
         onDisk.current = stamp(info);
         setEdited(false);
         setLoad({ kind: "ready" });
-        const lang = await languageFor(name).catch(() => null);
+        const lang = await languageFor(p, firstLine(text)).catch(() => null);
         if (lang && seq === loadSeq.current) view.current?.dispatch({ effects: language.current.reconfigure(lang) });
       } catch (err) {
         if (seq === loadSeq.current) setLoad({ kind: "refused", message: friendlyError(err) });

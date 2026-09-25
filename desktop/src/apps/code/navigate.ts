@@ -7,8 +7,8 @@ import { EditorState, type Extension } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import { code } from "../../api/client";
+import type { LangId } from "../../editor/detect";
 import type { Symbol as CodeSymbol } from "../../gen/aos/v1/services_pb";
-import { extOf } from "../filetypes";
 import { relative } from "./paths";
 
 // wordAt is the identifier at pos, or null.
@@ -94,8 +94,8 @@ function completionType(kind: string): string {
 
 // completion offers the Workspace's symbols, and the language's keywords, as
 // you type. ws says which Workspace and file; it is read at each request.
-export function completion(ws: () => { workspaceId: string; root: string; path: string } | null, fileName: string): Extension {
-  const words = keywordsFor(fileName);
+export function completion(ws: () => { workspaceId: string; root: string; path: string } | null, lang: LangId | null): Extension {
+  const words = keywordsFor(lang);
   const keywords = words.length ? completeFromList(words.map((w): Completion => ({ label: w, type: "keyword" }))) : null;
   const symbols = async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     const word = ctx.matchBefore(/[\p{L}\p{N}_$]+/u);
@@ -121,31 +121,31 @@ export function completion(ws: () => { workspaceId: string; root: string; path: 
   return EditorState.languageData.of(() => [{ autocomplete: symbols }, ...(keywords ? [{ autocomplete: keywords }] : [])]);
 }
 
-// keywordsFor are a file's language's keywords, for completion.
-export function keywordsFor(name: string): string[] {
-  const ext = extOf(name.slice(name.lastIndexOf("/") + 1).toLowerCase());
-  for (const [exts, words] of KEYWORDS) if (exts.includes(ext)) return words.split(" ");
+// keywordsFor are a language's keywords, for completion.
+export function keywordsFor(lang: LangId | null): string[] {
+  if (!lang) return [];
+  for (const [langs, words] of KEYWORDS) if (langs.includes(lang)) return words.split(" ");
   return [];
 }
 
-const KEYWORDS: [string[], string][] = [
+const KEYWORDS: [LangId[], string][] = [
   [
     ["go"],
     "break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota append cap close copy delete len make new panic print println recover error string int int64 uint8 byte rune bool float64 any",
   ],
   [
-    ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
+    ["typescript", "tsx", "javascript", "jsx"],
     "async await break case catch class const continue debugger default delete do else export extends finally for from function if import in instanceof interface let new of return static super switch this throw try type typeof var void while yield null undefined true false readonly keyof as satisfies enum implements",
   ],
   [
-    ["py", "pyi"],
+    ["python"],
     "and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield None True False self print len range isinstance",
   ],
   [
-    ["rs"],
+    ["rust"],
     "as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while Option Some None Result Ok Err Vec String",
   ],
-  [["c", "h", "cc", "cpp", "cxx", "hpp", "hh"], "auto break case char const continue default do double else enum extern float for goto if inline int long register return short signed sizeof static struct switch typedef union unsigned void volatile while class namespace template typename public private protected virtual nullptr"],
-  [["java", "kt", "kts"], "abstract boolean break byte case catch char class continue default do double else enum extends final finally float for if implements import instanceof int interface long new package private protected public return short static super switch this throw throws try void while null true false fun val var"],
-  [["sh", "bash", "zsh"], "if then else elif fi for while until do done case esac function in return local export echo exit"],
+  [["c", "cpp"], "auto break case char const continue default do double else enum extern float for goto if inline int long register return short signed sizeof static struct switch typedef union unsigned void volatile while class namespace template typename public private protected virtual nullptr"],
+  [["java", "kotlin"], "abstract boolean break byte case catch char class continue default do double else enum extends final finally float for if implements import instanceof int interface long new package private protected public return short static super switch this throw throws try void while null true false fun val var"],
+  [["shell"], "if then else elif fi for while until do done case esac function in return local export echo exit"],
 ];
