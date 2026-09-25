@@ -707,6 +707,86 @@ const termText = (page: Page) =>
     return Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString(true) ?? "").join("\n");
   });
 
+// systemPane opens System Settings from Spotlight, on its System pane.
+async function systemPane(page: Page): Promise<Locator> {
+  await page.locator(".menubar__app").click();
+  await page.keyboard.press("Alt+Space");
+  const input = page.getByLabel("Spotlight search");
+  if (!(await input.isVisible())) await page.keyboard.press("Control+Space");
+  await input.fill("System Settings");
+  await page.locator(".spot__row").filter({ hasText: "System Settings" }).first().click();
+  const win = page.locator('.window[aria-label="System Settings"]');
+  await win.locator(".set__navitem", { hasText: "System" }).click();
+  await expect(win.locator(".set__title", { hasText: "System" })).toBeVisible();
+  return win;
+}
+
+test("the Realm can't be switched while Code is open: the popup lists its unsaved files and Shows the window", async ({ page }) => {
+  await boot(page);
+  const win = await openProject(page);
+  await autoSaveOff(win);
+  await openFile(win, "main.go");
+  await typeAtEnd(page, win, "// unsaved");
+  await expect.poll(() => aosd(page, (m) => Object.values(m.dirty).flat())).toEqual(["/home/aos/project/main.go"]);
+
+  // The Desktop's own Code window is caught at once, before the warning.
+  const settings = await systemPane(page);
+  const toggle = settings.getByRole("switch", { name: "Start in Root Mode" });
+  await toggle.click();
+  const notice = page.getByTestId("rootmode-blocked");
+  await expect(notice).toContainText("Code is open. Please save your files and close Code before switching mode.");
+  await expect(notice.getByRole("list", { name: "Open in Code" })).toContainText("/home/aos/project1 unsaved");
+  await expect(notice.getByRole("list", { name: "Unsaved files" })).toHaveText("main.go");
+  await expect(page.getByRole("dialog", { name: "Turn on Root Mode" })).toHaveCount(0);
+  await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+  // Show brings the Code window forward.
+  await notice.getByRole("button", { name: "Show /home/aos/project" }).click();
+  await expect(win).toHaveClass(/window--focused/);
+  // Back to System Settings, which Code now covers, as a click on it would.
+  await settings.dispatchEvent("pointerdown");
+  await expect(settings).toHaveClass(/window--focused/);
+  await notice.getByRole("button", { name: "OK" }).click();
+
+  // Restart AOS is not blocked, but says what it would lose.
+  await settings.getByRole("button", { name: "Restart AOS" }).click();
+  const restart = page.getByRole("dialog", { name: "Restart AOS" });
+  await expect(restart.getByRole("note", { name: "Unsaved in Code" })).toContainText("/home/aos/project/main.go");
+  await restart.getByRole("button", { name: "Cancel" }).click();
+
+  // Closed without saving, Code is out of the way here; but aosd knows of a
+  // Workspace in another tab, which only its answer can name.
+  await win.locator(".traffic__close").click();
+  await page.getByRole("alertdialog", { name: "Save the changes to main.go?" }).getByRole("button", { name: "Don’t Save" }).click();
+  await expect(win).toHaveCount(0);
+  await aosd(page, (m) => {
+    m.workspaces.ws_other = { root: "/srv/app", sub: "sub_other", open: true };
+    m.dirty.ws_other = ["/srv/app/main.go"];
+  });
+  const turnOn = async () => {
+    await toggle.click();
+    const warn = page.getByRole("dialog", { name: "Turn on Root Mode" });
+    await warn.getByText("I understand these actions cannot be undone").click();
+    await warn.getByRole("button", { name: "Continue" }).click();
+    const pw = page.getByRole("dialog", { name: "Enter your password" });
+    await pw.getByLabel("Password").fill("secret");
+    await pw.getByRole("button", { name: "Turn on Root Mode" }).click();
+  };
+  await turnOn();
+  await expect(notice).toContainText("Code is open.");
+  await expect(notice.getByRole("list", { name: "Open in Code" })).toContainText("/srv/app1 unsaved · another tab");
+  await expect(notice.getByRole("list", { name: "Unsaved files" })).toHaveText("main.go");
+  await expect(notice.getByRole("button", { name: /^Show/ })).toHaveCount(0);
+  await notice.getByRole("button", { name: "OK" }).click();
+  expect(await aosd(page, (m) => m.rootSwitches)).toEqual([]);
+
+  // Once that closes too, the switch goes ahead.
+  await aosd(page, (m) => (m.workspaces.ws_other.open = false));
+  await turnOn();
+  await expect(page.getByTestId("rootmode-working")).toBeVisible();
+  expect(await aosd(page, (m) => m.rootSwitches)).toEqual([true]);
+});
+
 test("⌃` opens a Terminal panel in the Workspace; it survives hiding and ends with the window", async ({ page }) => {
   await boot(page);
   const win = await openProject(page);

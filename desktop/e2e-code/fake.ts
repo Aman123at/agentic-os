@@ -44,6 +44,8 @@ export interface FakeMachine {
   // CreateTask or SendFollowUp; and what the Desktop asked for.
   agent: AgentAct[];
   taskRequests: { method: string; body: Record<string, unknown> }[];
+  // The Realm switches aosd went ahead with (M8.13): each one's enabled.
+  rootSwitches: boolean[];
 }
 
 // AgentAct is one thing the fake Agent does in a run: change a file with a
@@ -112,6 +114,7 @@ function fake(opts: FakeOptions) {
     sessions: JSON.parse(sessionStorage.getItem("fake.sessions") ?? "{}") as FakeMachine["sessions"],
     agent: [],
     taskRequests: [],
+    rootSwitches: [],
     write(p, text) {
       const existed = fs.has(p);
       mkdirp(parent(p));
@@ -188,20 +191,27 @@ function fake(opts: FakeOptions) {
   };
   const unb64 = (s: string) => Uint8Array.from(atob(s || ""), (c) => c.charCodeAt(0));
 
-  // A SensitivePath detail, encoded by hand: path = 1, reason = 2.
-  const sensitiveDetail = (p: string, reason: string) => {
-    const field = (tag: number, text: string) => {
-      const b = enc.encode(text);
-      const len: number[] = [];
-      let n = b.length;
-      do {
-        len.push((n & 0x7f) | (n > 0x7f ? 0x80 : 0));
-        n >>= 7;
-      } while (n > 0);
-      return [tag, ...len, ...b];
-    };
-    return { type: "aos.v1.SensitivePath", value: b64(new Uint8Array([...field(0x0a, p), ...field(0x12, reason)])).replace(/=+$/, "") };
+  // field encodes a length-delimited protobuf field: a string or a message.
+  const field = (tag: number, v: string | number[]): number[] => {
+    const b = typeof v === "string" ? [...enc.encode(v)] : v;
+    const len: number[] = [];
+    let n = b.length;
+    do {
+      len.push((n & 0x7f) | (n > 0x7f ? 0x80 : 0));
+      n >>= 7;
+    } while (n > 0);
+    return [tag, ...len, ...b];
   };
+  const detail = (type: string, bytes: number[]) => ({ type, value: b64(new Uint8Array(bytes)).replace(/=+$/, "") });
+  // A SensitivePath detail, encoded by hand: path = 1, reason = 2.
+  const sensitiveDetail = (p: string, reason: string) => detail("aos.v1.SensitivePath", [...field(0x0a, p), ...field(0x12, reason)]);
+  // A RootModeBlocked detail listing open Workspaces (M8.13): workspaces = 2,
+  // each BlockingWorkspace id = 1, path = 2, unsaved = 3.
+  const codeBlockedDetail = (open: { id: string; path: string; unsaved: string[] }[]) =>
+    detail(
+      "aos.v1.RootModeBlocked",
+      open.flatMap((w) => field(0x12, [...field(0x0a, w.id), ...field(0x12, w.path), ...w.unsaved.flatMap((u) => field(0x1a, u))])),
+    );
   // guard refuses an unconfirmed change to a Sensitive System File, as aosd does.
   const guard = (p: string, body: Record<string, unknown>): boolean => {
     const why = sensitive(p);
@@ -308,6 +318,16 @@ function fake(opts: FakeOptions) {
         return { accessToken: "access", refreshToken: "refresh-token" };
       case "SystemService/Info":
         return { rootMode: Boolean(opts.rootMode), version: "fake" };
+      case "SystemService/SetRootMode": {
+        // Refused while any tab has Code open (M8.13), before the password.
+        const open = Object.entries(workspaces)
+          .filter(([, w]) => w.open)
+          .map(([id, w]) => ({ id, path: w.root, unsaved: [...(machine.dirty[id] ?? [])].sort() }));
+        if (open.length)
+          throw new RpcError("failed_precondition", `Code is open (${open.length} folder(s)); save your files and close Code, then switch Root Mode`, [codeBlockedDetail(open)]);
+        machine.rootSwitches.push(Boolean(body.enabled));
+        return {};
+      }
       case "TaskService/ListTasks": {
         const ws = str("workspace");
         return { tasks: [...ftasks.values()].map((t) => t.task).filter((t) => !ws || t.workspace === ws).reverse() };

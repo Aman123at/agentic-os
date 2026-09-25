@@ -29,6 +29,8 @@ export interface WorkspaceHandle {
 
 interface Open {
   path: string;
+  win: string; // the Code window's id
+  root: string; // aosd's name for the folder, once opened
   listener: WorkspaceListener;
   id: string; // "" until opened on the current subscription
   opened: boolean; // opened at least once
@@ -70,10 +72,11 @@ export function workspaceEvent(ev: WorkspaceChanged): void {
   if (early.length > EARLY_MAX) early = early.slice(-EARLY_MAX);
 }
 
-// openWorkspace opens the folder at path (as the Realm's user, on aosd) and
-// keeps it open, across reconnects, until the handle is closed.
-export function openWorkspace(path: string, listener: WorkspaceListener): WorkspaceHandle {
-  const o: Open = { path, listener, id: "", opened: false, closed: false, dirty: [], report: Promise.resolve() };
+// openWorkspace opens the folder at path for the Code window win (as the
+// Realm's user, on aosd) and keeps it open, across reconnects, until the handle
+// is closed.
+export function openWorkspace(path: string, win: string, listener: WorkspaceListener): WorkspaceHandle {
+  const o: Open = { path, win, root: "", listener, id: "", opened: false, closed: false, dirty: [], report: Promise.resolve() };
   all.add(o);
   if (subscription) void attach(o);
   return {
@@ -113,6 +116,7 @@ async function attach(o: Open): Promise<void> {
   }
   if (sub !== subscription) return; // aosd closed it with its subscription
   o.id = ws.id;
+  o.root = ws.root;
   byId.set(ws.id, o);
   const again = o.opened;
   o.opened = true;
@@ -128,4 +132,19 @@ async function attach(o: Open): Promise<void> {
 function send(o: Open): void {
   const id = o.id;
   o.report = o.report.then(() => (o.closed || o.id !== id ? undefined : code.reportDirty({ workspaceId: id, paths: o.dirty }).catch(() => {})));
+}
+
+// OpenCode is one of this tab's Code windows and its Workspace.
+export interface OpenCode {
+  id: string; // aosd's id for the Workspace; "" until it is open
+  path: string;
+  win: string;
+  unsaved: string[];
+}
+
+// openCode lists this tab's Code windows, for the Realm switch (M8.13): it is
+// refused while any is open, and Restart AOS names their unsaved files. It is
+// asked here first, at once; aosd's answer adds Code open in other tabs.
+export function openCode(): OpenCode[] {
+  return [...all].map((o) => ({ id: o.id, path: o.root || o.path, win: o.win, unsaved: [...o.dirty] }));
 }

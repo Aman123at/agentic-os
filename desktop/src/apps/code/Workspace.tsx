@@ -990,7 +990,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
 
   const wsRef = useRef<OpenWorkspaceResponse | null>(null);
   useEffect(() => {
-    const h = openWorkspace(path, {
+    const h = openWorkspace(path, winId, {
       onOpened: (resp, again) => {
         wsRef.current = resp;
         setWs(resp);

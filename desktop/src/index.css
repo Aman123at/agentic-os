@@ -4065,6 +4065,27 @@ button.stack__item:hover {
 .rootmode__ack { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .rootmode__confirmtext { margin: -0.5rem 0 0.75rem; }
 .rootmode__pw { width: 100%; margin-bottom: 8px; }
+/* Code open in the way of a switch, and what a restart would drop (M8.13). */
+.rootmode__code { flex-wrap: wrap; }
+.rootmode__unsaved {
+  flex-basis: 100%;
+  margin: 0;
+  padding-left: 14px;
+  list-style: none;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  max-height: 7.5em;
+  overflow-y: auto;
+}
+.rootmode__unsaved li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rootmode__lose {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+.rootmode__losetext { margin: 0 0 4px; font-size: 13px; }
+.rootmode__lose .rootmode__unsaved { padding-left: 0; }
 
 /* Root Mode made visible everywhere (PLAN.md §18 M7.10): the menu-bar ROOT
    badge, the Terminal's red strip, the Agent app's banner and the Realm lines on
