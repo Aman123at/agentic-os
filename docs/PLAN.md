@@ -742,6 +742,9 @@ it prefers (`browserOS()`, M6.14) and where a download should land.
 | `aosd` idle memory | < 50 MB RSS | `aos doctor` + CI assertion: the `playwright` stage reads aosd's RSS after 10 s idle, once after startup and again after the whole Desktop suite |
 | Image size | Unpacked: `cli` < 520 MB · `ui` < 540 MB. Compressed: < 180 MB | CI assertion on `du -sx /` in the image and `docker image inspect` |
 | Desktop initial bundle | < 150 KB gzipped | Vite build size check |
+| Code window interactive, warm (M8.14) | < 400 ms | `e2e-code/perf.spec.ts`: from the click that opens a folder to the frame where the Explorer lists it, on a generated 10 000-file Workspace |
+| Code ⌘P results (M8.14) | < 100 ms p95, 10 000 files | aosd: `internal/code/perf_test.go` (file list and ranking); Desktop: `perf.spec.ts`, per key typed |
+| Code F12, once indexed (M8.14) | < 150 ms p95, 10 000 files | aosd: `perf_test.go` (index lookup, with saves between); Desktop: `perf.spec.ts`, to a definition in another file |
 
 A CI run that misses any deterministic target fails.
 
@@ -1791,7 +1794,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.13 built; M8.14 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.14 built; M8.15 pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2158,6 +2161,15 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     through React (rule 6). Targets added to §16: Code window interactive
     < 400 ms warm; ⌘P results < 100 ms p95 on a 10 000-file Workspace; F12 <
     150 ms p95 once indexed. *Tests:* perf spec on a generated Workspace.
+    *Built:* the lazy chunks and virtualised lists were already in place from
+    M8.3–M8.10; a Vite plugin now fails the build if opening Code would load
+    xterm.js, `@codemirror/merge`, a grammar or pdf.js. Measuring found F12 at
+    ~120 ms p95: the symbol index rebuilt its by-name table at every question
+    and re-split paths while ranking. It is now kept up to date file by file,
+    and F12 is ~17 ms in aosd (⌘P ~11 ms). In the Desktop, against the fake
+    aosd: window ~48 ms, ⌘P ~40 ms per key, F12 ~55 ms. The Desktop numbers
+    include the fake's work on the page's main thread; none was measured on
+    the VPS.
 
 15. **Docs.** §4.3's app table gains Code; §7 gains Sensitive System Files;
     §8 notes `EditorContext`; §13 lists `CodeService`; §6.3 the two packages;
