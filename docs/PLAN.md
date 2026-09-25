@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.12 built; M8.13 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.13 built; M8.14 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2142,6 +2142,13 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     direction, no password attempt spent, allowed once the Workspace closes;
     `cli/root_test.go` — output and exit code; Playwright — popup, *Show*,
     switch works after closing Code.
+    *Built:* `BlockingWorkspace` also carries the Workspace's id, so the
+    Desktop can tell its own windows (with *Show*) from another tab's. One
+    refusal lists Tasks and Workspaces together. Open Workspaces are read
+    before the queue gate, so a Task refusal also lists them, and again
+    inside it, just before the commit. The unsaved-file lists in the
+    *Restart AOS* and *Clear history* confirms cover only the tab they are
+    shown in.
 
 #### Finish
 
