@@ -1,9 +1,9 @@
 ---
 title: Root Mode
-description: A second way to run the whole Machine, in which Agents, the Terminal and Finder act as root. What it does, what it keeps apart, and what it cannot protect.
+description: A second way to run the whole Machine, in which Agents, the Terminal, Finder and Code act as root. What it does, what it keeps apart, and what it cannot protect.
 ---
 
-Normally every Agent, the Terminal and Finder act as the `aos` user: no `sudo`,
+Normally every Agent, the Terminal, Finder and Code act as the `aos` user: no `sudo`,
 Protected Paths need an Approval, and the paths you lock stay locked. **Root Mode**
 is a second way to run the whole Machine in which all of that acts as **root** —
 Agents can run anything that needs `sudo`, every file and folder is unlocked, and
@@ -22,8 +22,10 @@ a `root@…#` prompt in the Terminal.
 - **Nothing is locked.** The [Protected Paths](/reference/protect/) list, your own
   🔒 locks, the `.env` guard and the "don't discard uncommitted work" git guard are all
   switched off. Finder shows your locks as *not enforced in Root Mode*.
-- **The Terminal and Finder are root too.** `id` prints `uid=0(root)`, `/root` is your
-  home, and every folder opens.
+- **The Terminal, Finder and Code are root too.** `id` prints `uid=0(root)`, `/root` is your
+  home, and every folder opens. Code can save system files, but a
+  [Sensitive System File](/use/code/#sensitive-system-files-root-mode) such as
+  `/etc/sudoers` asks first.
 
 Risky actions still follow your Autonomy level. On `confirm-risky` an Agent is still
 stopped before an `rm -rf` or a package removal — being root removes the *permission*
@@ -66,7 +68,8 @@ do not cover what root does outside them.
 Flip **Start in Root Mode** in the System pane, or run `aos root on`. You will read a
 warning of exactly the consequences above, confirm that you understand, and enter your
 Desktop password. The Machine restarts into Root Mode. The switch is refused while a Task is
-running and names the Task; cancel it and try again.
+running, and while [Code is open](/use/code/#you-cant-switch-modes-while-code-is-open);
+it names what is in the way. Cancel the Task or close Code, then try again.
 
 Because [the Desktop password is already root on a native install](/start/password-is-root/),
 Root Mode does not hand an attacker anything they could not already reach — it hands *your
