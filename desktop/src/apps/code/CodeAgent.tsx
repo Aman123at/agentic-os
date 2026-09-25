@@ -33,7 +33,7 @@ export interface CodeAgentProps {
   // Bumped when ⌘L wants the composer focused.
   focus: number;
   onHide: () => void;
-  // What goes under the chat for the Task shown: its changed files (M8.12).
+  // What goes above the composer for the Task shown: its changed files (M8.12).
   footer?: (taskId: string) => ReactNode;
 }
 
@@ -113,10 +113,19 @@ export function CodeAgent({ root, rootMode, editor, added, onClearAdded, focus, 
         </button>
       </div>
       {task ? (
-        <>
-          <TaskFeed taskId={task.id} steps={feeds[task.id] ?? []} editor={context} above={chips} onSent={onClearAdded} composer={composer} />
-          {footer?.(task.id)}
-        </>
+        <TaskFeed
+          taskId={task.id}
+          steps={feeds[task.id] ?? []}
+          editor={context}
+          above={
+            <>
+              {footer?.(task.id)}
+              {chips}
+            </>
+          }
+          onSent={onClearAdded}
+          composer={composer}
+        />
       ) : (
         <NewChat root={root} rootMode={rootMode} context={context} chips={chips} composer={composer} onStarted={(id) => {
           onClearAdded();

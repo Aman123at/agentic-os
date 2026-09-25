@@ -214,7 +214,9 @@ function fake(opts: FakeOptions) {
   type FTask = {
     task: Record<string, unknown>;
     steps: Record<string, unknown>[];
-    changes: { change: Record<string, unknown>; before: Uint8Array | null }[];
+    // base is what Change Review compares the file with (M8.12): the
+    // before-image with the hunks kept; null for "does not exist".
+    changes: { change: Record<string, unknown>; before: Uint8Array | null; base: Uint8Array | null; reviewed: boolean }[];
   };
   const ftasks = new Map<string, FTask>();
   let taskCount = 0;
@@ -241,10 +243,26 @@ function fake(opts: FakeOptions) {
   const keepBefore = (t: FTask, p: string, tool: string) => {
     if (t.changes.some((c) => c.change.path === p)) return;
     const n = fs.get(p);
+    const before = n && !n.dir ? n.data.slice() : null;
     t.changes.push({
       change: { path: p, tool, existed: Boolean(n), folder: Boolean(n?.dir), size: String(n?.data.length ?? 0), kept: Boolean(n && !n.dir), whole: false, changedAt: new Date(clock).toISOString() },
-      before: n && !n.dir ? n.data.slice() : null,
+      before,
+      base: before,
+      reviewed: false,
     });
+  };
+  const changeOf = (taskId: string, path: string) => {
+    const c = ftasks.get(taskId)?.changes.find((x) => x.change.path === abs(path));
+    if (!c) throw new RpcError("not_found", `the Task did not change ${path}`);
+    return c;
+  };
+  // changeNow is a change as ListChanges tells it: whether the file on disk
+  // still differs from its base.
+  const changeNow = (c: FTask["changes"][number]) => {
+    const n = fs.get(c.change.path as string);
+    const now = n && !n.dir ? n.data : null;
+    const same = (a: Uint8Array | null, b: Uint8Array | null) => (a === null || b === null ? a === b : a.length === b.length && a.every((x, i) => x === b[i]));
+    return { ...c.change, pending: c.change.folder ? !c.reviewed : !same(now, c.base), reviewed: c.reviewed, baseExists: c.base !== null };
   };
   const pause = () => new Promise((r) => setTimeout(r, 40));
   async function runTask(id: string) {
@@ -329,13 +347,35 @@ function fake(opts: FakeOptions) {
       case "TaskService/ListChanges": {
         const t = ftasks.get(str("taskId"));
         if (!t) throw new RpcError("not_found", "no such Task");
-        return { changes: t.changes.map((c) => c.change) };
+        return { changes: t.changes.map(changeNow) };
       }
       case "TaskService/GetBefore": {
-        const t = ftasks.get(str("taskId"));
-        const c = t?.changes.find((x) => x.change.path === abs(str("path")));
-        if (!c) throw new RpcError("not_found", `the Task did not change ${str("path")}`);
-        return { change: c.change, content: c.before ? b64(c.before) : "" };
+        const c = changeOf(str("taskId"), str("path"));
+        return { change: changeNow(c), content: c.base ? b64(c.base) : "" };
+      }
+      case "TaskService/ReviewChange": {
+        machine.taskRequests.push({ method: "ReviewChange", body });
+        const c = changeOf(str("taskId"), str("path"));
+        if (body.keepAll) {
+          const n = fs.get(c.change.path as string);
+          c.base = n && !n.dir ? n.data.slice() : null;
+        } else c.base = body.gone ? null : unb64(str("base"));
+        c.reviewed = true;
+        return { change: changeNow(c) };
+      }
+      case "TaskService/DiscardChange": {
+        machine.taskRequests.push({ method: "DiscardChange", body });
+        const c = changeOf(str("taskId"), str("path"));
+        const p = c.change.path as string;
+        if (!c.base) {
+          if (fs.has(p)) machine.remove(p);
+        } else {
+          guard(p, body);
+          const existed = fs.has(p);
+          fs.set(p, { dir: false, data: c.base.slice(), mtime: tick() });
+          changed(existed ? "KIND_CHANGED" : "KIND_CREATED", p, false);
+        }
+        return { change: changeNow(c) };
       }
       case "ApprovalService/ListPending":
         return { approvals: [] };

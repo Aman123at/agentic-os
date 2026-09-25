@@ -1832,6 +1832,97 @@ button.stack__item:hover {
   padding: 0;
 }
 
+/* Change Review (M8.12). */
+.code__banner--review {
+  background: rgba(46, 160, 67, 0.14);
+}
+.code-changes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 40%;
+  font-size: 12px;
+}
+.code-changes__head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.code-changes__toggle {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.code-changes__done {
+  flex: 1;
+  color: var(--muted);
+}
+.code-changes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  max-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--window-bg);
+}
+.code-changes__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 4px;
+}
+.code-changes__row--on {
+  background: rgba(10, 132, 255, 0.12);
+}
+.code-changes__mark {
+  flex: none;
+  width: 14px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700;
+  text-align: center;
+}
+.code-changes__mark--A {
+  color: var(--code-tag);
+}
+.code-changes__mark--M {
+  color: var(--accent);
+}
+.code-changes__mark--D {
+  color: var(--danger);
+}
+.code-changes__mark--C {
+  color: var(--code-type);
+}
+.code-changes__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.code-changes__name:disabled {
+  cursor: default;
+  color: var(--muted);
+}
+.code-changes__by {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* Compare with Saved, and a file changed on disk under unsaved edits (M8.10). */
 .code-compare {
   flex: 1;

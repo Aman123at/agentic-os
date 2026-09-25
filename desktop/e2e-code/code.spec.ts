@@ -598,6 +598,106 @@ test("the Agent sidebar starts a Task with where you are working, and ⌘L adds 
   await expect(agent).toBeVisible();
 });
 
+// Change Review (M8.12).
+async function askAgent(page: Page, win: Locator, prompt: string) {
+  const agent = win.getByRole("complementary", { name: "Agent" });
+  if (!(await agent.isVisible())) await win.getByRole("status", { name: "Status bar" }).getByRole("button", { name: "✦ Agent" }).dispatchEvent("click");
+  const box = agent.getByRole("textbox", { name: "Message the Agent" });
+  await box.fill(prompt);
+  await box.press("ControlOrMeta+Enter");
+  return agent;
+}
+
+test("Change Review keeps and discards the Agent's hunks, and what is left survives closing the window", async ({ page }) => {
+  await boot(page, { files: { ...PROJECT, "/home/aos/project/list.txt": LIST } });
+  let win = await openProject(page);
+  await openFile(win, "list.txt");
+  const theirs = LIST.replace("b\n", "B\n").replace("h\n", "H\n");
+  await aosd(
+    page,
+    (m, [list, text]) => void m.agent.push({ write: list, text }, { write: "/home/aos/project/new.txt", text: "fresh\n" }, { say: "Changed the list." }),
+    "/home/aos/project/list.txt",
+    theirs,
+  );
+  let agent = await askAgent(page, win, "Capitalise b and h, and add new.txt");
+  await expect(agent.getByText("Changed the list.")).toBeVisible();
+  // The clean tab took the Agent's version as it wrote it.
+  await expect(win.locator(".cm-content")).toContainText("H");
+
+  let changes = agent.getByRole("region", { name: "Changed files" });
+  await expect(changes).toContainText("2 files changed — Review");
+  await changes.getByRole("button", { name: "list.txt", exact: true }).click();
+  const review = win.getByRole("region", { name: "Change Review" });
+  await expect(review).toContainText("changes to list.txt — 2 left");
+  await win.getByRole("button", { name: "Keep this change" }).first().click();
+  await expect(review).toContainText("1 left");
+  const kept = JSON.parse(await aosd(page, (m) => JSON.stringify(m.taskRequests.filter((r) => r.method === "ReviewChange")))) as { body: { base: string } }[];
+  expect(Buffer.from(kept[0].body.base, "base64").toString()).toBe(LIST.replace("b\n", "B\n"));
+
+  // What is left is aosd's to remember: close the window, open it again.
+  await win.locator(".traffic__close").click();
+  await expect(win).toBeHidden();
+  win = await openProject(page);
+  await win.getByRole("status", { name: "Status bar" }).getByRole("button", { name: "✦ Agent" }).dispatchEvent("click");
+  agent = win.getByRole("complementary", { name: "Agent" });
+  await agent.getByRole("combobox", { name: "Chat" }).selectOption({ label: "Capitalise b and h, and add new.txt — Done" });
+  changes = agent.getByRole("region", { name: "Changed files" });
+  await expect(changes).toContainText("2 files changed — Review");
+  await changes.getByRole("button", { name: "list.txt", exact: true }).click();
+  await expect(review).toContainText("changes to list.txt — 1 left");
+
+  // Discard puts h back on disk; with nothing left, the review ends.
+  await win.getByRole("button", { name: "Discard this change" }).click();
+  await expect.poll(() => disk(page, "/home/aos/project/list.txt")).toBe(LIST.replace("b\n", "B\n"));
+  await expect(review).toBeHidden();
+  await expect(changes).toContainText("1 file changed — Review");
+
+  // Discarding a file the Agent created moves it to the Trash, and its tab goes.
+  await changes.getByRole("button", { name: "new.txt", exact: true }).click();
+  await expect(review).toContainText("changes to new.txt — 1 left");
+  await win.getByRole("button", { name: "Discard this change" }).click();
+  await expect.poll(() => disk(page, "/home/aos/project/new.txt")).toBeNull();
+  await expect(win.getByRole("tab", { name: /new\.txt/ })).toBeHidden();
+  await expect(changes).toContainText("All 2 changed files are reviewed");
+});
+
+test("Keep All and Discard All decide a Task's files whole; a file a command changed is reviewed against what the editor had", async ({ page }) => {
+  await boot(page, { files: { ...PROJECT, "/home/aos/project/gen.txt": "old\n" } });
+  const win = await openProject(page);
+  await openFile(win, "gen.txt");
+  await aosd(
+    page,
+    (m) =>
+      void m.agent.push(
+        { write: "/home/aos/project/main.go", text: "package main // agent\n" },
+        { write: "/home/aos/project/README.md", text: "# Agent\n" },
+        { command: "/home/aos/project/gen.txt", text: "generated\n" },
+        { say: "Done." },
+      ),
+  );
+  const agent = await askAgent(page, win, "Do three things");
+  await expect(agent.getByText("Done.", { exact: true })).toBeVisible();
+  const changes = agent.getByRole("region", { name: "Changed files" });
+  await expect(changes).toContainText("3 files changed — Review");
+  await expect(changes).toContainText("gen.txt by a command");
+
+  // The command's change, against what the tab had: discard it.
+  await changes.getByRole("button", { name: /gen\.txt by a command/ }).click();
+  const review = win.getByRole("region", { name: "Change Review" });
+  await expect(review).toContainText("Reviewing a command’s changes to gen.txt — 1 left");
+  await win.getByRole("button", { name: "Discard this change" }).click();
+  await expect.poll(() => disk(page, "/home/aos/project/gen.txt")).toBe("old\n");
+  await expect(changes).toContainText("2 files changed — Review");
+
+  // Keep one whole, discard the other whole.
+  await changes.getByRole("button", { name: "Keep the changes to main.go" }).click();
+  await expect(changes).toContainText("1 file changed — Review");
+  await changes.getByRole("button", { name: "Discard the changes to README.md" }).click();
+  await expect.poll(() => disk(page, "/home/aos/project/README.md")).toBe("# Project\n");
+  await expect.poll(() => disk(page, "/home/aos/project/main.go")).toBe("package main // agent\n");
+  await expect(changes).toContainText("All 2 changed files are reviewed");
+});
+
 // termText is what the newest xterm shows (term.ts hands it over under test).
 const termText = (page: Page) =>
   page.evaluate(() => {

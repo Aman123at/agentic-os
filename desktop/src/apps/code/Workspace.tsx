@@ -17,7 +17,7 @@ import { Code as RpcCode, ConnectError } from "@connectrpc/connect";
 import { basicSetup } from "codemirror";
 import { lazy, Suspense, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import { code, files } from "../../api/client";
+import { code, files, tasks as taskApi } from "../../api/client";
 import { friendlyError } from "../../api/error";
 import { sensitiveOf } from "../../api/sensitive";
 import { openWorkspace, type WorkspaceHandle } from "../../api/workspaces";
@@ -35,7 +35,9 @@ import {
   type WorkspaceChanged,
   type WorkspaceWatch,
   type EditorContext,
+  type TaskFileChange,
 } from "../../gen/aos/v1/services_pb";
+import { TaskState } from "../../gen/aos/v1/types_pb";
 import { setCloseGuard } from "../../shell/closeGuard";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
@@ -43,6 +45,7 @@ import { SensitiveConfirm, type SensitiveAsk } from "../../ui/SensitiveConfirm";
 import { Splitter } from "../../ui/Splitter";
 import { fileKind } from "../filetypes";
 import { formatSize } from "../finder/fs";
+import { ChangeList, type CommandChange } from "./ChangeList";
 import { CodeAgent, type Added } from "./CodeAgent";
 import { Explorer, type Relist } from "./Explorer";
 import { baseOf, dirOf, relative, within } from "./paths";
@@ -93,6 +96,10 @@ interface Doc {
   // with the version on disk (theirs) the tab's unsaved edits are settling
   // against. left is that side as decided so far.
   compare?: { kind: "saved" | "disk"; left: Text; line?: number; theirs?: { text: Text; stamp: string } };
+  // Change Review (M8.12): the file shown inline against what it is compared
+  // with — a Task's before-image with the hunks kept, or for a command's
+  // change what the editor had (kept only here) — read-only meanwhile.
+  review?: { taskId: string; base: Text; gone: boolean; command?: boolean };
 }
 
 // A place navigation can come back to (⌃- and ⌃⇧-).
@@ -142,6 +149,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const [wsError, setWsError] = useState("");
   const [watch, setWatch] = useState<WorkspaceWatch | undefined>();
   const [order, setOrder] = useState<string[]>([]);
+  const orderRef = useRef(order);
+  orderRef.current = order;
   const [active, setActive] = useState("");
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   const [error, setError] = useState("");
@@ -158,7 +167,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   const activeRef = useRef("");
   const handle = useRef<WorkspaceHandle | null>(null);
   const relisters = useRef(new Set<Relist>());
-  const compartments = useRef({ lang: new Compartment(), indent: new Compartment(), readOnly: new Compartment(), marks: new Compartment() });
+  const compartments = useRef({ lang: new Compartment(), indent: new Compartment(), readOnly: new Compartment(), marks: new Compartment(), review: new Compartment() });
   const changesMod = useRef<ChangesModule | null>(null);
   const restored = useRef(false);
 
@@ -181,17 +190,21 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     else if (d.state) d.state = d.state.update(spec).state;
   };
 
+  // editable is whether a Doc can be edited: not a read-only file, and not
+  // while its changes are reviewed.
+  const editable = (d: Doc): Extension => [EditorState.readOnly.of(Boolean(d.readOnly) || Boolean(d.review)), EditorView.editable.of(!d.readOnly)];
+
   const extensions = (d: Doc): Extension[] => {
     const c = compartments.current;
-    const ro = Boolean(d.readOnly);
     return [
       basicSetup,
       theme,
       highlight,
       c.lang.of(d.lang ?? []),
       c.indent.of([indentUnit.of(d.indent.tabs ? "\t" : " ".repeat(d.indent.size)), EditorState.tabSize.of(d.indent.tabs ? d.indent.size : 4)]),
-      c.readOnly.of([EditorState.readOnly.of(ro), EditorView.editable.of(!ro)]),
+      c.readOnly.of(editable(d)),
       c.marks.of(marks()),
+      c.review.of(reviewExt(d)),
       d.crlf ? EditorState.lineSeparator.of("\r\n") : [],
       EditorView.updateListener.of((u) => onUpdate.current(u)),
       // Navigation (M8.8): ⌘-click to a definition, and completion from the
@@ -216,6 +229,22 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     if (!m || changesMod.current) return;
     changesMod.current = m;
     for (const d of docs.current.values()) if (d.load === "ready" && d.saved) apply(d, { effects: compartments.current.marks.reconfigure(marks(d.saved)) });
+  };
+
+  // reviewExt is a Doc's Change Review, while it has one.
+  const reviewExt = (d: Doc): Extension => {
+    const m = changesMod.current;
+    const r = d.review;
+    if (!m || !r) return [];
+    // Told from inside an editor update, so each acts a moment later.
+    const later = (f: () => void) => setTimeout(f);
+    return m.review({
+      base: r.base,
+      gone: r.gone,
+      kept: (base) => later(() => void reviewActs.current.kept(d, base)),
+      discarded: () => later(() => void reviewActs.current.discarded(d)),
+      discardFile: () => later(() => void reviewActs.current.discardWhole(d)),
+    });
   };
 
   // markSaved tells a Doc's gutter the text it is now compared with.
@@ -557,6 +586,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
           return false;
         }
       }
+      ownWrites.current.set(d.path, Date.now());
       await files.write({ path: d.path, content: bytes, overwrite: true, confirmSensitive: Boolean(opts.confirmed) });
       d.stamp = stamp((await files.stat({ path: d.path })).info);
       d.saved = st.doc;
@@ -698,6 +728,202 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     bump();
   };
 
+  // ------------------------------------------------------------ Change Review
+
+  // Bumped when what the Agent changed may look different, so the list of
+  // changed files is asked for again.
+  const [reviewEpoch, setReviewEpoch] = useState(0);
+  const reviewTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reviewSoon = () => {
+    clearTimeout(reviewTimer.current);
+    reviewTimer.current = setTimeout(() => setReviewEpoch((n) => n + 1), 300);
+  };
+  // Files this window wrote, and when: a change the watch reports soon after
+  // is its own, not a command's.
+  const ownWrites = useRef(new Map<string, number>());
+  // Files a command changed while one of this Workspace's Tasks ran, by Task,
+  // with what the editor had (M8.11); null when the file wasn't open.
+  const commandChanges = useRef(new Map<string, Map<string, Text | null>>());
+
+  // noticeCommands records the files the watch saw change while a Task of
+  // this Workspace ran. Those its Tools changed are left out of the list, as
+  // aosd lists them itself.
+  const noticeCommands = (ev: WorkspaceChanged) => {
+    const root = wsRef.current?.root;
+    const running = Object.values(useDesktop.getState().tasks)
+      .filter((t) => t.workspace === root && t.state === TaskState.RUNNING)
+      .sort((a, b) => Number((b.createdAt?.seconds ?? 0n) - (a.createdAt?.seconds ?? 0n)))[0];
+    if (!running) return;
+    const seen = commandChanges.current.get(running.id) ?? new Map<string, Text | null>();
+    for (const c of ev.changes) {
+      if (c.dir || c.kind === FileChange_Kind.RESCAN || Date.now() - (ownWrites.current.get(c.path) ?? 0) < 3000 || seen.has(c.path)) continue;
+      const open = docs.current.get(c.path);
+      seen.set(c.path, open?.load === "ready" && open.saved ? open.saved : null);
+    }
+    if (seen.size) commandChanges.current.set(running.id, seen);
+  };
+
+  // startReview opens a file the Agent changed as Change Review.
+  const startReview = async (taskId: string, path: string, command = false) => {
+    await loadMarks();
+    if (!changesMod.current) return setNotice("Change Review could not load.");
+    const open = docs.current.get(path);
+    if (open?.dirty) return setNotice(`Save or undo your changes to ${baseOf(path)} before reviewing the Agent’s.`);
+    let base: Text;
+    let gone = false;
+    if (command) {
+      const had = commandChanges.current.get(taskId)?.get(path);
+      if (!had) return;
+      base = had;
+    } else {
+      try {
+        const got = await taskApi.getBefore({ taskId, path });
+        base = EditorState.create({ doc: new TextDecoder().decode(got.content) }).doc;
+        gone = !got.change?.baseExists;
+      } catch (err) {
+        return say(err);
+      }
+    }
+    openDoc(path);
+    const d = docs.current.get(path);
+    if (!d) return;
+    d.review = { taskId, base, gone, command };
+    // A Doc still loading takes it when its state is made.
+    if (d.load === "ready") applyReview(d);
+    bump();
+  };
+
+  const applyReview = (d: Doc) => {
+    const c = compartments.current;
+    apply(d, { effects: [c.review.reconfigure(reviewExt(d)), c.readOnly.reconfigure(editable(d))] });
+  };
+
+  const endReview = (d: Doc) => {
+    if (!d.review) return;
+    const r = d.review;
+    d.review = undefined;
+    if (r.command) commandChanges.current.get(r.taskId)?.delete(d.path);
+    applyReview(d);
+    bump();
+    reviewSoon();
+  };
+
+  // hunks is how many changes are left in a Doc's review.
+  const hunks = (d: Doc): number => {
+    const st = current(d);
+    return st && changesMod.current ? changesMod.current.hunksLeft(st) : 0;
+  };
+
+  // settled ends a review with nothing left to decide.
+  const settled = (d: Doc) => {
+    if (d.review && hunks(d) === 0) endReview(d);
+    else bump();
+    reviewSoon();
+  };
+
+  // keepChange keeps what is left of a Task's change to a file.
+  const keepChange = async (taskId: string, path: string) => {
+    await taskApi.reviewChange({ taskId, path, keepAll: true });
+    const d = docs.current.get(path);
+    if (d?.review?.taskId === taskId) endReview(d);
+    reviewSoon();
+  };
+
+  // discardChange puts a file back as it is compared with, or to the Trash if
+  // the Agent created it; a Sensitive System File asks first.
+  const discardChange = async (taskId: string, path: string, confirmed = false): Promise<void> => {
+    ownWrites.current.set(path, Date.now());
+    try {
+      await taskApi.discardChange({ taskId, path, confirmSensitive: confirmed });
+    } catch (err) {
+      const s = sensitiveOf(err);
+      if (!s || confirmed) throw err;
+      return new Promise((resolve, reject) =>
+        askSensitive(s, "Discard the Agent’s changes to", () => discardChange(taskId, path, true).then(resolve, reject)),
+      );
+    }
+    ownWrites.current.set(path, Date.now());
+    const d = docs.current.get(path);
+    if (d?.review) endReview(d);
+    // A file the Agent created is gone, and so is its clean tab.
+    if (d && !d.dirty && !(await files.stat({ path }).then(() => true, () => false))) drop(path);
+    reviewSoon();
+  };
+
+  const reviewActs = useRef({
+    kept: async (_d: Doc, _base: Text) => {},
+    discarded: async (_d: Doc) => {},
+    discardWhole: async (_d: Doc) => {},
+  });
+  reviewActs.current = {
+    // A kept hunk: aosd compares the file with the base from now on.
+    kept: async (d, base) => {
+      const r = d.review;
+      if (!r) return;
+      r.base = base;
+      r.gone = false;
+      if (!r.command) {
+        const text = base.sliceString(0, base.length, d.crlf ? "\r\n" : "\n");
+        await taskApi.reviewChange({ taskId: r.taskId, path: d.path, base: new TextEncoder().encode(text) }).catch(say);
+      }
+      settled(d);
+    },
+    // A discarded hunk's old lines are back in the editor: saved as any edit
+    // is, checked against the version on disk.
+    discarded: async (d) => {
+      await save(d);
+      settled(d);
+    },
+    discardWhole: async (d) => {
+      const r = d.review;
+      if (r) await discardChange(r.taskId, d.path).catch(say);
+    },
+  };
+
+  // The whole of a Doc's review at once, from its banner.
+  const keepAllHere = (d: Doc) => {
+    const r = d.review;
+    if (!r) return;
+    if (r.command) return endReview(d);
+    void keepChange(r.taskId, d.path).catch(say);
+  };
+  const discardAllHere = (d: Doc) => {
+    const r = d.review;
+    if (!r) return;
+    if (!r.command) return void discardChange(r.taskId, d.path).catch(say);
+    const m = changesMod.current;
+    const st = current(d);
+    if (!m || !st) return;
+    apply(d, { changes: m.replaceWith(st.doc, r.base.toString()), userEvent: "revert" });
+    void save(d).then(() => endReview(d));
+  };
+
+  // What the list shows for a Task: the files a command changed while it ran.
+  const commandsOf = (taskId: string): CommandChange[] =>
+    [...(commandChanges.current.get(taskId) ?? new Map<string, Text | null>())].map(([path, had]) => ({ path, known: had !== null }));
+
+  const changeList = (taskId: string) => (
+    <ChangeList
+      taskId={taskId}
+      root={ws?.root ?? path}
+      epoch={reviewEpoch}
+      commands={commandsOf(taskId)}
+      reviewing={d?.review?.taskId === taskId ? d.path : ""}
+      onReview={(id, c: TaskFileChange) => void startReview(id, c.path)}
+      onKeep={(id, c) => keepChange(id, c.path)}
+      onDiscard={(id, c) => discardChange(id, c.path)}
+      onCommand={(p, act) => {
+        if (act === "review") void startReview(taskId, p, true);
+        else {
+          commandChanges.current.get(taskId)?.delete(p);
+          const open = docs.current.get(p);
+          if (open?.review?.command) endReview(open);
+          setReviewEpoch((n) => n + 1);
+        }
+      }}
+    />
+  );
+
   // ------------------------------------------------------------ changes on disk
 
   // check looks at an open file again after the watch saw it change: a clean
@@ -736,6 +962,8 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
   onChanged.current = (ev: WorkspaceChanged) => {
     if (ev.watch) setWatch(ev.watch);
     if (!ev.changes.length) return;
+    noticeCommands(ev);
+    reviewSoon();
     const dirs = new Set<string>();
     const touched = new Set<Doc>();
     let all = false;
@@ -870,8 +1098,10 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
     if (d) clearTimeout(d.timer);
     docs.current.delete(p);
     if (shown.current === p) shown.current = "";
-    const i = order.indexOf(p);
-    const rest = order.filter((x) => x !== p);
+    // By the ref: a discard drops a tab after an await.
+    const i = orderRef.current.indexOf(p);
+    const rest = orderRef.current.filter((x) => x !== p);
+    orderRef.current = rest;
     setOrder(rest);
     if (activeRef.current === p) activate(rest[Math.min(i, rest.length - 1)] ?? "");
   };
@@ -1111,6 +1341,22 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
               <span>{notice}</span>
             </div>
           )}
+          {d?.review && (
+            <div className="code__banner code__banner--review" role="region" aria-label="Change Review">
+              <span>
+                Reviewing {d.review.command ? "a command’s" : "the Agent’s"} changes to {baseOf(d.path)} — {hunks(d)} left.
+              </span>
+              <button className="finder__btn" onClick={() => keepAllHere(d)}>
+                Keep All
+              </button>
+              <button className="finder__btn tasks__btn--danger" onClick={() => discardAllHere(d)}>
+                Discard All
+              </button>
+              <button className="finder__btn" onClick={() => endReview(d)}>
+                Done
+              </button>
+            </div>
+          )}
           {d?.readOnly && <div className="code__banner code__banner--info">{d.readOnly}</div>}
           {d?.sensitive && (
             <div className="code__banner code__banner--warn" role="note" aria-label="Sensitive System File">
@@ -1221,6 +1467,7 @@ export function Workspace({ path, onClose }: { path: string; onClose: () => void
                 onClearAdded={() => setAdded(null)}
                 focus={agentFocus}
                 onHide={() => showAgent(false)}
+                footer={changeList}
               />
             </div>
           </>

@@ -1,10 +1,12 @@
 // What changed since the file was saved (PLAN.md M8.10): marks in the gutter
 // for added, changed and deleted lines, and the side-by-side compare Code
 // shows for Compare with Saved and for a file changed on disk under unsaved
-// edits. Built on @codemirror/merge; this module is its own chunk, fetched when
-// Code first opens a file.
-import { Change, Chunk, diff, MergeView } from "@codemirror/merge";
-import { RangeSet, RangeSetBuilder, StateEffect, StateField, type ChangeSpec, type Extension, type Text } from "@codemirror/state";
+// edits. And Change Review (M8.12): the Agent's change to a file shown inline
+// against what it is compared with, Keep or Discard on each hunk. Built on
+// @codemirror/merge; this module is its own chunk, fetched when Code first
+// opens a file.
+import { Change, Chunk, diff, getChunks, getOriginalDoc, MergeView, unifiedMergeView } from "@codemirror/merge";
+import { RangeSet, RangeSetBuilder, StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Text } from "@codemirror/state";
 import { EditorView, gutter, GutterMarker, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
 export { MergeView };
@@ -196,4 +198,62 @@ export const changeTheme = EditorView.theme({
     background: "linear-gradient(135deg, var(--danger) 0 35%, transparent 35%) no-repeat",
     backgroundSize: "8px 8px",
   },
+});
+
+// ------------------------------------------------------------ Change Review
+
+export interface Review {
+  // What the file is compared with: its before-image with the hunks kept.
+  base: Text;
+  // The base does not exist (the Agent created the file): Discard removes
+  // the file rather than empty it.
+  gone: boolean;
+  // Told when a hunk is kept, with what the file is compared with now.
+  kept: (base: Text) => void;
+  // Told when a hunk's old lines are put back in the editor.
+  discarded: () => void;
+  discardFile: () => void;
+}
+
+// review shows a file's changes inline against r.base, with Keep and Discard
+// on each hunk.
+export function review(r: Review): Extension {
+  return [
+    unifiedMergeView({
+      original: r.base,
+      diffConfig: { override: lineDiff },
+      highlightChanges: false,
+      mergeControls: (type, action) => {
+        const b = document.createElement("button");
+        b.className = `cm-review-btn cm-review-btn--${type === "accept" ? "keep" : "discard"}`;
+        b.textContent = type === "accept" ? "Keep" : "Discard";
+        b.setAttribute("aria-label", type === "accept" ? "Keep this change" : "Discard this change");
+        // It acts on click, so a keyboard press works too.
+        b.addEventListener("mousedown", (e) => e.preventDefault());
+        b.addEventListener("click", (e) => (type === "reject" && r.gone ? r.discardFile() : action(e)));
+        return b;
+      },
+    }),
+    EditorView.updateListener.of((u) => {
+      for (const tr of u.transactions) {
+        if (tr.isUserEvent("accept")) r.kept(getOriginalDoc(u.state));
+        if (tr.isUserEvent("revert")) r.discarded();
+      }
+    }),
+    reviewTheme,
+  ];
+}
+
+// hunksLeft is how many changes are left to decide in a review.
+export function hunksLeft(state: EditorState): number {
+  return getChunks(state)?.chunks.length ?? 0;
+}
+
+const reviewTheme = EditorView.theme({
+  ".cm-changedLine": { backgroundColor: "rgba(46, 160, 67, 0.12) !important" },
+  ".cm-deletedChunk": { backgroundColor: "rgba(217, 48, 37, 0.1) !important", position: "relative", minHeight: "1.6em" },
+  ".cm-deletedChunk .cm-chunkButtons": { position: "absolute", insetInlineEnd: "6px", top: "2px", zIndex: "1" },
+  ".cm-review-btn": { border: "none", borderRadius: "4px", margin: "0 2px", padding: "1px 8px", color: "#fff", font: "inherit", fontSize: "11.5px", cursor: "pointer" },
+  ".cm-review-btn--keep": { background: "#2ea043" },
+  ".cm-review-btn--discard": { background: "var(--danger)" },
 });
