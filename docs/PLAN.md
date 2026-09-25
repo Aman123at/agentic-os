@@ -1791,7 +1791,7 @@ on this Mac.
 
 ### M8 — Code (a code editor on the Desktop)
 
-*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.11 built; M8.12 onward pending.*
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.12 built; M8.13 onward pending.*
 
 A new Desktop app, **Code**: a VS Code–like editor over a folder of the
 Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
@@ -2106,6 +2106,24 @@ Nothing in Code widens what either Realm may do. Two new guards come with it:
     reload, until decided or the Task is deleted. *Tests:* Playwright on the
     faked aosd — mixed keep/discard gives the expected file; discard of a file
     the Agent created deletes it (to the Trash); a live update into a clean tab.
+    *As built:* a changed file is compared with its *base*: the
+    before-image with the hunks kept (`task_file_changes.base`, the kept text
+    beside the before-image). `TaskService.ReviewChange` records a keep — the
+    lines, or `keep_all` for the file as it is now — and `DiscardChange` puts
+    the file back as it is compared with, or to the Trash if the Task created
+    it, as the Realm's user, audited `discard_change`, a Sensitive System
+    File asking as `FileService` does; `ListChanges` says which files are
+    `pending`. The list sits above the chat's composer. A file under review
+    is read-only; a discarded hunk is put back in the editor and saved like
+    any edit, so it is stamp-checked and a Sensitive System File asks. Hunks
+    are whole lines, as the gutter's. A folder can only be kept (restore it
+    from the Trash); a file compared whole (past 4 MiB, or not text) is kept
+    or discarded whole from the list. What is left lives on aosd, so it
+    survives closing the window (the spec closes and reopens it; the in-page
+    fake can't outlive a reload). Files a command changed while the Task ran
+    come from the Workspace's watch and are compared with what the editor
+    had, kept only in the window. `base` joined migration 0007, which had
+    run nowhere yet.
 
 #### The mode switch
 
