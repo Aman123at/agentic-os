@@ -246,6 +246,13 @@ func now(cfg Config) time.Time {
 
 const changeColumns = `path, tool, existed, folder, size, blob, whole, changed_at`
 
+// What Change Review compares a changed file with (M8.12).
+const (
+	baseBefore = 0 // the before-image
+	baseKept   = 1 // the before-image with the hunks the user kept, in <blob>.base
+	baseGone   = 2 // "does not exist"
+)
+
 // insertChange records the first change a Task made to a file; a later one
 // is ignored.
 func insertChange(ctx context.Context, tx *sql.Tx, taskID string, c *aosv1.TaskFileChange, blob string) error {
@@ -258,7 +265,7 @@ func insertChange(ctx context.Context, tx *sql.Tx, taskID string, c *aosv1.TaskF
 // them, with the blob holding each one's before-image ("" for none). path
 // narrows it to one file.
 func listChanges(ctx context.Context, db *sql.DB, taskID, path string) ([]*aosv1.TaskFileChange, []string, error) {
-	q, args := `SELECT `+changeColumns+` FROM task_file_changes WHERE task_id = ?`, []any{taskID}
+	q, args := `SELECT `+changeColumns+`, base FROM task_file_changes WHERE task_id = ?`, []any{taskID}
 	if path != "" {
 		q, args = q+` AND path = ?`, append(args, path)
 	}
@@ -273,12 +280,26 @@ func listChanges(ctx context.Context, db *sql.DB, taskID, path string) ([]*aosv1
 		c := &aosv1.TaskFileChange{}
 		var blob string
 		var at int64
-		if err := rows.Scan(&c.Path, &c.Tool, &c.Existed, &c.Folder, &c.Size, &blob, &c.Whole, &at); err != nil {
+		var base int
+		if err := rows.Scan(&c.Path, &c.Tool, &c.Existed, &c.Folder, &c.Size, &blob, &c.Whole, &at, &base); err != nil {
 			return nil, nil, err
 		}
 		c.Kept, c.ChangedAt = blob != "", ts(at)
+		c.Reviewed = base != baseBefore
+		c.BaseExists = base == baseKept || (base == baseBefore && c.Existed)
 		out = append(out, c)
 		blobs = append(blobs, blob)
 	}
 	return out, blobs, rows.Err()
+}
+
+func setBase(ctx context.Context, tx *sql.Tx, taskID, path string, base int) error {
+	res, err := tx.ExecContext(ctx, `UPDATE task_file_changes SET base = ? WHERE task_id = ? AND path = ?`, base, taskID, path)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

@@ -100,28 +100,92 @@ func (m *Manager) Changes(ctx context.Context, taskID string) ([]*aosv1.TaskFile
 	return changes, err
 }
 
-// Before returns one changed file and what it was before: its content when it
-// was kept and can be compared line by line, else none.
+// Before returns one changed file and what Change Review compares it with:
+// its content when that exists and can be compared line by line, else none.
 func (m *Manager) Before(ctx context.Context, taskID, path string) (*aosv1.TaskFileChange, []byte, error) {
+	b, err := m.Base(ctx, taskID, path)
+	if err != nil || !b.Known || !b.Exists || b.Change.Whole {
+		return b.Change, nil, err
+	}
+	return b.Change, b.Content, nil
+}
+
+// Base is what Change Review compares a changed file with (M8.12): the file
+// before the Task first changed it, with the hunks the user kept since.
+type Base struct {
+	Change *aosv1.TaskFileChange
+	// Known is false when there is nothing to compare with: a folder, or a
+	// file whose before-image was not kept.
+	Known  bool
+	Exists bool
+	// Content is the file's, when Known and Exists.
+	Content []byte
+}
+
+// Base returns what a changed file is compared with.
+func (m *Manager) Base(ctx context.Context, taskID, path string) (Base, error) {
 	if _, err := getTask(ctx, m.cfg.DB.Read(), taskID); err != nil {
-		return nil, nil, err
+		return Base{}, err
 	}
 	changes, blobs, err := listChanges(ctx, m.cfg.DB.Read(), taskID, filepath.Clean(path))
 	if err != nil {
-		return nil, nil, err
+		return Base{}, err
 	}
 	if len(changes) == 0 {
-		return nil, nil, fmt.Errorf("the Task did not change %s: %w", path, ErrNotFound)
+		return Base{}, fmt.Errorf("the Task did not change %s: %w", path, ErrNotFound)
 	}
 	c := changes[0]
-	if blobs[0] == "" || c.Whole {
-		return c, nil, nil
+	b := Base{Change: c, Exists: c.BaseExists}
+	name := ""
+	switch {
+	case c.Reviewed && !c.BaseExists:
+		b.Known = true
+	case c.Reviewed:
+		b.Known, name = true, blobName(c.Path)+".base"
+	case !c.Existed:
+		b.Known = true
+	case blobs[0] != "":
+		b.Known, name = true, blobs[0]
 	}
-	content, err := os.ReadFile(filepath.Join(m.beforeDir(taskID), blobs[0]))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil, fmt.Errorf("the before-image of %s is missing: %w", path, ErrNotFound)
+	if name != "" {
+		b.Content, err = os.ReadFile(filepath.Join(m.beforeDir(taskID), name))
+		if errors.Is(err, os.ErrNotExist) {
+			return Base{}, fmt.Errorf("the before-image of %s is missing: %w", path, ErrNotFound)
+		}
 	}
-	return c, content, err
+	return b, err
+}
+
+// SetBase records what the user kept of a Task's change to a file: it is
+// compared with content from now on, or with "does not exist".
+func (m *Manager) SetBase(ctx context.Context, taskID, path string, content []byte, exists bool) error {
+	if _, err := getTask(ctx, m.cfg.DB.Read(), taskID); err != nil {
+		return err
+	}
+	if m.cfg.Outputs == "" {
+		return errors.New("this AOS keeps no before-images")
+	}
+	path = filepath.Clean(path)
+	base, file := baseGone, filepath.Join(m.beforeDir(taskID), blobName(path)+".base")
+	if exists {
+		base = baseKept
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(file, content, 0o600); err != nil {
+			return err
+		}
+	}
+	if err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error { return setBase(ctx, tx, taskID, path, base) }); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("the Task did not change %s: %w", path, ErrNotFound)
+		}
+		return err
+	}
+	if !exists {
+		_ = os.Remove(file)
+	}
+	return nil
 }
 
 // removeBefores deletes a deleted Task's before-images.

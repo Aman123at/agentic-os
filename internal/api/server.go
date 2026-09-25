@@ -405,26 +405,6 @@ func (t taskService) DeleteTask(ctx context.Context, req *connect.Request[aosv1.
 	return connect.NewResponse(&aosv1.DeleteTaskResponse{}), nil
 }
 
-// ListChanges lists the files a Task changed with its Tools (M8.11). Like
-// GetTask it reads the Realm's own history, so it is Realm-scoped by the
-// database it reads.
-func (t taskService) ListChanges(ctx context.Context, req *connect.Request[aosv1.ListChangesRequest]) (*connect.Response[aosv1.ListChangesResponse], error) {
-	changes, err := t.s.Tasks.Changes(ctx, req.Msg.TaskId)
-	if err != nil {
-		return nil, connectError(err)
-	}
-	return connect.NewResponse(&aosv1.ListChangesResponse{Changes: changes}), nil
-}
-
-// GetBefore returns what a file was before a Task changed it (M8.11).
-func (t taskService) GetBefore(ctx context.Context, req *connect.Request[aosv1.GetBeforeRequest]) (*connect.Response[aosv1.GetBeforeResponse], error) {
-	change, content, err := t.s.Tasks.Before(ctx, req.Msg.TaskId, req.Msg.Path)
-	if err != nil {
-		return nil, connectError(err)
-	}
-	return connect.NewResponse(&aosv1.GetBeforeResponse{Change: change, Content: content}), nil
-}
-
 func (t taskService) StopAll(ctx context.Context, _ *connect.Request[aosv1.StopAllRequest]) (*connect.Response[aosv1.StopAllResponse], error) {
 	n, err := t.s.Tasks.StopAll(ctx)
 	if err != nil {

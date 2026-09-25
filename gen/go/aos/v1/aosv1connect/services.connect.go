@@ -94,6 +94,12 @@ const (
 	TaskServiceListChangesProcedure = "/aos.v1.TaskService/ListChanges"
 	// TaskServiceGetBeforeProcedure is the fully-qualified name of the TaskService's GetBefore RPC.
 	TaskServiceGetBeforeProcedure = "/aos.v1.TaskService/GetBefore"
+	// TaskServiceReviewChangeProcedure is the fully-qualified name of the TaskService's ReviewChange
+	// RPC.
+	TaskServiceReviewChangeProcedure = "/aos.v1.TaskService/ReviewChange"
+	// TaskServiceDiscardChangeProcedure is the fully-qualified name of the TaskService's DiscardChange
+	// RPC.
+	TaskServiceDiscardChangeProcedure = "/aos.v1.TaskService/DiscardChange"
 	// ApprovalServiceListPendingProcedure is the fully-qualified name of the ApprovalService's
 	// ListPending RPC.
 	ApprovalServiceListPendingProcedure = "/aos.v1.ApprovalService/ListPending"
@@ -517,6 +523,13 @@ type TaskServiceClient interface {
 	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
 	// One changed file's before-image.
 	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
+	// Records what the user kept of a Task's change to a file in Change Review
+	// (M8.12): the file is compared with this from now on.
+	ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error)
+	// Discards what is left of a Task's change to a file: puts back what it is
+	// compared with, or moves it to the Trash if that is "did not exist". As
+	// the Realm's user, audited; a Sensitive System File needs confirming.
+	DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error)
 }
 
 // NewTaskServiceClient constructs a client for the aos.v1.TaskService service. By default, it uses
@@ -596,6 +609,18 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
 			connect.WithClientOptions(opts...),
 		),
+		reviewChange: connect.NewClient[v1.ReviewChangeRequest, v1.ReviewChangeResponse](
+			httpClient,
+			baseURL+TaskServiceReviewChangeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("ReviewChange")),
+			connect.WithClientOptions(opts...),
+		),
+		discardChange: connect.NewClient[v1.DiscardChangeRequest, v1.DiscardChangeResponse](
+			httpClient,
+			baseURL+TaskServiceDiscardChangeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("DiscardChange")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -612,6 +637,8 @@ type taskServiceClient struct {
 	deleteTask     *connect.Client[v1.DeleteTaskRequest, v1.DeleteTaskResponse]
 	listChanges    *connect.Client[v1.ListChangesRequest, v1.ListChangesResponse]
 	getBefore      *connect.Client[v1.GetBeforeRequest, v1.GetBeforeResponse]
+	reviewChange   *connect.Client[v1.ReviewChangeRequest, v1.ReviewChangeResponse]
+	discardChange  *connect.Client[v1.DiscardChangeRequest, v1.DiscardChangeResponse]
 }
 
 // CreateTask calls aos.v1.TaskService.CreateTask.
@@ -669,6 +696,16 @@ func (c *taskServiceClient) GetBefore(ctx context.Context, req *connect.Request[
 	return c.getBefore.CallUnary(ctx, req)
 }
 
+// ReviewChange calls aos.v1.TaskService.ReviewChange.
+func (c *taskServiceClient) ReviewChange(ctx context.Context, req *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error) {
+	return c.reviewChange.CallUnary(ctx, req)
+}
+
+// DiscardChange calls aos.v1.TaskService.DiscardChange.
+func (c *taskServiceClient) DiscardChange(ctx context.Context, req *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error) {
+	return c.discardChange.CallUnary(ctx, req)
+}
+
 // TaskServiceHandler is an implementation of the aos.v1.TaskService service.
 type TaskServiceHandler interface {
 	CreateTask(context.Context, *connect.Request[v1.CreateTaskRequest]) (*connect.Response[v1.CreateTaskResponse], error)
@@ -689,6 +726,13 @@ type TaskServiceHandler interface {
 	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
 	// One changed file's before-image.
 	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
+	// Records what the user kept of a Task's change to a file in Change Review
+	// (M8.12): the file is compared with this from now on.
+	ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error)
+	// Discards what is left of a Task's change to a file: puts back what it is
+	// compared with, or moves it to the Trash if that is "did not exist". As
+	// the Realm's user, audited; a Sensitive System File needs confirming.
+	DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error)
 }
 
 // NewTaskServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -764,6 +808,18 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceReviewChangeHandler := connect.NewUnaryHandler(
+		TaskServiceReviewChangeProcedure,
+		svc.ReviewChange,
+		connect.WithSchema(taskServiceMethods.ByName("ReviewChange")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceDiscardChangeHandler := connect.NewUnaryHandler(
+		TaskServiceDiscardChangeProcedure,
+		svc.DiscardChange,
+		connect.WithSchema(taskServiceMethods.ByName("DiscardChange")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.TaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskServiceCreateTaskProcedure:
@@ -788,6 +844,10 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceListChangesHandler.ServeHTTP(w, r)
 		case TaskServiceGetBeforeProcedure:
 			taskServiceGetBeforeHandler.ServeHTTP(w, r)
+		case TaskServiceReviewChangeProcedure:
+			taskServiceReviewChangeHandler.ServeHTTP(w, r)
+		case TaskServiceDiscardChangeProcedure:
+			taskServiceDiscardChangeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -839,6 +899,14 @@ func (UnimplementedTaskServiceHandler) ListChanges(context.Context, *connect.Req
 
 func (UnimplementedTaskServiceHandler) GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.GetBefore is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.ReviewChange is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.DiscardChange is not implemented"))
 }
 
 // ApprovalServiceClient is a client for the aos.v1.ApprovalService service.
