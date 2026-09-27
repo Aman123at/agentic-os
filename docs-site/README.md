@@ -39,3 +39,16 @@ the site becomes a man page with a sidebar. The generator ships at
 `tools/docsgen`, where a `lint` drift check keeps these pages honest.
 
 The guides under `start/`, `configure/`, `use/` and `operate/` are hand-written.
+
+## The look
+
+The theme lives in `src/styles/custom.css` (colour tokens for light and dark,
+the header, sidebar, cards, code blocks and the splash landing page), with the
+logo in `src/assets/logo.svg` and the favicon in `public/favicon.svg`. The
+landing page is `src/content/docs/index.mdx` (`template: splash`). Fonts are
+Inter and JetBrains Mono from Google Fonts, falling back to the system stack.
+
+Use Starlight's built-in components (`Steps`, `Tabs`, `Card`, `LinkCard`,
+`FileTree`) in `.mdx` guides rather than custom HTML, so pages stay consistent.
+Every command a guide shows must exist in the binary: check it against the
+generated `reference/` pages before you write it down.

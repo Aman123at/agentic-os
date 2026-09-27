@@ -1,0 +1,112 @@
+---
+title: Docker on macOS
+description: Run Agentic OS on a Mac (Apple silicon or Intel) with Docker Desktop, step by step.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+On a Mac, Agentic OS runs inside **Docker Desktop**. The Agents get their own Ubuntu machine in a container and
+**never touch your Mac's files**. This works on both **Apple silicon** (M1 and later) and **Intel** Macs.
+
+## Before you start
+
+- **macOS** that your version of Docker Desktop supports
+- **About 10 GB of free disk space** for Docker, the image build and the volumes
+- **An OpenAI API key** (you can add it later)
+
+## Install
+
+<Steps>
+
+1. **Install Docker Desktop.** Download it from [docker.com](https://www.docker.com/products/docker-desktop/),
+   choosing *Apple silicon* or *Intel chip* to match your Mac (Apple menu → *About This Mac*), or install it with Homebrew:
+
+   ```bash
+   brew install --cask docker
+   ```
+
+   Open **Docker** from Applications and wait until the whale icon in the menu bar says *Docker Desktop is
+   running*.
+
+2. **Check that Docker and Git work.** Open **Terminal** and run:
+
+   ```bash
+   docker compose version
+   git --version
+   ```
+
+   If `git` isn't installed yet, macOS offers to install the Command Line Tools. Accept, then run it again.
+
+3. **Clone the repository into `~/src`.**
+
+   ```bash
+   mkdir -p ~/src && cd ~/src
+   git clone https://github.com/Aman123at/agentic-os.git
+   cd agentic-os
+   ```
+
+   :::caution[Avoid Desktop, Documents and Downloads]
+   macOS stops Docker from reading folders under `~/Desktop`, `~/Documents` and `~/Downloads` until you allow
+   it, and `docker compose up` can then hang with the container stuck in *Created*. Cloning into `~/src`
+   avoids the problem.
+   :::
+
+4. **Create your settings file** and add your key:
+
+   ```bash
+   cp .env.example .env
+   open -e .env
+   ```
+
+   Paste your key after `OPENAI_API_KEY=` and save. You can also leave it empty and add the key later from
+   System Settings, but **keep the line**.
+
+5. **Build and start Agentic OS.** The first build takes a few minutes:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+6. **Create your Desktop account:**
+
+   ```bash
+   docker compose exec aos aos mode ui
+   ```
+
+   Copy the **one-time password** it prints. A closing message about `systemctl` is expected in a container and
+   can be ignored.
+
+7. **Open the Desktop.**
+
+   ```bash
+   open http://localhost:7700
+   ```
+
+   Sign in as `admin` with the one-time password, then choose your own.
+
+</Steps>
+
+## Tips for Mac users
+
+- **Give Docker enough memory.** In Docker Desktop → *Settings* → *Resources*, 4 GB or more of memory is a
+  comfortable setting for Agents that install and build software.
+- **Start at login.** Docker Desktop → *Settings* → *General* → *Start Docker Desktop when you sign in*. The
+  Agentic OS container comes back up with it.
+- **Open it from your iPhone or iPad.** Set `AOS_BIND=0.0.0.0` in `.env`, run `docker compose up -d`, and open
+  `http://<your-mac's-ip>:7700`. Find your Mac's IP in *System Settings → Wi-Fi → Details*.
+- **The Browser app isn't available on Apple silicon.** The headless Chromium it uses is published for amd64
+  only. Everything else works the same.
+
+## Stop, update, remove
+
+| To… | Run in `~/src/agentic-os` |
+| --- | --- |
+| Stop (keeps data) | `docker compose stop` |
+| Start again | `docker compose start` |
+| Update | `git pull && docker compose up -d --build` |
+| Remove everything, including data | `docker compose down -v` |
+
+<CardGrid>
+  <LinkCard title="All Docker Compose options" description="Settings, shared folders, published ports and troubleshooting." href="/start/compose/" />
+  <LinkCard title="Sign in and set your password" description="What happens on first sign-in." href="/start/sign-in/" />
+</CardGrid>

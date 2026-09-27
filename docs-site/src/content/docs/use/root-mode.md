@@ -65,7 +65,7 @@ do not cover what root does outside them.
 
 ## Turning it on
 
-Flip **Start in Root Mode** in the System pane, or run `aos root on`. You will read a
+Flip **Start in Root Mode** in the System pane, or run `sudo aos root on` (and `sudo aos root off` to leave). You will read a
 warning of exactly the consequences above, confirm that you understand, and enter your
 Desktop password. The Machine restarts into Root Mode. The switch is refused while a Task is
 running, and while [Code is open](/use/code/#you-cant-switch-modes-while-code-is-open);

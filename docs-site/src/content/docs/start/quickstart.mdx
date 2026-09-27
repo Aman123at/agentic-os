@@ -1,0 +1,92 @@
+---
+title: Quickstart
+description: From a fresh Linux server to your first completed Task in about five minutes.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+This guide takes the fastest path: **a fresh Ubuntu or Debian server and the one-line installer**. If you'd
+rather try it on your laptop first, use the [macOS](/start/macos/), [Windows](/start/windows/) or
+[Docker Compose](/start/compose/) guide instead. They end at the same Desktop.
+
+## What you need
+
+- A server running **Ubuntu 22.04 or newer**, or **Debian 12 or newer**, on amd64 (x86-64) or arm64. The daemon itself is
+  light, so size the server for the work your Agents will do. **2 GB of RAM or more** is a comfortable start.
+- **SSH access** and a user who can run `sudo`.
+- **Port 7700** open in your firewall or cloud security group. See [Cloud providers](/start/cloud/) for
+  step-by-step rules.
+- An **OpenAI API key**. You add it after installing, from the Desktop.
+
+## Five steps
+
+<Steps>
+
+1. **Connect to your server.**
+
+   ```bash
+   ssh you@203.0.113.10
+   ```
+
+2. **Run the installer.** It downloads a prebuilt binary, verifies its checksum, creates an `aos` user and
+   starts the service under systemd.
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+   ```
+
+   At the end it prints the Desktop URL, the username `admin`, and a **one-time password**. **Copy that
+   password now.** It's shown only once.
+
+3. **Open the Desktop and sign in.** Go to `http://<your-server-ip>:7700`, sign in as `admin` with the
+   one-time password, then choose your own password (at least 12 characters).
+
+4. **Add your OpenAI API key.** Open **System Settings → API key**, paste your key and save. It's stored as a
+   root-only secret on the server, never in the configuration file.
+
+5. **Give it your first Task.** Open the **Agent** app from the Dock and type something like:
+
+   > Install htop, then tell me which three processes are using the most memory.
+
+   Watch the steps stream in. If the Agent wants to do something risky, an **Approval** pops up for you to
+   allow or deny.
+
+</Steps>
+
+:::caution[Before you put anything real on this server]
+The Desktop is served over plain HTTP on port 7700, and **whoever signs in gets root on the server**. Choose a
+strong password, and read [What the password protects](/start/password-is-root/) and
+[Put nginx and HTTPS in front](/configure/nginx/) before you rely on it.
+:::
+
+## Prefer the terminal?
+
+Everything above also works over SSH. `aos` talks to a root-only socket, so run it with `sudo`:
+
+<Tabs syncKey="shell">
+  <TabItem label="Interactive chat">
+    ```bash
+    sudo aos       # each message you type becomes a Task
+    ```
+  </TabItem>
+  <TabItem label="One-shot">
+    ```bash
+    sudo aos run "Install htop and show me the top memory users"
+    ```
+  </TabItem>
+  <TabItem label="Check health">
+    ```bash
+    sudo aos status   # is it running, which Mode, which port
+    sudo aos doctor   # Mode, Landlock sandbox, API key present?
+    ```
+  </TabItem>
+</Tabs>
+
+## Where to go next
+
+<CardGrid>
+  <LinkCard title="Add your API key and choose a model" description="Where the key lives, and how to pick a model and reasoning effort." href="/configure/api-key/" />
+  <LinkCard title="Configuration" description="Every key in /etc/aos/config.yml, explained." href="/configure/config-file/" />
+  <LinkCard title="Services and ports" description="Run a web app and open it in your browser." href="/use/services/" />
+  <LinkCard title="Troubleshooting" description="Can't reach port 7700? Service won't start? Start here." href="/operate/troubleshooting/" />
+</CardGrid>

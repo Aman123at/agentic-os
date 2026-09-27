@@ -1,0 +1,111 @@
+---
+title: Configuration
+description: /etc/aos/config.yml key by key, how to change settings, and why a restart never reverts what you changed.
+---
+
+import { Tabs, TabItem } from "@astrojs/starlight/components";
+
+On a native install, every setting that isn't a secret lives in **`/etc/aos/config.yml`**. The installer writes it
+with comments explaining each key. It's owned by root with mode `0600`.
+
+:::note[Changes stick]
+Whatever you change **in System Settings or with `aos config set` is written back into `config.yml`**. The file
+stays the single source of truth, so **a restart never reverts a setting**. Your comments and key order survive
+that write-back.
+:::
+
+## Three ways to change a setting
+
+<Tabs syncKey="config">
+  <TabItem label="System Settings">
+    Open **System Settings** on the Desktop. The **Agent** pane covers the model, reasoning effort, Autonomy and
+    cost limits. **Trash**, **Protected Paths** and **System** have their own panes.
+  </TabItem>
+  <TabItem label="aos config">
+    ```bash
+    sudo aos config list                    # every setting, its value and where it comes from
+    sudo aos config get autonomy            # one value
+    sudo aos config set autonomy confirm-all
+    sudo aos config set model ""            # "" resets a key to its default
+    ```
+  </TabItem>
+  <TabItem label="Edit the file">
+    ```bash
+    sudo nano /etc/aos/config.yml
+    sudo aos daemon restart
+    ```
+
+    An **unknown key or a malformed value stops the service at start**, naming the line. It never quietly falls
+    back to a default. If the service won't start after an edit, read `sudo aos daemon logs -n 50`.
+  </TabItem>
+</Tabs>
+
+## Live keys vs. restart keys
+
+- **Live keys** take effect immediately.
+- **Restart keys** (the *Reach and platform* group below) are validated and written straight away, but only
+  apply at the next start. Until then, `aos config list` and System Settings mark them *(pending restart)*.
+  Apply them with `sudo aos daemon restart`, or **System Settings → System → Restart**.
+
+## Every key
+
+### The Agent
+
+| Key | Default | Values | What it does |
+| --- | --- | --- | --- |
+| `model` | `gpt-5.6-terra` | a model id | The model every Task runs on. See [Models](/configure/models/). |
+| `reasoning_effort` | `""` | `none` · `minimal` · `low` · `medium` · `high` · `xhigh` · `max` | How hard the model thinks. Empty uses the model's own default. Each model accepts only some values. |
+| `autonomy` | `confirm-risky` | `auto` · `confirm-risky` · `confirm-all` | How often Agents stop to ask. See below. |
+| `max_tasks` | `3` | 1–16 | How many Tasks run at once. The rest wait in a queue. |
+| `max_retries` | `3` | 0–20 | How many times a failed model call is retried. |
+
+**Autonomy levels:**
+
+| Level | Agents ask before… |
+| --- | --- |
+| `auto` | Only Protected Paths. Everything else just runs. Without Landlock, `auto` behaves like `confirm-risky`. |
+| `confirm-risky` | Anything risky: deleting, removing packages, privileged changes, plus Protected Paths. **The default.** |
+| `confirm-all` | Every Tool call. Good for learning what Agents do. |
+
+### Cost limits
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `task_cost_limit_usd` | `0` | Pause a Task once its estimated cost reaches this. `0` means no limit. |
+| `daily_cost_limit_usd` | `0` | Pause Tasks once today's estimated spend reaches this. `0` means no limit. |
+
+A paused Task waits for you: reply to let it continue (`aos reply`, or from the Agent app), or cancel it.
+Costs are estimated from the prices in the [model catalogue](/configure/models/). The daily total includes
+Root Mode's usage too, so switching Realms can't get around a limit.
+
+### Trash
+
+| Key | Default | Range | What it does |
+| --- | --- | --- | --- |
+| `trash_retention_days` | `30` | 1–3650 | How long the Trash keeps an item before emptying it. |
+| `trash_max_gb` | `5` | 1–1024 | The Trash's size cap in GB. |
+
+### Reach and platform (restart to apply)
+
+| Key | Default (native) | Values | What it does |
+| --- | --- | --- | --- |
+| `mode` | `ui` | `ui` · `cli` | `ui` serves the Desktop on port 7700. `cli` turns the Desktop off and keeps only the local control socket. Switch with `sudo aos mode ui` / `sudo aos mode cli`. |
+| `filesystem` | `host` | `host` · `home` | Where Agents may write: all of `/` except the Protected list (`host`), or only `/home/aos` (`home`, the Compose default). |
+| `base_url` | `""` | an `http(s)` URL | An OpenAI-compatible API endpoint. Empty uses OpenAI's own. **Your API key is sent here.** |
+| `require_landlock` | `false` | `true` · `false` | Refuse to start if the kernel has no Landlock, instead of running Agents under policy checks only. |
+| `include_browser` | `false` | `true` · `false` | Whether the Browser app is offered. Set by `sudo aos browser install`, cleared by `sudo aos browser remove`. |
+| `root_mode` | `false` | `true` · `false` | Whether the Machine runs in [Root Mode](/use/root-mode/). **Can't be changed with `aos config set`**; use `sudo aos root on` / `off` or the System Settings switch. |
+
+## What isn't in this file
+
+- **Secrets.** The OpenAI API key and the sign-in signing key live under `/var/lib/aos`, readable only by root.
+  [Add the API key](/configure/api-key/) in System Settings.
+- **The port.** The Desktop always listens on **7700**. To serve it on 443 with a domain, put
+  [nginx in front](/configure/nginx/).
+- **Model prices and efforts.** They live in `/var/lib/aos/models.yaml`. See [Models](/configure/models/).
+
+## Docker Compose
+
+On Compose, the same settings come from environment variables in `.env` (for example `AOS_AUTONOMY`,
+`AOS_MAX_TASKS`, `OPENAI_MODEL`), and System Settings can override them. See the
+[Compose settings table](/start/compose/#settings-in-env).

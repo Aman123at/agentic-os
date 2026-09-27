@@ -38,18 +38,28 @@ So the password, not the bind address, is what stands between the internet and y
 Compose runs the same product inside a container. The filesystem the Agents see is the **container's**, not your host's — nothing they do touches the real machine — which makes it the safe way to try Agentic OS on your laptop before you install it on a server.
 
 ```bash
-cp .env.example .env      # then put your key in OPENAI_API_KEY (it may stay empty)
-docker compose up --build
+cp .env.example .env                  # then put your key in OPENAI_API_KEY (it may stay empty)
+docker compose up -d --build
+docker compose exec aos aos mode ui   # creates the Desktop account and prints a one-time password
 ```
 
-- Open <http://localhost:7700> (`ui` Mode, the default). For a terminal instead, set `AOS_MODE=cli` in `.env` and run `docker compose exec aos aos`.
+- Open <http://localhost:7700> (`ui` Mode, the default) and sign in as `admin` with that password. A closing message about `systemctl` from the last command is expected in a container. For a terminal instead, set `AOS_MODE=cli` in `.env` and run `docker compose exec aos aos`.
 - The Browser app (`ui` Mode) is installed on demand — `docker compose exec aos aos browser install` — because the image no longer bakes Chromium in. A 🌐 Browser then appears in the Dock, and `aos browser remove` reverses it.
 - `OPENAI_API_KEY` must exist in `.env`, even if empty. Without it, `docker compose up` stops with "required by secret … is not set".
 
 **`docker compose up` hangs with the container stuck in "Created" (macOS).** Docker Desktop cannot mount folders under `~/Desktop`, `~/Documents`, or `~/Downloads` until macOS allows it, and a bind mount into home is such a mount when this repository lives in one of them. Enable the folder in System Settings → Privacy & Security → Files & Folders → Docker and restart Docker Desktop, move the repository elsewhere (e.g. `~/src/agentic-os`), or set `AOS_UID`/`AOS_GID` and mount from a path outside those folders.
 
+## Install on other devices
+
+| Device | Guide |
+| --- | --- |
+| Cloud VPS (AWS, Google Cloud, Azure, DigitalOcean, Hetzner, Oracle, Linode) | [Cloud providers](https://agenticos.amantiwari.co.in/start/cloud/) |
+| Raspberry Pi 4/5 and other 64-bit ARM boards | [Raspberry Pi & ARM](https://agenticos.amantiwari.co.in/start/raspberry-pi/) |
+| Mac (Apple silicon or Intel) | [Docker on macOS](https://agenticos.amantiwari.co.in/start/macos/) |
+| Windows 10/11 | [Docker on Windows](https://agenticos.amantiwari.co.in/start/windows/) |
+
 ## Learn more
 
-- The [documentation site](https://agenticos.amantiwari.co.in/) — install, configure, and command reference.
+- The [documentation site](https://agenticos.amantiwari.co.in/): quickstart, install guides for every device, configuration, and the command reference.
 - [docs/PLAN.md](docs/PLAN.md) — the design and the milestone plan.
-- `docker compose exec aos aos doctor --host-check` (Compose) or `sudo aos doctor` (native) prints a pass/fail report of the sandbox, Sessions, secret handling, and forwarding.
+- `docker compose exec aos aos doctor` (Compose) or `sudo aos doctor` (native) shows the Mode, whether the Landlock sandbox is active, and whether an API key is set.

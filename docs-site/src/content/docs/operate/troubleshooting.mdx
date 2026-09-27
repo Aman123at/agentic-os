@@ -1,0 +1,130 @@
+---
+title: Troubleshooting
+description: Fixes for the most common problems. The service won't start, the Desktop isn't reachable, Tasks fail, or an Agent can't write somewhere.
+---
+
+## Start here
+
+Four commands answer most questions. On a native install, run them on the server:
+
+```bash
+sudo aos status                  # is it running? which Mode and port?
+sudo aos doctor                  # Mode, Landlock sandbox, API key present?
+sudo aos daemon logs -n 100      # the last 100 log lines (add -f to follow)
+systemctl status aos --no-pager  # what systemd thinks
+```
+
+On Docker Compose, use `docker compose ps`, `docker compose logs -f` and `docker compose exec aos aos doctor`.
+
+## The service won't start
+
+**Read the log first.** A bad configuration **refuses to start rather than guessing**, and the log names the
+file and line:
+
+```bash
+sudo aos daemon logs -n 50
+```
+
+Common causes:
+
+| In the log | Fix |
+| --- | --- |
+| An unknown key or invalid value in `config.yml` | Fix the named line in `/etc/aos/config.yml`. Values are listed in [Configuration](/configure/config-file/). |
+| `address already in use` on port 7700 | Another program has port 7700. Find it with `sudo ss -ltnp \| grep 7700` and stop it. |
+| Refuses to start without Landlock | You set `require_landlock: true` on a kernel without Landlock. See [Landlock](#landlock-isnt-available). |
+
+After **5 failed starts within 60 seconds**, systemd stops retrying and marks the unit *failed*. Once you've fixed
+the cause:
+
+```bash
+sudo systemctl reset-failed aos
+sudo aos daemon start
+```
+
+## Nothing answers on port 7700
+
+Work from the server outwards:
+
+1. **Is it listening?**
+
+   ```bash
+   sudo ss -ltnp | grep 7700
+   curl -sI http://127.0.0.1:7700 | head -1
+   ```
+
+   If nothing is listening, check `sudo aos status`. If the Mode is `cli`, the Desktop is switched off: turn it
+   on with `sudo aos mode ui`.
+
+2. **Is the server's own firewall blocking it?** Check `sudo ufw status` (or `sudo iptables -L -n`). Oracle
+   Cloud images need an extra iptables rule; see [Cloud providers](/start/cloud/).
+
+3. **Is the cloud firewall blocking it?** Most providers block inbound ports by default. Add an inbound rule
+   for TCP 7700. See [Cloud providers](/start/cloud/).
+
+4. **Are you using the right address?** Use the server's **public** IP, over `http://`, not `https://`, unless
+   you've [set up nginx](/configure/nginx/).
+
+## "cross-origin requests are not allowed"
+
+The Desktop only accepts requests whose `Origin` matches their `Host`. Behind a reverse proxy, make sure it
+forwards the original host (`proxy_set_header Host $host;` in nginx). See
+[Put nginx and HTTPS in front](/configure/nginx/).
+
+## I can't sign in
+
+- **Username:** it's `admin`, unless you chose another with `--user`.
+- **First sign-in:** use the **one-time password** the installer (or `aos mode ui`) printed.
+- **On Docker Compose:** did you run `docker compose exec aos aos mode ui`? Until you do, there's no account.
+- **Forgotten it?** See [If you lose the password](/operate/lost-password/).
+
+## `aos` says permission denied, or that aosd isn't running
+
+- **Permission denied:** `aos` talks to a root-only socket. Run it with `sudo`.
+- **"aosd is not running (no /run/aos/aosd.sock)":** start it with `sudo aos daemon start`, then read the log
+  if it doesn't stay up.
+- **"systemctl is not available":** you're inside a container. Use `docker compose` commands instead.
+
+## Tasks fail straight away
+
+| Symptom | Fix |
+| --- | --- |
+| "No OpenAI API key" | [Add your key](/configure/api-key/) in System Settings → API key. |
+| An authentication error from OpenAI | The key is wrong or was revoked. Paste a fresh one. |
+| An error about the model or reasoning effort | Pick a model and effort from the [catalogue](/configure/models/), or reset with `sudo aos config set reasoning_effort ""`. |
+| The Task is paused with a note about a Cost Limit | Reply to continue, cancel it, or raise the [cost limit](/configure/config-file/#cost-limits). |
+| A Task is *Interrupted* | The daemon restarted. Continue with `sudo aos resume <id>`. See [Restarts](/use/restarts/). |
+
+## An Agent says it can't write somewhere
+
+Agents need your Approval to change **Protected Paths**. Without an Approval, the kernel sandbox refuses the
+write.
+
+```bash
+sudo aos protect              # list every Protected Path
+sudo aos unprotect <path>     # unlock a path YOU locked
+```
+
+- **Built-in protections** (`/boot`, `/proc`, `/sys`, `/root`, other users' homes, and Agentic OS's own files)
+  can't be unlocked. Approve the Agent's request when it asks, or do the change yourself in the Terminal.
+- **On Docker Compose**, Agents may only write inside `/home/aos`.
+- **In Root Mode** nothing is locked. See [Root Mode](/use/root-mode/).
+
+## Landlock isn't available
+
+`aos doctor` reports whether the Landlock sandbox is active. Without it, Agents run under policy checks only,
+and `autonomy: auto` behaves like `confirm-risky`.
+
+- **Kernel older than 5.13:** upgrade the kernel, or use a newer distribution release.
+- **"Supports Landlock but it is not enabled":** add `landlock` to the kernel's `lsm=` boot parameter. See
+  [Raspberry Pi & ARM](/start/raspberry-pi/#check-the-sandbox-landlock) for an example.
+
+## The Browser won't install
+
+- **"no browser download is pinned for arm64":** the Browser is amd64-only. See [The Browser](/use/browser/).
+- **Not enough space:** it needs about 1 GB free.
+- **Missing libraries with `--no-deps`:** run it again without `--no-deps` to let it install them.
+
+## Still stuck?
+
+Open an issue on [GitHub](https://github.com/Aman123at/agentic-os/issues) with the output of `sudo aos status`,
+`sudo aos doctor` and the last 100 log lines. **Check the log for secrets before you paste it.**

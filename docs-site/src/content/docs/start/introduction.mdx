@@ -1,0 +1,92 @@
+---
+title: Introduction
+description: What Agentic OS is, how it works, and the two ways to run it.
+---
+
+import { Card, CardGrid, LinkCard, Steps } from "@astrojs/starlight/components";
+
+**Agentic OS turns a Linux server into a machine that OpenAI-powered Agents run for you.** You give it a
+**Task** in plain English, such as *"set up a Postgres instance and a nightly backup"* or *"read these CSVs
+and build me a report"*. An **Agent** does the work with real shell commands on a real machine while you
+watch. Anything with lasting consequences stops and asks you first.
+
+You watch and steer from one of two front ends:
+
+- a **macOS-style Desktop** in your browser, with a menu bar, Dock, windows, Spotlight and a set of built-in
+  apps;
+- the **`aos` command line** over SSH, for people who live in a terminal.
+
+## How a Task runs
+
+<Steps>
+
+1. **You submit a Task** from the Desktop's Agent app or with `aos run "…"`.
+
+2. **The daemon, `aosd`, queues it** and starts an Agent with its own terminal Session. Up to three Tasks
+   run at once by default.
+
+3. **The Agent talks to OpenAI** and asks to run Tools: shell commands, file edits, downloads, package
+   installs, Services.
+
+4. **Every Tool call is checked** against your Protected Paths, then your Autonomy level, then any grants
+   you've already given. If a call needs you, the Task waits for your **Approval**.
+
+5. **Approved calls run inside a sandbox.** Agents run as the unprivileged `aos` user, confined by the Linux
+   kernel's Landlock. The results go back to the model.
+
+6. **You see every step live** on the Desktop and in the CLI. Each step is also written to the database and
+   the append-only **Audit Log**.
+
+</Steps>
+
+## Two ways to run it
+
+The two installs give you the same product. They differ in **what the Agents can touch**.
+
+<CardGrid>
+  <Card title="Native install (recommended)" icon="linux">
+    One command installs the daemon on a Linux server. The machine the Agents work on **is your server**:
+    they read and write the real filesystem, install real packages with `apt`, and run real services under
+    systemd. That is the point of it, and also the risk.
+
+    [Install on a server →](/start/install/)
+  </Card>
+  <Card title="Docker Compose (sandboxed)" icon="seti:docker">
+    The same product inside a container. Agents get a complete Ubuntu machine, but it isn't your computer.
+    What they see is the container's filesystem. Use it to try Agentic OS on a laptop, or to keep Agents away
+    from a host you won't hand over.
+
+    [Run with Docker Compose →](/start/compose/)
+  </Card>
+</CardGrid>
+
+## What you get
+
+| Area | What's included |
+| --- | --- |
+| **Desktop apps** | Finder, Terminal, Agent, TextEdit, Preview, Activity Monitor, Software, System Settings, Trash, Downloads, and an optional Browser |
+| **Safety** | Autonomy levels, Approvals, Protected Paths enforced by Landlock, a Trash instead of `rm`, an Audit Log, optional cost limits |
+| **Software** | An Install Ledger of everything Agents install, plus Checkpoints you can restore |
+| **Services** | Long-running programs that survive restarts, opened in your browser through the Desktop |
+| **Memory** | Preferences every Agent is told about, which you can accept, edit or remove |
+| **Root Mode** | An opt-in second mode where the whole machine runs as root, with its own separate history |
+
+## Words you'll see
+
+| Term | Meaning |
+| --- | --- |
+| **Machine** | The computer the Agents operate: your server, or the Compose container. |
+| **Task** | One job you've asked for, in plain English. |
+| **Agent** | The AI worker carrying out one Task. |
+| **Approval** | A question an Agent asks before doing something risky or protected. |
+| **Autonomy** | How often Agents stop to ask: `auto`, `confirm-risky` (the default) or `confirm-all`. |
+| **Protected Path** | A file or folder that Agents must ask about before changing. |
+| **Service** | A program an Agent keeps running, such as a web app or a database. |
+| **Checkpoint** | A snapshot of the machine's installed software that you can restore to. |
+
+## Next steps
+
+<CardGrid>
+  <LinkCard title="Quickstart" description="Install, sign in and run your first Task in about five minutes." href="/start/quickstart/" />
+  <LinkCard title="Which install should I use?" description="Compare the options for servers, laptops and single-board computers." href="/start/choose/" />
+</CardGrid>

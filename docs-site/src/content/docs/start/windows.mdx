@@ -1,0 +1,123 @@
+---
+title: Docker on Windows
+description: Run Agentic OS on Windows 10 or 11 with Docker Desktop and WSL 2, step by step.
+---
+
+import { Steps, Tabs, TabItem, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+On Windows, Agentic OS runs inside **Docker Desktop** using the **WSL 2** backend. The Agents get their own
+Ubuntu machine in a container and **never touch your Windows files**.
+
+## Before you start
+
+- **Windows 10 (22H2) or Windows 11**, 64-bit, with virtualisation turned on in the BIOS/UEFI. Most PCs have it
+  on already.
+- **About 10 GB of free disk space**
+- **An OpenAI API key** (you can add it later)
+
+## Install
+
+<Steps>
+
+1. **Install WSL 2.** Open **PowerShell as Administrator** and run:
+
+   ```powershell
+   wsl --install
+   ```
+
+   Restart your PC when asked. If WSL is already installed, `wsl --update` brings it up to date.
+
+2. **Install Docker Desktop** from [docker.com](https://www.docker.com/products/docker-desktop/), or with winget:
+
+   ```powershell
+   winget install -e --id Docker.DockerDesktop
+   ```
+
+   During setup, keep **Use WSL 2 instead of Hyper-V** selected. Start Docker Desktop and wait until it says
+   *Engine running*.
+
+3. **Install Git** from [git-scm.com](https://git-scm.com/download/win), or:
+
+   ```powershell
+   winget install -e --id Git.Git
+   ```
+
+   Close and reopen PowerShell so `git` is on your PATH.
+
+4. **Clone the repository.** In a normal (non-admin) PowerShell window:
+
+   ```powershell
+   cd $HOME
+   git clone https://github.com/Aman123at/agentic-os.git
+   cd agentic-os
+   ```
+
+   The repository forces Unix line endings, so its scripts and configs work inside the Linux container
+   whatever your Git settings.
+
+5. **Create your settings file** and add your key:
+
+   ```powershell
+   Copy-Item .env.example .env
+   notepad .env
+   ```
+
+   Paste your key after `OPENAI_API_KEY=` and save. You can leave it empty and add the key later in System
+   Settings, but **keep the line**.
+
+6. **Build and start Agentic OS.** The first build takes a few minutes:
+
+   ```powershell
+   docker compose up -d --build
+   ```
+
+7. **Create your Desktop account:**
+
+   ```powershell
+   docker compose exec aos aos mode ui
+   ```
+
+   Copy the **one-time password** it prints. A closing message about `systemctl` is expected in a container and
+   can be ignored.
+
+8. **Open the Desktop:**
+
+   ```powershell
+   start http://localhost:7700
+   ```
+
+   Sign in as `admin` with the one-time password, then choose your own.
+
+</Steps>
+
+## Tips for Windows users
+
+- **Prefer working inside WSL?** Everything above works the same from an Ubuntu shell in WSL (`wsl -d Ubuntu`).
+  Clone into your Linux home (`~/agentic-os`) and use the macOS/Linux commands from the
+  [Docker Compose guide](/start/compose/).
+- **Give WSL enough memory.** If builds are slow or fail, raise WSL's memory limit in `%UserProfile%\.wslconfig`:
+
+  ```ini
+  [wsl2]
+  memory=6GB
+  ```
+
+  Then run `wsl --shutdown` and restart Docker Desktop.
+- **Open it from other devices.** Set `AOS_BIND=0.0.0.0` in `.env`, run `docker compose up -d`, and open
+  `http://<your-pc's-ip>:7700` from the other device. If it can't connect, allow inbound TCP 7700 in Windows
+  Defender Firewall.
+- **Start with Windows.** Docker Desktop → *Settings* → *General* → *Start Docker Desktop when you sign in*.
+
+## Stop, update, remove
+
+| To… | Run in the `agentic-os` folder |
+| --- | --- |
+| Stop (keeps data) | `docker compose stop` |
+| Start again | `docker compose start` |
+| Update | `git pull; docker compose up -d --build` |
+| Remove everything, including data | `docker compose down -v` |
+
+<CardGrid>
+  <LinkCard title="All Docker Compose options" description="Settings, shared folders, published ports and troubleshooting." href="/start/compose/" />
+  <LinkCard title="Sign in and set your password" description="What happens on first sign-in." href="/start/sign-in/" />
+</CardGrid>

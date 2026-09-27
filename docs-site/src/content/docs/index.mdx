@@ -1,0 +1,142 @@
+---
+title: Your server, run by AI Agents.
+description: Agentic OS turns a Linux server into a machine that OpenAI-powered Agents operate for you, watched and steered from a macOS-style Desktop in your browser.
+template: splash
+editUrl: false
+hero:
+  tagline: Describe a job in plain English. An Agent does it with real shell commands on a real machine while you watch from a <strong>macOS-style Desktop in your browser</strong>. Anything with lasting consequences stops and asks you first.
+  image:
+    html: |
+      <div class="aos-terminal" aria-label="An example Agentic OS install">
+        <div class="aos-terminal__bar"><i></i><i></i><i></i><b>root@my-server: ~</b></div>
+        <div class="aos-terminal__body"><span class="p">$</span> <span class="w">curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh</span>
+      <span class="c">==> Checking this machine</span>
+         architecture: amd64
+         kernel 6.8.0: <span class="ok">Landlock available</span>
+      <span class="c">==> Verifying the checksum</span>
+         <span class="ok">checksum OK</span>
+      <span class="c">==> Starting the service</span>
+
+      <span class="ok">Agentic OS is installed and running.</span>
+
+        Desktop      <span class="hl">http://203.0.113.10:7700</span>
+        Sign in as   <span class="w">admin</span></div>
+      </div>
+  actions:
+    - text: Get started
+      link: /start/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: Try it with Docker
+      link: /start/compose/
+      icon: seti:docker
+      variant: secondary
+    - text: GitHub
+      link: https://github.com/Aman123at/agentic-os
+      icon: github
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard, Tabs, TabItem, LinkButton } from "@astrojs/starlight/components";
+
+<div class="aos-stats">
+  <div class="aos-stat"><strong>1 command</strong><span>from a bare VPS to a running Desktop</span></div>
+  <div class="aos-stat"><strong>~5 min</strong><span>to your first Task</span></div>
+  <div class="aos-stat"><strong>0 toolchains</strong><span>no Go, Node or Docker needed on a server</span></div>
+  <div class="aos-stat"><strong>amd64 + arm64</strong><span>cloud VMs, home servers, Raspberry Pi</span></div>
+</div>
+
+<h2 class="aos-section-title">Install in one line</h2>
+<p class="aos-section-lead">Pick the way that fits your device. Every path ends at the same Desktop.</p>
+
+<Tabs syncKey="install">
+  <TabItem label="Linux server" icon="linux">
+    On Ubuntu 22.04+ or Debian 12+, with `sudo`. You don't need Go, Node, Docker or an API key to install.
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+    ```
+
+    Then open `http://<your-server-ip>:7700`. [Full server guide →](/start/install/)
+  </TabItem>
+  <TabItem label="macOS" icon="apple">
+    Runs inside Docker Desktop. The Agents only see the container, never your Mac.
+
+    ```bash
+    git clone https://github.com/Aman123at/agentic-os.git ~/src/agentic-os
+    cd ~/src/agentic-os && cp .env.example .env
+    docker compose up -d --build
+    ```
+
+    [Step-by-step for macOS →](/start/macos/)
+  </TabItem>
+  <TabItem label="Windows" icon="seti:windows">
+    Runs inside Docker Desktop with the WSL 2 backend.
+
+    ```powershell
+    git clone https://github.com/Aman123at/agentic-os.git
+    cd agentic-os; copy .env.example .env
+    docker compose up -d --build
+    ```
+
+    [Step-by-step for Windows →](/start/windows/)
+  </TabItem>
+  <TabItem label="Raspberry Pi" icon="laptop">
+    A 64-bit Raspberry Pi OS or Ubuntu Server on a Pi 4 or Pi 5 uses the native installer.
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+    ```
+
+    [Raspberry Pi & ARM guide →](/start/raspberry-pi/)
+  </TabItem>
+</Tabs>
+
+<h2 class="aos-section-title">Everything an operator needs</h2>
+<p class="aos-section-lead">A full desktop and a real command line, built around one idea: the Agents do the work, and you stay in charge.</p>
+
+<CardGrid>
+  <Card title="Tasks in plain English" icon="pencil">
+    "Set up Postgres with a nightly backup." "Read these CSVs and build me a report." An Agent plans the work,
+    runs real commands and shows every step live.
+  </Card>
+  <Card title="A Desktop in your browser" icon="laptop">
+    Menu bar, Dock, windows and Spotlight search, plus Finder, Terminal, TextEdit, Preview, Activity Monitor and
+    System Settings. Light and dark themes.
+  </Card>
+  <Card title="Approvals before anything risky" icon="approve-check">
+    Autonomy levels, Protected Paths enforced by the kernel (Landlock), a Trash instead of `rm`, and an
+    append-only Audit Log of everything that happened.
+  </Card>
+  <Card title="Undo for software" icon="random">
+    Every package an Agent installs lands in the Install Ledger. Take a Checkpoint and restore the machine's
+    software to it later.
+  </Card>
+  <Card title="Services that stay up" icon="rocket">
+    Agents can start long-running Services that survive restarts. Open any of them in your browser from the
+    Desktop, behind your password.
+  </Card>
+  <Card title="Terminal-first when you want it" icon="seti:shell">
+    Everything the Desktop does, `aos` does over SSH: chat, one-shot `aos run`, approvals, logs, config and
+    more.
+  </Card>
+</CardGrid>
+
+<h2 class="aos-section-title">Choose your path</h2>
+<p class="aos-section-lead">Not sure which install is right? Start here.</p>
+
+<CardGrid>
+  <LinkCard title="Quickstart" description="From zero to your first Task in about five minutes." href="/start/quickstart/" />
+  <LinkCard title="Which install should I use?" description="A side-by-side comparison for servers, laptops and single-board computers." href="/start/choose/" />
+  <LinkCard title="Cloud providers" description="AWS, Google Cloud, Azure, DigitalOcean, Hetzner, Oracle and Linode, including firewall rules." href="/start/cloud/" />
+  <LinkCard title="Command reference" description="Every aos command and flag, generated from the binary." href="/reference/" />
+</CardGrid>
+
+<div class="aos-cta not-content">
+  <h2>Ready to hand over the busywork?</h2>
+  <p>One command on a fresh server. Sign in, add your OpenAI key, and give it your first Task.</p>
+  <div class="aos-cta__actions">
+    <LinkButton href="/start/quickstart/" variant="primary" icon="right-arrow">Start the quickstart</LinkButton>
+    <LinkButton href="/start/password-is-root/" variant="secondary">Read the security model</LinkButton>
+  </div>
+</div>

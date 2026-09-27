@@ -1,0 +1,665 @@
+/*
+ * Agentic OS documentation theme.
+ *
+ * Layered on top of Starlight: tokens first (colour, type, radius), then the
+ * chrome (header, sidebar, table of contents), then content (headings, code,
+ * tables, asides, cards), then the splash landing page. Custom CSS is unlayered,
+ * so it wins over Starlight's @layer rules without !important.
+ */
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+  --sl-font: "Inter", var(--sl-font-system);
+  --sl-font-mono: "JetBrains Mono", var(--sl-font-system-mono);
+
+  --aos-indigo: #6366f1;
+  --aos-violet: #8b5cf6;
+  --aos-cyan: #06b6d4;
+  --aos-gradient: linear-gradient(135deg, var(--aos-indigo) 0%, var(--aos-violet) 55%, var(--aos-cyan) 100%);
+  --aos-radius: 0.875rem;
+  --aos-radius-sm: 0.5rem;
+
+  --sl-content-width: 48rem;
+  --sl-nav-height: 4rem;
+  --sl-line-height: 1.7;
+  --sl-text-h1: 2.5rem;
+  --sl-text-h2: 1.75rem;
+  --sl-text-h3: 1.3rem;
+  --sl-text-h4: 1.1rem;
+}
+
+/* Dark (Starlight's default). */
+:root {
+  --sl-color-accent-low: #1e1b4b;
+  --sl-color-accent: #818cf8;
+  --sl-color-accent-high: #c7d2fe;
+
+  --sl-color-white: #f8fafc;
+  --sl-color-gray-1: #e2e8f0;
+  --sl-color-gray-2: #cbd5e1;
+  --sl-color-gray-3: #94a3b8;
+  --sl-color-gray-4: #64748b;
+  --sl-color-gray-5: #1e293b;
+  --sl-color-gray-6: #111827;
+  --sl-color-black: #0b0f19;
+
+  --sl-color-bg-nav: rgb(11 15 25 / 0.72);
+  --sl-color-bg-sidebar: #0b0f19;
+  --sl-color-hairline: rgb(148 163 184 / 0.12);
+  --sl-color-hairline-light: rgb(148 163 184 / 0.18);
+  --sl-color-bg-inline-code: rgb(129 140 248 / 0.14);
+
+  --aos-surface: rgb(255 255 255 / 0.03);
+  --aos-surface-hover: rgb(255 255 255 / 0.06);
+  --aos-border: rgb(148 163 184 / 0.16);
+  --aos-glow: rgb(99 102 241 / 0.35);
+  --aos-inline-code: #c7d2fe;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e0e7ff;
+  --sl-color-accent: #4f46e5;
+  --sl-color-accent-high: #3730a3;
+
+  --sl-color-white: #0f172a;
+  --sl-color-gray-1: #1e293b;
+  --sl-color-gray-2: #334155;
+  --sl-color-gray-3: #475569;
+  --sl-color-gray-4: #94a3b8;
+  --sl-color-gray-5: #e2e8f0;
+  --sl-color-gray-6: #f1f5f9;
+  --sl-color-gray-7: #f8fafc;
+  --sl-color-black: #ffffff;
+
+  --sl-color-bg-nav: rgb(255 255 255 / 0.78);
+  --sl-color-bg-sidebar: #fbfcfe;
+  --sl-color-hairline: rgb(15 23 42 / 0.08);
+  --sl-color-hairline-light: rgb(15 23 42 / 0.1);
+  --sl-color-bg-inline-code: rgb(99 102 241 / 0.1);
+
+  --aos-surface: #ffffff;
+  --aos-surface-hover: #f8faff;
+  --aos-border: rgb(15 23 42 / 0.09);
+  --aos-glow: rgb(99 102 241 / 0.2);
+  --aos-inline-code: #4338ca;
+}
+
+/* ------------------------------------------------------------------ base */
+
+body {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgb(99 102 241 / 0.3);
+}
+
+/* ------------------------------------------------------------------ header */
+
+.header {
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  border-bottom: 1px solid var(--sl-color-hairline) !important;
+}
+
+.site-title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-size: 1.15rem;
+}
+
+.site-title img {
+  height: 1.9rem;
+  width: auto;
+}
+
+/* The search button reads as a pill, like a command palette trigger. */
+site-search button[data-open-modal] {
+  border-radius: 999px;
+  border: 1px solid var(--aos-border);
+  background: var(--aos-surface);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+site-search button[data-open-modal]:hover {
+  border-color: var(--sl-color-accent);
+  box-shadow: 0 0 0 4px var(--aos-glow);
+}
+
+/* ------------------------------------------------------------------ sidebar */
+
+.sidebar-pane {
+  border-inline-end: 1px solid var(--sl-color-hairline);
+}
+
+nav.sidebar .top-level > li > details > summary .group-label .large,
+nav.sidebar .top-level > li > details > summary .large {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+
+nav.sidebar a {
+  border-radius: var(--aos-radius-sm);
+  padding: 0.35rem 0.65rem;
+  font-size: 0.9rem;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+nav.sidebar a:hover {
+  background: var(--aos-surface-hover);
+  color: var(--sl-color-white);
+}
+
+nav.sidebar a[aria-current="page"],
+nav.sidebar a[aria-current="page"]:hover,
+nav.sidebar a[aria-current="page"]:focus {
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--sl-color-accent);
+}
+
+:root[data-theme="light"] nav.sidebar a[aria-current="page"] {
+  color: var(--sl-color-accent-high);
+}
+
+/* ------------------------------------------------------------------ table of contents */
+
+starlight-toc a[aria-current="true"],
+starlight-toc a[aria-current="true"]:hover {
+  color: var(--sl-color-accent) !important;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ page title */
+
+.content-panel:first-of-type h1#_top {
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+}
+
+/* ------------------------------------------------------------------ content */
+
+.sl-markdown-content h2,
+.sl-markdown-content h3,
+.sl-markdown-content h4 {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--sl-color-white);
+}
+
+.sl-markdown-content h2 {
+  margin-top: 2.75rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--sl-color-hairline);
+}
+
+.sl-markdown-content > h2:first-child,
+.sl-markdown-content > div:first-child + h2 {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.sl-markdown-content p,
+.sl-markdown-content li {
+  color: var(--sl-color-gray-2);
+}
+
+.sl-markdown-content strong {
+  color: var(--sl-color-white);
+  font-weight: 600;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-accent);
+  text-decoration-color: color-mix(in srgb, var(--sl-color-accent) 35%, transparent);
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color 0.15s ease;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: currentColor;
+}
+
+.sl-markdown-content :not(pre) > code {
+  color: var(--aos-inline-code);
+  background: var(--sl-color-bg-inline-code);
+  border: 1px solid color-mix(in srgb, var(--sl-color-accent) 18%, transparent);
+  border-radius: 0.375rem;
+  padding: 0.1em 0.4em;
+  font-size: 0.86em;
+  font-weight: 500;
+}
+
+/* Tables: a rounded card with a tinted header row. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+  display: table;
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border: 1px solid var(--aos-border);
+  border-radius: var(--aos-radius);
+  overflow: hidden;
+  font-size: 0.92rem;
+}
+
+.sl-markdown-content :is(th, td):not(:where(.not-content *)) {
+  border: 0;
+  border-bottom: 1px solid var(--aos-border);
+  padding: 0.7rem 1rem;
+  vertical-align: top;
+}
+
+.sl-markdown-content tr:last-child td {
+  border-bottom: 0;
+}
+
+.sl-markdown-content th:not(:where(.not-content *)) {
+  background: var(--aos-surface-hover);
+  color: var(--sl-color-white);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 50rem) {
+  .sl-markdown-content table:not(:where(.not-content *)) {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* Code blocks. */
+.expressive-code .frame {
+  box-shadow: 0 1px 0 var(--aos-border), 0 12px 32px -18px rgb(0 0 0 / 0.45);
+}
+
+/* Asides: soft tinted cards with a left accent bar. */
+.starlight-aside {
+  border: 1px solid var(--aos-border);
+  border-inline-start-width: 4px;
+  border-radius: var(--aos-radius);
+  padding: 1rem 1.25rem;
+}
+
+.starlight-aside--note {
+  border-inline-start-color: var(--sl-color-accent);
+  background: color-mix(in srgb, var(--sl-color-accent) 8%, transparent);
+}
+
+.starlight-aside--tip {
+  border-inline-start-color: #10b981;
+  background: rgb(16 185 129 / 0.08);
+}
+
+.starlight-aside--caution {
+  border-inline-start-color: #f59e0b;
+  background: rgb(245 158 11 / 0.08);
+}
+
+.starlight-aside--danger {
+  border-inline-start-color: #ef4444;
+  background: rgb(239 68 68 / 0.08);
+}
+
+.starlight-aside__title {
+  font-weight: 700;
+}
+
+/* Cards and link cards: raised surfaces that lift on hover. */
+.card {
+  border: 1px solid var(--aos-border) !important;
+  border-radius: var(--aos-radius) !important;
+  background: var(--aos-surface) !important;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--sl-color-accent) 55%, transparent) !important;
+  box-shadow: 0 12px 30px -16px var(--aos-glow);
+}
+
+.card .title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.card .icon {
+  color: #fff !important;
+  background: var(--aos-gradient) !important;
+  border: 0 !important;
+  border-radius: 0.6rem !important;
+  padding: 0.3rem;
+}
+
+.sl-link-card {
+  border: 1px solid var(--aos-border) !important;
+  border-radius: var(--aos-radius) !important;
+  background: var(--aos-surface) !important;
+  box-shadow: none !important;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.sl-link-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--sl-color-accent) 55%, transparent) !important;
+  box-shadow: 0 12px 30px -16px var(--aos-glow) !important;
+}
+
+.sl-link-card .title {
+  font-weight: 700;
+}
+
+/* Steps: gradient number badges. */
+.sl-steps > li::before {
+  background: var(--aos-gradient) !important;
+  color: #fff !important;
+  font-weight: 700;
+  box-shadow: 0 0 0 4px var(--sl-color-black);
+}
+
+/* Tabs. */
+starlight-tabs [role="tablist"] {
+  border-bottom: 1px solid var(--aos-border) !important;
+}
+
+starlight-tabs [role="tab"] {
+  font-weight: 600;
+  border-radius: var(--aos-radius-sm) var(--aos-radius-sm) 0 0;
+}
+
+starlight-tabs [role="tab"][aria-selected="true"] {
+  color: var(--sl-color-accent) !important;
+  box-shadow: inset 0 -2px 0 var(--sl-color-accent) !important;
+}
+
+/* Badges. */
+.sl-badge {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+/* Buttons. */
+.sl-link-button {
+  border-radius: 999px !important;
+  font-weight: 600;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.sl-link-button.primary {
+  background: var(--aos-gradient) !important;
+  border: 0 !important;
+  color: #fff !important;
+  box-shadow: 0 10px 24px -10px var(--aos-glow);
+}
+
+.sl-link-button.primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -10px var(--aos-glow);
+}
+
+.sl-link-button.secondary {
+  border: 1px solid var(--aos-border) !important;
+  background: var(--aos-surface) !important;
+  color: var(--sl-color-white) !important;
+}
+
+.sl-link-button.secondary:hover {
+  border-color: var(--sl-color-accent) !important;
+}
+
+/* Prev / next pagination. */
+.pagination-links a {
+  border: 1px solid var(--aos-border) !important;
+  border-radius: var(--aos-radius) !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pagination-links a:hover {
+  border-color: var(--sl-color-accent) !important;
+  box-shadow: 0 10px 24px -16px var(--aos-glow) !important;
+}
+
+/* ------------------------------------------------------------------ splash landing */
+
+[data-has-hero] .main-frame {
+  background:
+    radial-gradient(60rem 30rem at 85% -10%, rgb(139 92 246 / 0.18), transparent 60%),
+    radial-gradient(50rem 28rem at -10% 10%, rgb(99 102 241 / 0.16), transparent 60%),
+    radial-gradient(40rem 24rem at 50% 110%, rgb(6 182 212 / 0.1), transparent 60%);
+}
+
+[data-has-hero] .hero {
+  padding-top: clamp(2rem, 6vw, 5rem);
+}
+
+[data-has-hero] .hero h1 {
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  background: linear-gradient(180deg, var(--sl-color-white) 30%, color-mix(in srgb, var(--sl-color-white) 65%, var(--aos-violet)));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+[data-has-hero] .hero .tagline {
+  color: var(--sl-color-gray-3);
+  line-height: 1.6;
+}
+
+[data-has-hero] .hero .tagline strong {
+  color: var(--sl-color-white);
+}
+
+.aos-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.8rem 0.3rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--aos-border);
+  background: var(--aos-surface);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--sl-color-gray-2);
+}
+
+.aos-eyebrow span {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--aos-gradient);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.72rem;
+}
+
+/* The hero's terminal mock-up. */
+.aos-terminal {
+  width: 100%;
+  max-width: 34rem;
+  border-radius: 1rem;
+  border: 1px solid rgb(148 163 184 / 0.2);
+  background: #0b1020;
+  box-shadow: 0 30px 80px -30px rgb(99 102 241 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.04) inset;
+  overflow: hidden;
+  text-align: start;
+  font-family: var(--__sl-font-mono);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
+.aos-terminal__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.7rem 0.9rem;
+  border-bottom: 1px solid rgb(148 163 184 / 0.14);
+  background: rgb(255 255 255 / 0.03);
+}
+
+.aos-terminal__bar i {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: #475569;
+}
+
+.aos-terminal__bar i:nth-child(1) { background: #f87171; }
+.aos-terminal__bar i:nth-child(2) { background: #fbbf24; }
+.aos-terminal__bar i:nth-child(3) { background: #34d399; }
+
+.aos-terminal__bar b {
+  margin-inline-start: auto;
+  margin-inline-end: auto;
+  font-weight: 500;
+  color: #64748b;
+  font-size: 0.75rem;
+}
+
+.aos-terminal__body {
+  padding: 1rem 1.1rem 1.2rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.aos-terminal .p { color: #a78bfa; }
+.aos-terminal .c { color: #64748b; }
+.aos-terminal .ok { color: #34d399; }
+.aos-terminal .hl { color: #67e8f9; }
+.aos-terminal .w { color: #f8fafc; font-weight: 600; }
+
+/* Landing sections. */
+.aos-section-title {
+  text-align: center;
+  margin-top: 4rem !important;
+  border-top: 0 !important;
+  padding-top: 0 !important;
+  font-size: clamp(1.6rem, 3vw, 2.2rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em !important;
+}
+
+.aos-section-lead {
+  text-align: center;
+  max-width: 40rem;
+  margin-inline: auto !important;
+  color: var(--sl-color-gray-3) !important;
+  font-size: 1.05rem;
+}
+
+.aos-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 1rem;
+  margin-top: 2.5rem !important;
+}
+
+.aos-stat {
+  padding: 1.25rem;
+  border-radius: var(--aos-radius);
+  border: 1px solid var(--aos-border);
+  background: var(--aos-surface);
+  text-align: center;
+}
+
+.aos-stat strong {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: var(--aos-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent !important;
+}
+
+.aos-stat span {
+  font-size: 0.85rem;
+  color: var(--sl-color-gray-3);
+}
+
+.aos-cta {
+  margin-top: 4rem !important;
+  padding: clamp(1.75rem, 4vw, 3rem);
+  border-radius: 1.25rem;
+  text-align: center;
+  color: #fff;
+  background:
+    radial-gradient(30rem 14rem at 100% 0%, rgb(6 182 212 / 0.35), transparent 60%),
+    linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 30px 60px -30px rgb(79 70 229 / 0.7);
+}
+
+.aos-cta h2 {
+  color: #fff !important;
+  border: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  font-size: clamp(1.5rem, 3vw, 2rem) !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.03em;
+}
+
+.aos-cta p {
+  color: rgb(255 255 255 / 0.85) !important;
+  margin-top: 0.5rem !important;
+}
+
+.aos-cta .sl-link-button.primary {
+  background: #fff !important;
+  color: #4338ca !important;
+}
+
+.aos-cta .sl-link-button.secondary {
+  background: rgb(255 255 255 / 0.1) !important;
+  color: #fff !important;
+  border-color: rgb(255 255 255 / 0.35) !important;
+}
+
+.aos-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+  margin-top: 1.5rem !important;
+}
+
+/* Platform matrix pills. */
+.aos-yes { color: #10b981; font-weight: 700; }
+.aos-no { color: #ef4444; font-weight: 700; }
+.aos-maybe { color: #f59e0b; font-weight: 700; }
+
+/* Footer. */
+footer .meta {
+  border-top: 1px solid var(--sl-color-hairline);
+  padding-top: 1rem;
+}
+
+/* Grid children inside content get Starlight's flow margin; the stat tiles must not. */
+.sl-markdown-content .aos-stats > .aos-stat {
+  margin: 0;
+}
+
+/* On narrow screens, lead with the headline and put the terminal after it. */
+@media (max-width: 50rem) {
+  [data-has-hero] .hero > .hero-html {
+    order: 2;
+    width: 100%;
+  }
+
+  .aos-terminal {
+    font-size: 0.72rem;
+  }
+}

@@ -1,0 +1,67 @@
+---
+title: Sign in and set your password
+description: The first sign-in, the forced password change, how long you stay signed in, and where the account lives.
+---
+
+import { Steps, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+Agentic OS has **one Desktop account**. The installer (or `aos mode ui` on Docker Compose) creates it with a
+**one-time password**, and your first sign-in replaces that password with one you choose.
+
+## Your first sign-in
+
+<Steps>
+
+1. **Open the Desktop.** On a server, go to `http://<server-ip>:7700`. On Docker Compose, go to
+   `http://localhost:7700`.
+
+2. **Sign in** on the *Sign in to the Desktop* screen:
+
+   - **Username:** `admin`
+   - **Password:** the one-time password the installer printed
+
+3. **Choose a password.** The Desktop says *You signed in with a one-time password. Set your own to continue.*
+   Type your new password twice. It must be **at least 12 characters**; shorter passwords are refused, not just
+   warned about.
+
+4. **You're in.** The menu bar, the Dock and the Desktop appear. Next, open **System Settings → API key** and
+   [add your OpenAI key](/configure/api-key/).
+
+</Steps>
+
+:::tip[Pick a real password]
+Twelve characters is the minimum, not the goal. On a native install [this password is effectively root on
+your server](/start/password-is-root/), so let a password manager generate a long passphrase.
+:::
+
+## How the account works
+
+| | |
+| --- | --- |
+| **Accounts** | One. There are no other users and no roles. |
+| **Default username** | `admin`. On Compose, pick another with `docker compose exec aos aos mode ui --user <name>` the first time. |
+| **Password rules** | 12 characters minimum. The one-time password must be replaced on first sign-in. |
+| **Staying signed in** | A signed-in browser stays signed in for up to **30 days**, and the session renews while you use it. |
+| **Signing out** | Click the **◆** logo in the menu bar, then **Log Out…**. |
+| **Setting a new password** | Signs out every other browser. Only the one you changed it from stays signed in. |
+| **Where it's stored** | In `/var/lib/aos/aos.db`, hashed with PBKDF2-SHA256. The password itself is never stored. |
+| **Root Mode** | Uses the same account. Switching to Root Mode doesn't sign you out. |
+
+## Creating the account again later
+
+The account is created only from **inside the Machine**, over the local control socket, never over the
+network. So someone who reaches a fresh server's port 7700 before you do can't claim it.
+
+- **Native:** `sudo aos mode ui` creates the account if none exists and prints a new one-time password. If an
+  account already exists, it keeps it and changes nothing.
+- **Compose:** `docker compose exec aos aos mode ui` does the same.
+
+## Lost the password?
+
+There's no email reset link. See [If you lose the password](/operate/lost-password/). The recovery path needs
+SSH (or Docker) access to the machine.
+
+<CardGrid>
+  <LinkCard title="Add your OpenAI API key" description="The one thing the Desktop needs before it can run Tasks." href="/configure/api-key/" />
+  <LinkCard title="What the password protects" description="Why this password matters as much as root's." href="/start/password-is-root/" />
+</CardGrid>

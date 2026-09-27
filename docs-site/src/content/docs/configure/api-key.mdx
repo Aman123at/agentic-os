@@ -1,0 +1,101 @@
+---
+title: Add your OpenAI API key
+description: Where the key goes, how it's stored, and how to set it from the Desktop, from .env or from the shell.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+Agents think with OpenAI's models, so Agentic OS needs an **OpenAI API key** before it can run a Task. The
+daemon starts without one, so you can install first and add the key afterwards.
+
+:::tip[Set a spending cap first]
+In the [OpenAI dashboard](https://platform.openai.com/), create a **project just for Agentic OS** and give it a
+monthly budget. You can also set [cost limits](/configure/config-file/#cost-limits) inside Agentic OS itself.
+:::
+
+## Add the key
+
+<Tabs syncKey="apikey">
+  <TabItem label="From the Desktop (recommended)">
+    <Steps>
+
+    1. Open **System Settings** from the Dock.
+    2. Choose the **API key** pane.
+    3. Paste your key (it starts with `sk-`) and save.
+
+    </Steps>
+
+    The pane then shows only a hint of the key, like `sk-…abcd`, with a badge saying where it came from: **Set
+    here** or **From .env**.
+  </TabItem>
+  <TabItem label="Docker Compose (.env)">
+    Put the key in `.env` next to `compose.yaml`:
+
+    ```ini
+    OPENAI_API_KEY=sk-...
+    ```
+
+    Then apply it:
+
+    ```bash
+    docker compose up -d
+    ```
+
+    Compose passes it to the daemon as a **secret file**, never as an environment variable, so other processes
+    in the container can't read it.
+  </TabItem>
+  <TabItem label="From the shell (native)">
+    Over SSH, write the key where the daemon looks at startup, then restart:
+
+    ```bash
+    sudo install -d -m 0700 /run/secrets
+    printf '%s' 'sk-your-key' | sudo tee /run/secrets/openai_api_key >/dev/null
+    sudo aos daemon restart
+    ```
+
+    At startup the daemon copies the key into its own root-only store, so it survives reboots even though
+    `/run` is cleared.
+
+    To keep the key out of your shell history, use `sudo nano /run/secrets/openai_api_key` instead of
+    `printf`.
+  </TabItem>
+</Tabs>
+
+Check it worked:
+
+```bash
+sudo aos doctor                        # native: reports whether an API key is present
+docker compose exec aos aos doctor     # Compose
+```
+
+## Which key wins?
+
+| Situation | Key in use |
+| --- | --- |
+| You saved a key in **System Settings** | That key, across restarts, until you click **Use key from .env** |
+| No key saved in Settings, but one in `.env` or `/run/secrets/openai_api_key` | That key, copied in at each start |
+| Neither | None. Tasks can't run, and the Desktop and `aos` tell you how to add one. |
+
+## How the key is protected
+
+- **It's a secret, not configuration.** It never appears in `/etc/aos/config.yml`.
+- It's stored in `/var/lib/aos/keys/openai`, readable **only by root**.
+- Only the daemon reads it. Agents, the Terminal and Finder run as the `aos` user and can't reach it.
+- The Desktop only ever shows a hint (`sk-…abcd`), never the whole key.
+
+## Using an OpenAI-compatible endpoint
+
+To send requests to an OpenAI-compatible API (a proxy, a gateway, or another provider that speaks the OpenAI
+API), set `base_url`. **Your key is sent to that address**, so only use one you trust.
+
+```bash
+sudo aos config set base_url https://my-gateway.example.com/v1
+sudo aos daemon restart
+```
+
+On Compose, set `OPENAI_BASE_URL` in `.env` instead.
+
+## Next
+
+- [Choose a model and reasoning effort →](/configure/models/)
+- [Every configuration key →](/configure/config-file/)

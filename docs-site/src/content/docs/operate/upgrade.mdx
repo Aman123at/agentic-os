@@ -1,0 +1,101 @@
+---
+title: Upgrading and uninstalling
+description: Re-run the installer to upgrade. Use aos uninstall to remove Agentic OS, keeping or deleting your data.
+---
+
+import { Steps, Tabs, TabItem } from "@astrojs/starlight/components";
+
+## Upgrade
+
+<Tabs syncKey="install-type">
+  <TabItem label="Native install">
+    **Re-running the installer is the upgrade.** It downloads the latest release, verifies it, replaces the
+    binary and restarts the service. It never touches `config.yml`, your account or your data.
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo sh
+    ```
+
+    **It waits for your work.** If any Task is running, queued or awaiting you, the installer stops and says
+    how many. Wait for them, or upgrade anyway:
+
+    ```bash
+    curl -fsSL https://raw.githubusercontent.com/Aman123at/agentic-os/main/install.sh | sudo FORCE=1 sh
+    ```
+
+    With `FORCE=1`, those Tasks become **Interrupted**. Continue each one afterwards with `sudo aos resume <id>`.
+    See [Restarts and work in flight](/use/restarts/).
+  </TabItem>
+  <TabItem label="Docker Compose">
+    From the `agentic-os` folder:
+
+    ```bash
+    git pull
+    docker compose up -d --build
+    ```
+
+    Your data is in named volumes and survives the rebuild. Software Agents installed is replayed into the new
+    container at startup.
+  </TabItem>
+</Tabs>
+
+## Repair
+
+The installer is idempotent. Every step checks before it acts, so **re-running it also repairs** a broken
+install: a missing binary, a deleted unit file or a lost `sudoers` entry.
+
+## Uninstall
+
+<Tabs syncKey="install-type">
+  <TabItem label="Native install">
+    `aos uninstall` **shows what it would remove first**, and only acts when you add `--yes`.
+
+    <Steps>
+
+    1. **See the plan** (changes nothing):
+
+       ```bash
+       sudo aos uninstall             # keep your data
+       sudo aos uninstall --purge     # delete everything
+       ```
+
+    2. **Optional:** if you installed the Browser, remove it first:
+
+       ```bash
+       sudo aos browser remove
+       ```
+
+    3. **Uninstall:**
+
+       ```bash
+       sudo aos uninstall --yes
+       ```
+
+    </Steps>
+
+    | | `--yes` | `--purge --yes` |
+    | --- | --- | --- |
+    | Stops the service, removes `aos.service` | ✅ | ✅ |
+    | Removes `/usr/local/bin/aosd`, `aos` and `/usr/local/lib/aos` | ✅ | ✅ |
+    | Removes the `aos` user and its `sudoers` entry | — | ✅ |
+    | Deletes `/home/aos` (the Agents' files) | — | ✅ |
+    | Deletes `/var/lib/aos` (database, Audit Log, keys) | — | ✅ |
+    | Deletes `/etc/aos` (your configuration) | — | ✅ |
+
+    Without `--purge`, a later reinstall finds your configuration, keys, history and Trash again.
+
+    :::caution
+    Uninstalling removes **Agentic OS**, not what your Agents did. Packages they installed, services they set up
+    and files they wrote outside `/home/aos` stay on the server. Check `sudo aos software list` (the Install Ledger)
+    before you uninstall if you want to remove those too.
+    :::
+  </TabItem>
+  <TabItem label="Docker Compose">
+    ```bash
+    docker compose down        # remove the containers, keep the data volumes
+    docker compose down -v     # remove the containers AND all data
+    ```
+
+    Then delete the `agentic-os` folder. To also reclaim the image's disk space, run `docker image rm agentic-os`.
+  </TabItem>
+</Tabs>
