@@ -254,9 +254,11 @@ func (writeFile) Prepare(_ context.Context, env *Env, args json.RawMessage) (*Ca
 		c.Policy.Reasons = []string{"overwrites " + env.Display(path)}
 	}
 	c.Run = func(ctx context.Context, r Run) Result {
+		keep := before(ctx, env, r, "write_file", path)
 		if res := runFiles(ctx, env, r, files.OpWrite, files.WriteArgs{Path: path, Content: a.Content, Overwrite: a.Overwrite}, nil); res != nil {
 			return *res
 		}
+		keep()
 		return Result{Output: fmt.Sprintf("Wrote %s (%s).", env.Display(path), humanSize(int64(len(a.Content))))}
 	}
 	return c, nil
@@ -293,9 +295,11 @@ func (editFile) Prepare(_ context.Context, env *Env, args json.RawMessage) (*Cal
 	return &Call{Summary: fmt.Sprintf("Edit %s (%d change(s))", env.Display(path), len(a.Edits)),
 		Policy: policy.Call{Tool: "edit_file", Folder: filepath.Dir(path), Effects: []policy.Effect{{Path: path, Op: policy.Write}}},
 		Run: func(ctx context.Context, r Run) Result {
+			keep := before(ctx, env, r, "edit_file", path)
 			if res := runFiles(ctx, env, r, files.OpEdit, files.EditArgs{Path: path, Edits: a.Edits}, nil); res != nil {
 				return *res
 			}
+			keep()
 			return Result{Output: fmt.Sprintf("Edited %s.", env.Display(path))}
 		}}, nil
 }
@@ -352,9 +356,15 @@ func (t transfer) Prepare(_ context.Context, env *Env, args json.RawMessage) (*C
 		op = files.OpMove
 	}
 	c.Run = func(ctx context.Context, r Run) Result {
+		changed := []string{dst}
+		if t.move {
+			changed = []string{src, dst}
+		}
+		keep := before(ctx, env, r, t.name(), changed...)
 		if res := runFiles(ctx, env, r, op, files.TransferArgs{Source: src, Destination: dst, Overwrite: a.Overwrite}, nil); res != nil {
 			return *res
 		}
+		keep()
 		done := map[string]string{"Move": "Moved", "Copy": "Copied"}[verb]
 		return Result{Output: fmt.Sprintf("%s %s to %s.", done, env.Display(src), env.Display(dst))}
 	}
@@ -384,10 +394,12 @@ func (deleteFile) Prepare(_ context.Context, env *Env, args json.RawMessage) (*C
 		Policy: policy.Call{Tool: "delete", Folder: filepath.Dir(path), Risky: true, Reasons: []string{"deletes " + env.Display(path)},
 			Effects: []policy.Effect{{Path: path, Op: policy.Delete}}},
 		Run: func(ctx context.Context, r Run) Result {
+			keep := before(ctx, env, r, "delete", path)
 			var item files.TrashItem
 			if res := runFiles(ctx, env, r, files.OpDelete, files.PathArgs{Path: path}, &item); res != nil {
 				return *res
 			}
+			keep()
 			if item.ID == "" {
 				return Result{Output: fmt.Sprintf("Deleted %s permanently (temporary or cache files are not kept in the Trash).", env.Display(path))}
 			}

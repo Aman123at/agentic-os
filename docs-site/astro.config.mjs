@@ -71,7 +71,7 @@ export default defineConfig({
           label: "Configure",
           items: ["configure/api-key", "configure/config-file", "configure/models", "configure/nginx"],
         },
-        { label: "Use it", items: ["use/services", "use/browser", "use/restarts", "use/root-mode"] },
+        { label: "Use it", items: ["use/services", "use/browser", "use/code", "use/restarts", "use/root-mode"] },
         {
           label: "Operate",
           items: ["start/password-is-root", "operate/lost-password", "operate/upgrade", "operate/troubleshooting"],

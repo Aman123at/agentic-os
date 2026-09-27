@@ -7,7 +7,7 @@ import { create as createMessage } from "@bufbuild/protobuf";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "zustand";
 
-import type { DownloadProgress, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
+import type { DownloadProgress, EditorContext, Event, InfoResponse, Notification } from "./gen/aos/v1/services_pb";
 import { NotificationSchema } from "./gen/aos/v1/services_pb";
 import type { Approval, ReplayStatus, Task, TaskStep } from "./gen/aos/v1/types_pb";
 import { ApprovalDecision, Autonomy, TaskState, ToolCallStatus } from "./gen/aos/v1/types_pb";
@@ -16,8 +16,10 @@ import { approvals as approvalApi, settings, system, tasks as taskApi, trash as 
 import { friendlyError } from "./api/error";
 import * as session from "./api/session";
 import { subscribe, type ConnState } from "./api/events";
+import { setSubscription, workspaceEvent } from "./api/workspaces";
 import { appForFile } from "./apps/filetypes";
 import { APPS, preloadApps, type AppId } from "./apps/registry";
+import { mayClose, windowClosed } from "./shell/closeGuard";
 import { defaultShortcuts, type ShortcutMap } from "./shell/shortcuts";
 import { type WallpaperDesignId } from "./shell/wallpaper";
 import { applyGlass, applyTheme, type ThemePref } from "./theme";
@@ -105,6 +107,9 @@ interface DesktopState {
   approvals: Record<string, Approval>; // pending only
   openTask: string;
   steps: TaskStep[];
+  // The step feeds of the Tasks Code's Agent sidebars show (M8.11), by Task
+  // id, kept live while any sidebar watches one.
+  feeds: Record<string, TaskStep[]>;
   // Downloads still in progress, by the Tool call's step id, for the Dock's
   // Downloads stack.
   downloads: Record<string, DownloadProgress>;
@@ -149,7 +154,11 @@ interface DesktopState {
   openApp: (appId: AppId, doc?: string) => void;
   /** Opens a file in the app for its type, or shows it in the Finder when none opens it. */
   openFile: (path: string) => void;
-  closeWindow: (id: string) => void;
+  /** Opens a folder in Code, or a file in Code with its folder (PLAN.md M8.3). */
+  openInCode: (path: string, dir: boolean) => void;
+  setWinTitle: (id: string, title: string) => void;
+  /** Closes a window, after its app's close guard (and the unsaved-edits check) unless forced. */
+  closeWindow: (id: string, force?: boolean) => void;
   focusWindow: (id: string) => void;
   setRect: (id: string, rect: Rect) => void;
   minimize: (id: string) => void;
@@ -160,7 +169,8 @@ interface DesktopState {
   /** Counts the Trash again, after a change to it. */
   refreshTrashCount: () => Promise<void>;
 
-  createTask: (prompt: string, autonomy?: Autonomy) => Promise<void>;
+  /** Starts a Task. From Code it carries the editor's context and stays in Code, not opening the Agent app (M8.11). */
+  createTask: (prompt: string, autonomy?: Autonomy, from?: { editor: EditorContext }) => Promise<Task | undefined>;
   /** Removes a finished Task and everything under it; the Audit Log keeps its record. */
   deleteTask: (id: string) => Promise<void>;
   /** Opens the Agent app at a Task. */
@@ -168,11 +178,13 @@ interface DesktopState {
   /** Makes a Task the one whose step feed is live; the Agent app calls it. */
   selectTask: (id: string) => void;
   loadTask: (id: string) => Promise<void>;
-  /** Loads more of the Task history than boot does, for the Agent app's list. */
-  loadTasks: (limit: number) => Promise<void>;
+  /** Loads more of the Task history than boot does, for the Agent app's list; or a Workspace's, for Code's sidebar. */
+  loadTasks: (limit: number, workspace?: string) => Promise<void>;
+  /** Keeps a Task's step feed live in feeds until the returned function is called (M8.11). */
+  watchTask: (id: string) => () => void;
   decideApproval: (id: string, decision: ApprovalDecision) => Promise<void>;
   answerQuestion: (id: string, text: string) => Promise<void>;
-  sendFollowUp: (id: string, text: string) => Promise<void>;
+  sendFollowUp: (id: string, text: string, editor?: EditorContext) => Promise<void>;
   cancelTask: (id: string) => Promise<void>;
   resumeTask: (id: string) => Promise<void>;
   stopAll: () => Promise<void>;
@@ -188,6 +200,8 @@ interface DesktopState {
 }
 
 let nextId = 1;
+// How many of Code's sidebars watch each Task's feed (M8.11).
+const watchers = new Map<string, number>();
 // Ids for client-only notifications (the watchdog's), namespaced so they never
 // collide with the server's and so dismissal can tell them apart.
 let localNoteId = 1;
@@ -251,6 +265,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
   approvals: {},
   openTask: "",
   steps: [],
+  feeds: {},
   downloads: {},
   spotlight: false,
   notifCenter: false,
@@ -366,6 +381,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       tasks: {},
       approvals: {},
       steps: [],
+      feeds: {},
       downloads: {},
       openTask: "",
       conn: "connecting",
@@ -438,7 +454,7 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     const id = `win-${nextId++}`;
     const z = get().topZ + 1;
     // A document window is titled with the file's name, as on macOS.
-    const title = doc ? doc.slice(doc.lastIndexOf("/") + 1) : app.name;
+    const title = doc ? doc.slice(doc.lastIndexOf("/") + 1) || doc : app.name;
     const state = doc ? { path: doc } : undefined;
     set((s) => ({ windows: [...s.windows, { id, appId, title, rect, z, minimized: false, maximized: false, state }], focused: id, topZ: z }));
     save(get);
@@ -451,14 +467,32 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     else get().revealInFinder(path.slice(0, path.lastIndexOf("/")) || "/", path);
   },
 
-  closeWindow: (id) => {
+  openInCode: (path, dir) => {
+    const folder = dir ? path : path.slice(0, path.lastIndexOf("/")) || "/";
+    set({ spotlight: false });
+    get().openApp("code", folder);
+    if (dir) return;
+    // The window showing that folder opens the file in a tab.
+    const win = get().windows.filter((w) => w.appId === "code" && w.state?.path === folder).at(-1);
+    if (win) get().setWinState(win.id, { open: path });
+  },
+
+  setWinTitle: (id, title) => {
+    if (get().windows.find((w) => w.id === id)?.title === title) return;
+    set((s) => ({ windows: s.windows.map((w) => (w.id === id ? { ...w, title } : w)) }));
+    save(get);
+  },
+
+  closeWindow: (id, force) => {
     const win = get().windows.find((w) => w.id === id);
-    if (win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
+    if (!force && !mayClose(id)) return;
+    if (!force && win?.state?.edited === "1" && !window.confirm(`Close ${win.title} without saving your changes?`)) return;
     set((s) => {
       const rest = s.windows.filter((w) => w.id !== id);
       return { windows: rest, focused: s.focused === id ? (topmost(rest)?.id ?? "") : s.focused };
     });
     save(get);
+    windowClosed(id);
   },
 
   focusWindow: (id) => {
@@ -522,18 +556,19 @@ export const useDesktop = create<DesktopState>((set, get) => ({
 
   // ------------------------------------------------------------- Agent surface
 
-  createTask: async (prompt, autonomy) => {
+  createTask: async (prompt, autonomy, from) => {
     const text = prompt.trim();
-    if (!text) return;
+    if (!text) return undefined;
     // interactive: someone (this Desktop) is here to answer Approvals and
     // questions, so the Agent may ask rather than deny (PLAN.md §7). autonomy
     // is left Unspecified when the caller gives none, so the configured
     // Autonomy applies, exactly as `aos run` without --autonomy.
-    const resp = await taskApi.createTask({ prompt: text, interactive: true, autonomy: autonomy ?? Autonomy.UNSPECIFIED });
+    const resp = await taskApi.createTask({ prompt: text, interactive: true, autonomy: autonomy ?? Autonomy.UNSPECIFIED, editor: from?.editor });
     const task = resp.task;
-    if (!task) return;
+    if (!task) return undefined;
     set((s) => ({ tasks: { ...s.tasks, [task.id]: task } }));
-    get().openTaskView(task.id);
+    if (!from) get().openTaskView(task.id);
+    return task;
   },
 
   deleteTask: async (id) => {
@@ -563,8 +598,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     if (id) void get().loadTask(id);
   },
 
-  loadTasks: async (limit) => {
-    const resp = await taskApi.listTasks({ limit }).catch(() => null);
+  loadTasks: async (limit, workspace) => {
+    const resp = await taskApi.listTasks({ limit, workspace }).catch(() => null);
     if (!resp) return;
     // Events may have brought newer copies of some Tasks meanwhile; keep those.
     set((s) => ({ tasks: { ...Object.fromEntries(resp.tasks.map((t) => [t.id, t])), ...s.tasks } }));
@@ -587,10 +622,33 @@ export const useDesktop = create<DesktopState>((set, get) => ({
       return {
         tasks: current && newerTask(current, loaded) === current ? s.tasks : { ...s.tasks, [id]: loaded },
         approvals,
-        // Only the open Task keeps a live step feed.
+        // Only the open Task, and those Code shows, keep a live step feed.
         steps: s.openTask === id ? mergeSteps(resp.steps, s.steps) : s.steps,
+        feeds: s.feeds[id] ? { ...s.feeds, [id]: mergeSteps(resp.steps, s.feeds[id]) } : s.feeds,
       };
     });
+  },
+
+  watchTask: (id) => {
+    const n = watchers.get(id) ?? 0;
+    watchers.set(id, n + 1);
+    if (n === 0) {
+      set((s) => ({ feeds: { ...s.feeds, [id]: s.feeds[id] ?? [] } }));
+      void get().loadTask(id);
+    }
+    let done = false;
+    return () => {
+      if (done) return;
+      done = true;
+      const left = (watchers.get(id) ?? 1) - 1;
+      if (left > 0) return void watchers.set(id, left);
+      watchers.delete(id);
+      set((s) => {
+        const feeds = { ...s.feeds };
+        delete feeds[id];
+        return { feeds };
+      });
+    };
   },
 
   decideApproval: async (id, decision) => {
@@ -609,8 +667,8 @@ export const useDesktop = create<DesktopState>((set, get) => ({
     void get().loadTask(id);
   },
 
-  sendFollowUp: async (id, text) => {
-    const resp = await taskApi.sendFollowUp({ id, text, interactive: true });
+  sendFollowUp: async (id, text, editor) => {
+    const resp = await taskApi.sendFollowUp({ id, text, interactive: true, editor });
     if (resp.task) set((s) => ({ tasks: { ...s.tasks, [id]: resp.task! } }));
   },
 
@@ -665,6 +723,7 @@ let streamUnsub: (() => void) | undefined;
 function closeStream() {
   streamUnsub?.();
   streamUnsub = undefined;
+  setSubscription("");
 }
 
 // startStream applies aosd's events, batched to one store commit per animation
@@ -700,7 +759,10 @@ function startStream(set: SetState) {
   };
   streamUnsub = subscribe({
     onState: (conn) => set({ conn }),
+    onSubscription: setSubscription,
     onEvent: (event) => {
+      // A Code window's folder changes go straight to it, not through the store.
+      if (event.kind.case === "workspace") return workspaceEvent(event.kind.value);
       queue.push(event);
       if (!scheduled) {
         scheduled = true;
@@ -718,6 +780,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   let tasks = s.tasks;
   let approvals = s.approvals;
   let steps = s.steps;
+  let feeds = s.feeds;
   let downloads = s.downloads;
   let replay = s.replay;
   let serviceEpoch = s.serviceEpoch;
@@ -749,6 +812,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
             openTask = "";
             steps = [];
           }
+          if (t && feeds[t.id]) feeds = { ...feeds, [t.id]: [] };
           if (t) dropDownloads((d) => d.taskId !== t.id);
           break;
         }
@@ -774,6 +838,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "taskStep": {
         const step = k.value.step;
         if (step && step.taskId === s.openTask) steps = upsertStep(steps, step);
+        if (step && feeds[step.taskId]) feeds = { ...feeds, [step.taskId]: upsertStep(feeds[step.taskId], step) };
         // A download is over when its Tool call is.
         if (step && downloads[step.id] && (step.toolCall?.status ?? 0) >= ToolCallStatus.SUCCEEDED) dropDownloads((_, id) => id !== step.id);
         break;
@@ -786,6 +851,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
       case "textDelta": {
         const d = k.value;
         if (d.taskId === s.openTask) steps = appendDelta(steps, d.stepId, d.delta);
+        if (feeds[d.taskId]) feeds = { ...feeds, [d.taskId]: appendDelta(feeds[d.taskId], d.stepId, d.delta) };
         break;
       }
       case "replayProgress": {
@@ -806,6 +872,7 @@ function reduce(s: DesktopState, batch: Event[]): Partial<DesktopState> {
   if (tasks !== s.tasks) out.tasks = tasks;
   if (approvals !== s.approvals) out.approvals = approvals;
   if (steps !== s.steps) out.steps = steps;
+  if (feeds !== s.feeds) out.feeds = feeds;
   if (downloads !== s.downloads) out.downloads = downloads;
   if (openTask !== s.openTask) out.openTask = openTask;
   if (replay !== s.replay) out.replay = replay;

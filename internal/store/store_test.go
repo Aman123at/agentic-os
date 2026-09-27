@@ -22,7 +22,7 @@ func TestMigrationsApplyOnceAndTheLedgerIsAppendOnly(t *testing.T) {
 	}
 	defer db.Close()
 	var version int
-	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
+	if err := db.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 7 {
 		t.Fatalf("user_version %d, %v", version, err)
 	}
 
@@ -113,7 +113,7 @@ func TestPerRealmDatabasesAreIndependent(t *testing.T) {
 	}
 	defer root.Close()
 	var version int
-	if err := root.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 6 {
+	if err := root.Read().QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 7 {
 		t.Fatalf("Root database user_version %d, %v; want every migration applied", version, err)
 	}
 

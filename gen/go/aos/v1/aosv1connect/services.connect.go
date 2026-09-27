@@ -43,6 +43,8 @@ const (
 	SettingsServiceName = "aos.v1.SettingsService"
 	// SystemServiceName is the fully-qualified name of the SystemService service.
 	SystemServiceName = "aos.v1.SystemService"
+	// CodeServiceName is the fully-qualified name of the CodeService service.
+	CodeServiceName = "aos.v1.CodeService"
 )
 
 // These constants are the fully-qualified names of the RPCs defined in this package. They're
@@ -88,6 +90,16 @@ const (
 	TaskServiceStopAllProcedure = "/aos.v1.TaskService/StopAll"
 	// TaskServiceDeleteTaskProcedure is the fully-qualified name of the TaskService's DeleteTask RPC.
 	TaskServiceDeleteTaskProcedure = "/aos.v1.TaskService/DeleteTask"
+	// TaskServiceListChangesProcedure is the fully-qualified name of the TaskService's ListChanges RPC.
+	TaskServiceListChangesProcedure = "/aos.v1.TaskService/ListChanges"
+	// TaskServiceGetBeforeProcedure is the fully-qualified name of the TaskService's GetBefore RPC.
+	TaskServiceGetBeforeProcedure = "/aos.v1.TaskService/GetBefore"
+	// TaskServiceReviewChangeProcedure is the fully-qualified name of the TaskService's ReviewChange
+	// RPC.
+	TaskServiceReviewChangeProcedure = "/aos.v1.TaskService/ReviewChange"
+	// TaskServiceDiscardChangeProcedure is the fully-qualified name of the TaskService's DiscardChange
+	// RPC.
+	TaskServiceDiscardChangeProcedure = "/aos.v1.TaskService/DiscardChange"
 	// ApprovalServiceListPendingProcedure is the fully-qualified name of the ApprovalService's
 	// ListPending RPC.
 	ApprovalServiceListPendingProcedure = "/aos.v1.ApprovalService/ListPending"
@@ -103,6 +115,8 @@ const (
 	FileServiceReadProcedure = "/aos.v1.FileService/Read"
 	// FileServiceWriteProcedure is the fully-qualified name of the FileService's Write RPC.
 	FileServiceWriteProcedure = "/aos.v1.FileService/Write"
+	// FileServiceMakeFolderProcedure is the fully-qualified name of the FileService's MakeFolder RPC.
+	FileServiceMakeFolderProcedure = "/aos.v1.FileService/MakeFolder"
 	// FileServiceMoveProcedure is the fully-qualified name of the FileService's Move RPC.
 	FileServiceMoveProcedure = "/aos.v1.FileService/Move"
 	// FileServiceCopyProcedure is the fully-qualified name of the FileService's Copy RPC.
@@ -118,6 +132,15 @@ const (
 	FileServiceListProtectedProcedure = "/aos.v1.FileService/ListProtected"
 	// FileServiceWatchProcedure is the fully-qualified name of the FileService's Watch RPC.
 	FileServiceWatchProcedure = "/aos.v1.FileService/Watch"
+	// FileServiceCheckSensitiveProcedure is the fully-qualified name of the FileService's
+	// CheckSensitive RPC.
+	FileServiceCheckSensitiveProcedure = "/aos.v1.FileService/CheckSensitive"
+	// FileServiceListSensitiveBackupsProcedure is the fully-qualified name of the FileService's
+	// ListSensitiveBackups RPC.
+	FileServiceListSensitiveBackupsProcedure = "/aos.v1.FileService/ListSensitiveBackups"
+	// FileServiceRestoreSensitiveBackupProcedure is the fully-qualified name of the FileService's
+	// RestoreSensitiveBackup RPC.
+	FileServiceRestoreSensitiveBackupProcedure = "/aos.v1.FileService/RestoreSensitiveBackup"
 	// TrashServiceListTrashProcedure is the fully-qualified name of the TrashService's ListTrash RPC.
 	TrashServiceListTrashProcedure = "/aos.v1.TrashService/ListTrash"
 	// TrashServiceRestoreProcedure is the fully-qualified name of the TrashService's Restore RPC.
@@ -218,6 +241,28 @@ const (
 	// SystemServiceClearRootHistoryProcedure is the fully-qualified name of the SystemService's
 	// ClearRootHistory RPC.
 	SystemServiceClearRootHistoryProcedure = "/aos.v1.SystemService/ClearRootHistory"
+	// CodeServiceOpenWorkspaceProcedure is the fully-qualified name of the CodeService's OpenWorkspace
+	// RPC.
+	CodeServiceOpenWorkspaceProcedure = "/aos.v1.CodeService/OpenWorkspace"
+	// CodeServiceCloseWorkspaceProcedure is the fully-qualified name of the CodeService's
+	// CloseWorkspace RPC.
+	CodeServiceCloseWorkspaceProcedure = "/aos.v1.CodeService/CloseWorkspace"
+	// CodeServiceReportDirtyProcedure is the fully-qualified name of the CodeService's ReportDirty RPC.
+	CodeServiceReportDirtyProcedure = "/aos.v1.CodeService/ReportDirty"
+	// CodeServiceFindFilesProcedure is the fully-qualified name of the CodeService's FindFiles RPC.
+	CodeServiceFindFilesProcedure = "/aos.v1.CodeService/FindFiles"
+	// CodeServiceSearchTextProcedure is the fully-qualified name of the CodeService's SearchText RPC.
+	CodeServiceSearchTextProcedure = "/aos.v1.CodeService/SearchText"
+	// CodeServiceDefinitionProcedure is the fully-qualified name of the CodeService's Definition RPC.
+	CodeServiceDefinitionProcedure = "/aos.v1.CodeService/Definition"
+	// CodeServiceReferencesProcedure is the fully-qualified name of the CodeService's References RPC.
+	CodeServiceReferencesProcedure = "/aos.v1.CodeService/References"
+	// CodeServiceDocumentSymbolsProcedure is the fully-qualified name of the CodeService's
+	// DocumentSymbols RPC.
+	CodeServiceDocumentSymbolsProcedure = "/aos.v1.CodeService/DocumentSymbols"
+	// CodeServiceWorkspaceSymbolsProcedure is the fully-qualified name of the CodeService's
+	// WorkspaceSymbols RPC.
+	CodeServiceWorkspaceSymbolsProcedure = "/aos.v1.CodeService/WorkspaceSymbols"
 )
 
 // AuthServiceClient is a client for the aos.v1.AuthService service.
@@ -473,6 +518,18 @@ type TaskServiceClient interface {
 	// is queued, running or waiting: cancel it first. The Audit Log keeps its
 	// record (it is append-only).
 	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
+	// The files a Task changed with its Tools, each with its before-image: the
+	// content it had before the Task first changed it (M8.11).
+	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
+	// One changed file's before-image.
+	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
+	// Records what the user kept of a Task's change to a file in Change Review
+	// (M8.12): the file is compared with this from now on.
+	ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error)
+	// Discards what is left of a Task's change to a file: puts back what it is
+	// compared with, or moves it to the Trash if that is "did not exist". As
+	// the Realm's user, audited; a Sensitive System File needs confirming.
+	DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error)
 }
 
 // NewTaskServiceClient constructs a client for the aos.v1.TaskService service. By default, it uses
@@ -540,6 +597,30 @@ func NewTaskServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
 			connect.WithClientOptions(opts...),
 		),
+		listChanges: connect.NewClient[v1.ListChangesRequest, v1.ListChangesResponse](
+			httpClient,
+			baseURL+TaskServiceListChangesProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("ListChanges")),
+			connect.WithClientOptions(opts...),
+		),
+		getBefore: connect.NewClient[v1.GetBeforeRequest, v1.GetBeforeResponse](
+			httpClient,
+			baseURL+TaskServiceGetBeforeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
+			connect.WithClientOptions(opts...),
+		),
+		reviewChange: connect.NewClient[v1.ReviewChangeRequest, v1.ReviewChangeResponse](
+			httpClient,
+			baseURL+TaskServiceReviewChangeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("ReviewChange")),
+			connect.WithClientOptions(opts...),
+		),
+		discardChange: connect.NewClient[v1.DiscardChangeRequest, v1.DiscardChangeResponse](
+			httpClient,
+			baseURL+TaskServiceDiscardChangeProcedure,
+			connect.WithSchema(taskServiceMethods.ByName("DiscardChange")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -554,6 +635,10 @@ type taskServiceClient struct {
 	resumeTask     *connect.Client[v1.ResumeTaskRequest, v1.ResumeTaskResponse]
 	stopAll        *connect.Client[v1.StopAllRequest, v1.StopAllResponse]
 	deleteTask     *connect.Client[v1.DeleteTaskRequest, v1.DeleteTaskResponse]
+	listChanges    *connect.Client[v1.ListChangesRequest, v1.ListChangesResponse]
+	getBefore      *connect.Client[v1.GetBeforeRequest, v1.GetBeforeResponse]
+	reviewChange   *connect.Client[v1.ReviewChangeRequest, v1.ReviewChangeResponse]
+	discardChange  *connect.Client[v1.DiscardChangeRequest, v1.DiscardChangeResponse]
 }
 
 // CreateTask calls aos.v1.TaskService.CreateTask.
@@ -601,6 +686,26 @@ func (c *taskServiceClient) DeleteTask(ctx context.Context, req *connect.Request
 	return c.deleteTask.CallUnary(ctx, req)
 }
 
+// ListChanges calls aos.v1.TaskService.ListChanges.
+func (c *taskServiceClient) ListChanges(ctx context.Context, req *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error) {
+	return c.listChanges.CallUnary(ctx, req)
+}
+
+// GetBefore calls aos.v1.TaskService.GetBefore.
+func (c *taskServiceClient) GetBefore(ctx context.Context, req *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error) {
+	return c.getBefore.CallUnary(ctx, req)
+}
+
+// ReviewChange calls aos.v1.TaskService.ReviewChange.
+func (c *taskServiceClient) ReviewChange(ctx context.Context, req *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error) {
+	return c.reviewChange.CallUnary(ctx, req)
+}
+
+// DiscardChange calls aos.v1.TaskService.DiscardChange.
+func (c *taskServiceClient) DiscardChange(ctx context.Context, req *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error) {
+	return c.discardChange.CallUnary(ctx, req)
+}
+
 // TaskServiceHandler is an implementation of the aos.v1.TaskService service.
 type TaskServiceHandler interface {
 	CreateTask(context.Context, *connect.Request[v1.CreateTaskRequest]) (*connect.Response[v1.CreateTaskResponse], error)
@@ -616,6 +721,18 @@ type TaskServiceHandler interface {
 	// is queued, running or waiting: cancel it first. The Audit Log keeps its
 	// record (it is append-only).
 	DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error)
+	// The files a Task changed with its Tools, each with its before-image: the
+	// content it had before the Task first changed it (M8.11).
+	ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error)
+	// One changed file's before-image.
+	GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error)
+	// Records what the user kept of a Task's change to a file in Change Review
+	// (M8.12): the file is compared with this from now on.
+	ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error)
+	// Discards what is left of a Task's change to a file: puts back what it is
+	// compared with, or moves it to the Trash if that is "did not exist". As
+	// the Realm's user, audited; a Sensitive System File needs confirming.
+	DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error)
 }
 
 // NewTaskServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -679,6 +796,30 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(taskServiceMethods.ByName("DeleteTask")),
 		connect.WithHandlerOptions(opts...),
 	)
+	taskServiceListChangesHandler := connect.NewUnaryHandler(
+		TaskServiceListChangesProcedure,
+		svc.ListChanges,
+		connect.WithSchema(taskServiceMethods.ByName("ListChanges")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceGetBeforeHandler := connect.NewUnaryHandler(
+		TaskServiceGetBeforeProcedure,
+		svc.GetBefore,
+		connect.WithSchema(taskServiceMethods.ByName("GetBefore")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceReviewChangeHandler := connect.NewUnaryHandler(
+		TaskServiceReviewChangeProcedure,
+		svc.ReviewChange,
+		connect.WithSchema(taskServiceMethods.ByName("ReviewChange")),
+		connect.WithHandlerOptions(opts...),
+	)
+	taskServiceDiscardChangeHandler := connect.NewUnaryHandler(
+		TaskServiceDiscardChangeProcedure,
+		svc.DiscardChange,
+		connect.WithSchema(taskServiceMethods.ByName("DiscardChange")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.TaskService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case TaskServiceCreateTaskProcedure:
@@ -699,6 +840,14 @@ func NewTaskServiceHandler(svc TaskServiceHandler, opts ...connect.HandlerOption
 			taskServiceStopAllHandler.ServeHTTP(w, r)
 		case TaskServiceDeleteTaskProcedure:
 			taskServiceDeleteTaskHandler.ServeHTTP(w, r)
+		case TaskServiceListChangesProcedure:
+			taskServiceListChangesHandler.ServeHTTP(w, r)
+		case TaskServiceGetBeforeProcedure:
+			taskServiceGetBeforeHandler.ServeHTTP(w, r)
+		case TaskServiceReviewChangeProcedure:
+			taskServiceReviewChangeHandler.ServeHTTP(w, r)
+		case TaskServiceDiscardChangeProcedure:
+			taskServiceDiscardChangeHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -742,6 +891,22 @@ func (UnimplementedTaskServiceHandler) StopAll(context.Context, *connect.Request
 
 func (UnimplementedTaskServiceHandler) DeleteTask(context.Context, *connect.Request[v1.DeleteTaskRequest]) (*connect.Response[v1.DeleteTaskResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.DeleteTask is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) ListChanges(context.Context, *connect.Request[v1.ListChangesRequest]) (*connect.Response[v1.ListChangesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.ListChanges is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) GetBefore(context.Context, *connect.Request[v1.GetBeforeRequest]) (*connect.Response[v1.GetBeforeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.GetBefore is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) ReviewChange(context.Context, *connect.Request[v1.ReviewChangeRequest]) (*connect.Response[v1.ReviewChangeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.ReviewChange is not implemented"))
+}
+
+func (UnimplementedTaskServiceHandler) DiscardChange(context.Context, *connect.Request[v1.DiscardChangeRequest]) (*connect.Response[v1.DiscardChangeResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.TaskService.DiscardChange is not implemented"))
 }
 
 // ApprovalServiceClient is a client for the aos.v1.ApprovalService service.
@@ -916,6 +1081,9 @@ type FileServiceClient interface {
 	Stat(context.Context, *connect.Request[v1.StatRequest]) (*connect.Response[v1.StatResponse], error)
 	Read(context.Context, *connect.Request[v1.ReadRequest]) (*connect.Response[v1.ReadResponse], error)
 	Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error)
+	// Makes a new folder, and any missing folders above it (M8.3). Something
+	// already at the path is AlreadyExists.
+	MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error)
 	Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error)
 	Copy(context.Context, *connect.Request[v1.CopyRequest]) (*connect.Response[v1.CopyResponse], error)
 	// Moves to the Trash.
@@ -927,6 +1095,19 @@ type FileServiceClient interface {
 	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
 	// Host, a Windows Shared Folder included).
 	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WatchResponse], error)
+	// Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+	// and Delete refuse to change one unless confirm_sensitive is set
+	// (FailedPrecondition, with a SensitivePath detail). A confirmed write
+	// keeps the version it replaces, the last five per file.
+	//
+	// CheckSensitive runs the file's own checker, where it has one, on content
+	// about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+	// --verify for fstab.
+	CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error)
+	ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error)
+	// Puts a kept version back; itself a confirmed write, so the version it
+	// replaces is kept in turn.
+	RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error)
 }
 
 // NewFileServiceClient constructs a client for the aos.v1.FileService service. By default, it uses
@@ -962,6 +1143,12 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			httpClient,
 			baseURL+FileServiceWriteProcedure,
 			connect.WithSchema(fileServiceMethods.ByName("Write")),
+			connect.WithClientOptions(opts...),
+		),
+		makeFolder: connect.NewClient[v1.MakeFolderRequest, v1.MakeFolderResponse](
+			httpClient,
+			baseURL+FileServiceMakeFolderProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("MakeFolder")),
 			connect.WithClientOptions(opts...),
 		),
 		move: connect.NewClient[v1.MoveRequest, v1.MoveResponse](
@@ -1006,22 +1193,44 @@ func NewFileServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(fileServiceMethods.ByName("Watch")),
 			connect.WithClientOptions(opts...),
 		),
+		checkSensitive: connect.NewClient[v1.CheckSensitiveRequest, v1.CheckSensitiveResponse](
+			httpClient,
+			baseURL+FileServiceCheckSensitiveProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("CheckSensitive")),
+			connect.WithClientOptions(opts...),
+		),
+		listSensitiveBackups: connect.NewClient[v1.ListSensitiveBackupsRequest, v1.ListSensitiveBackupsResponse](
+			httpClient,
+			baseURL+FileServiceListSensitiveBackupsProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("ListSensitiveBackups")),
+			connect.WithClientOptions(opts...),
+		),
+		restoreSensitiveBackup: connect.NewClient[v1.RestoreSensitiveBackupRequest, v1.RestoreSensitiveBackupResponse](
+			httpClient,
+			baseURL+FileServiceRestoreSensitiveBackupProcedure,
+			connect.WithSchema(fileServiceMethods.ByName("RestoreSensitiveBackup")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // fileServiceClient implements FileServiceClient.
 type fileServiceClient struct {
-	list          *connect.Client[v1.ListRequest, v1.ListResponse]
-	stat          *connect.Client[v1.StatRequest, v1.StatResponse]
-	read          *connect.Client[v1.ReadRequest, v1.ReadResponse]
-	write         *connect.Client[v1.WriteRequest, v1.WriteResponse]
-	move          *connect.Client[v1.MoveRequest, v1.MoveResponse]
-	copy          *connect.Client[v1.CopyRequest, v1.CopyResponse]
-	delete        *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
-	protect       *connect.Client[v1.ProtectRequest, v1.ProtectResponse]
-	unprotect     *connect.Client[v1.UnprotectRequest, v1.UnprotectResponse]
-	listProtected *connect.Client[v1.ListProtectedRequest, v1.ListProtectedResponse]
-	watch         *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	list                   *connect.Client[v1.ListRequest, v1.ListResponse]
+	stat                   *connect.Client[v1.StatRequest, v1.StatResponse]
+	read                   *connect.Client[v1.ReadRequest, v1.ReadResponse]
+	write                  *connect.Client[v1.WriteRequest, v1.WriteResponse]
+	makeFolder             *connect.Client[v1.MakeFolderRequest, v1.MakeFolderResponse]
+	move                   *connect.Client[v1.MoveRequest, v1.MoveResponse]
+	copy                   *connect.Client[v1.CopyRequest, v1.CopyResponse]
+	delete                 *connect.Client[v1.DeleteRequest, v1.DeleteResponse]
+	protect                *connect.Client[v1.ProtectRequest, v1.ProtectResponse]
+	unprotect              *connect.Client[v1.UnprotectRequest, v1.UnprotectResponse]
+	listProtected          *connect.Client[v1.ListProtectedRequest, v1.ListProtectedResponse]
+	watch                  *connect.Client[v1.WatchRequest, v1.WatchResponse]
+	checkSensitive         *connect.Client[v1.CheckSensitiveRequest, v1.CheckSensitiveResponse]
+	listSensitiveBackups   *connect.Client[v1.ListSensitiveBackupsRequest, v1.ListSensitiveBackupsResponse]
+	restoreSensitiveBackup *connect.Client[v1.RestoreSensitiveBackupRequest, v1.RestoreSensitiveBackupResponse]
 }
 
 // List calls aos.v1.FileService.List.
@@ -1042,6 +1251,11 @@ func (c *fileServiceClient) Read(ctx context.Context, req *connect.Request[v1.Re
 // Write calls aos.v1.FileService.Write.
 func (c *fileServiceClient) Write(ctx context.Context, req *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error) {
 	return c.write.CallUnary(ctx, req)
+}
+
+// MakeFolder calls aos.v1.FileService.MakeFolder.
+func (c *fileServiceClient) MakeFolder(ctx context.Context, req *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error) {
+	return c.makeFolder.CallUnary(ctx, req)
 }
 
 // Move calls aos.v1.FileService.Move.
@@ -1079,12 +1293,30 @@ func (c *fileServiceClient) Watch(ctx context.Context, req *connect.Request[v1.W
 	return c.watch.CallServerStream(ctx, req)
 }
 
+// CheckSensitive calls aos.v1.FileService.CheckSensitive.
+func (c *fileServiceClient) CheckSensitive(ctx context.Context, req *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error) {
+	return c.checkSensitive.CallUnary(ctx, req)
+}
+
+// ListSensitiveBackups calls aos.v1.FileService.ListSensitiveBackups.
+func (c *fileServiceClient) ListSensitiveBackups(ctx context.Context, req *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error) {
+	return c.listSensitiveBackups.CallUnary(ctx, req)
+}
+
+// RestoreSensitiveBackup calls aos.v1.FileService.RestoreSensitiveBackup.
+func (c *fileServiceClient) RestoreSensitiveBackup(ctx context.Context, req *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error) {
+	return c.restoreSensitiveBackup.CallUnary(ctx, req)
+}
+
 // FileServiceHandler is an implementation of the aos.v1.FileService service.
 type FileServiceHandler interface {
 	List(context.Context, *connect.Request[v1.ListRequest]) (*connect.Response[v1.ListResponse], error)
 	Stat(context.Context, *connect.Request[v1.StatRequest]) (*connect.Response[v1.StatResponse], error)
 	Read(context.Context, *connect.Request[v1.ReadRequest]) (*connect.Response[v1.ReadResponse], error)
 	Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error)
+	// Makes a new folder, and any missing folders above it (M8.3). Something
+	// already at the path is AlreadyExists.
+	MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error)
 	Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error)
 	Copy(context.Context, *connect.Request[v1.CopyRequest]) (*connect.Response[v1.CopyResponse], error)
 	// Moves to the Trash.
@@ -1096,6 +1328,19 @@ type FileServiceHandler interface {
 	// client stays (PLAN.md §15: polled every 2 s, which sees changes on every
 	// Host, a Windows Shared Folder included).
 	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error
+	// Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+	// and Delete refuse to change one unless confirm_sensitive is set
+	// (FailedPrecondition, with a SensitivePath detail). A confirmed write
+	// keeps the version it replaces, the last five per file.
+	//
+	// CheckSensitive runs the file's own checker, where it has one, on content
+	// about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+	// --verify for fstab.
+	CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error)
+	ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error)
+	// Puts a kept version back; itself a confirmed write, so the version it
+	// replaces is kept in turn.
+	RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error)
 }
 
 // NewFileServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -1127,6 +1372,12 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		FileServiceWriteProcedure,
 		svc.Write,
 		connect.WithSchema(fileServiceMethods.ByName("Write")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceMakeFolderHandler := connect.NewUnaryHandler(
+		FileServiceMakeFolderProcedure,
+		svc.MakeFolder,
+		connect.WithSchema(fileServiceMethods.ByName("MakeFolder")),
 		connect.WithHandlerOptions(opts...),
 	)
 	fileServiceMoveHandler := connect.NewUnaryHandler(
@@ -1171,6 +1422,24 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(fileServiceMethods.ByName("Watch")),
 		connect.WithHandlerOptions(opts...),
 	)
+	fileServiceCheckSensitiveHandler := connect.NewUnaryHandler(
+		FileServiceCheckSensitiveProcedure,
+		svc.CheckSensitive,
+		connect.WithSchema(fileServiceMethods.ByName("CheckSensitive")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceListSensitiveBackupsHandler := connect.NewUnaryHandler(
+		FileServiceListSensitiveBackupsProcedure,
+		svc.ListSensitiveBackups,
+		connect.WithSchema(fileServiceMethods.ByName("ListSensitiveBackups")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fileServiceRestoreSensitiveBackupHandler := connect.NewUnaryHandler(
+		FileServiceRestoreSensitiveBackupProcedure,
+		svc.RestoreSensitiveBackup,
+		connect.WithSchema(fileServiceMethods.ByName("RestoreSensitiveBackup")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aos.v1.FileService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FileServiceListProcedure:
@@ -1181,6 +1450,8 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 			fileServiceReadHandler.ServeHTTP(w, r)
 		case FileServiceWriteProcedure:
 			fileServiceWriteHandler.ServeHTTP(w, r)
+		case FileServiceMakeFolderProcedure:
+			fileServiceMakeFolderHandler.ServeHTTP(w, r)
 		case FileServiceMoveProcedure:
 			fileServiceMoveHandler.ServeHTTP(w, r)
 		case FileServiceCopyProcedure:
@@ -1195,6 +1466,12 @@ func NewFileServiceHandler(svc FileServiceHandler, opts ...connect.HandlerOption
 			fileServiceListProtectedHandler.ServeHTTP(w, r)
 		case FileServiceWatchProcedure:
 			fileServiceWatchHandler.ServeHTTP(w, r)
+		case FileServiceCheckSensitiveProcedure:
+			fileServiceCheckSensitiveHandler.ServeHTTP(w, r)
+		case FileServiceListSensitiveBackupsProcedure:
+			fileServiceListSensitiveBackupsHandler.ServeHTTP(w, r)
+		case FileServiceRestoreSensitiveBackupProcedure:
+			fileServiceRestoreSensitiveBackupHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -1218,6 +1495,10 @@ func (UnimplementedFileServiceHandler) Read(context.Context, *connect.Request[v1
 
 func (UnimplementedFileServiceHandler) Write(context.Context, *connect.Request[v1.WriteRequest]) (*connect.Response[v1.WriteResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.Write is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) MakeFolder(context.Context, *connect.Request[v1.MakeFolderRequest]) (*connect.Response[v1.MakeFolderResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.MakeFolder is not implemented"))
 }
 
 func (UnimplementedFileServiceHandler) Move(context.Context, *connect.Request[v1.MoveRequest]) (*connect.Response[v1.MoveResponse], error) {
@@ -1246,6 +1527,18 @@ func (UnimplementedFileServiceHandler) ListProtected(context.Context, *connect.R
 
 func (UnimplementedFileServiceHandler) Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WatchResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.Watch is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) CheckSensitive(context.Context, *connect.Request[v1.CheckSensitiveRequest]) (*connect.Response[v1.CheckSensitiveResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.CheckSensitive is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) ListSensitiveBackups(context.Context, *connect.Request[v1.ListSensitiveBackupsRequest]) (*connect.Response[v1.ListSensitiveBackupsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.ListSensitiveBackups is not implemented"))
+}
+
+func (UnimplementedFileServiceHandler) RestoreSensitiveBackup(context.Context, *connect.Request[v1.RestoreSensitiveBackupRequest]) (*connect.Response[v1.RestoreSensitiveBackupResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.FileService.RestoreSensitiveBackup is not implemented"))
 }
 
 // TrashServiceClient is a client for the aos.v1.TrashService service.
@@ -2239,9 +2532,11 @@ type SystemServiceClient interface {
 	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
 	// Desktop account's password (verified like sign-in, M6.3); turning it off
 	// needs none, since it lowers privilege. It is refused while any Task is
-	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-	// before the password is even checked, so a wrong-password try is never spent
-	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// Queued, Running or AwaitingUser, and while any Code window has a Workspace
+	// open (M8.13), since the restart would drop its unsaved files
+	// (FailedPrecondition, detail RootModeBlocked, listing both), before the
+	// password is even checked, so a wrong-password try is never spent on a
+	// switch that cannot happen. A wrong password is Unauthenticated (detail
 	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
 	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
 	// unlock time). On success it audits the switch in the Realm it is made from
@@ -2429,9 +2724,11 @@ type SystemServiceHandler interface {
 	// root_mode key, which SettingsService.Update refuses. Turning it on needs the
 	// Desktop account's password (verified like sign-in, M6.3); turning it off
 	// needs none, since it lowers privilege. It is refused while any Task is
-	// Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-	// before the password is even checked, so a wrong-password try is never spent
-	// on a switch that cannot happen. A wrong password is Unauthenticated (detail
+	// Queued, Running or AwaitingUser, and while any Code window has a Workspace
+	// open (M8.13), since the restart would drop its unsaved files
+	// (FailedPrecondition, detail RootModeBlocked, listing both), before the
+	// password is even checked, so a wrong-password try is never spent on a
+	// switch that cannot happen. A wrong password is Unauthenticated (detail
 	// RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
 	// the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
 	// unlock time). On success it audits the switch in the Realm it is made from
@@ -2590,4 +2887,354 @@ func (UnimplementedSystemServiceHandler) SetRootMode(context.Context, *connect.R
 
 func (UnimplementedSystemServiceHandler) ClearRootHistory(context.Context, *connect.Request[v1.ClearRootHistoryRequest]) (*connect.Response[v1.ClearRootHistoryResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.SystemService.ClearRootHistory is not implemented"))
+}
+
+// CodeServiceClient is a client for the aos.v1.CodeService service.
+type CodeServiceClient interface {
+	// OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+	// tab's subscription. The Workspace's changes then arrive on that
+	// subscription as WorkspaceChanged events: first how it is watched, then
+	// what appears, changes or goes under it. They travel on another connection,
+	// so one may arrive before this response does.
+	//
+	// A folder the Realm's user cannot read is refused (PermissionDenied), and a
+	// path that is not a folder is InvalidArgument. An unknown or ended
+	// subscription is NotFound; more than 32 Workspaces in one tab is
+	// ResourceExhausted. While any Workspace is open, the Realm cannot be
+	// switched (M8.13).
+	OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error)
+	// CloseWorkspace closes a Workspace when its window closes. NotFound once
+	// it is already closed.
+	CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error)
+	// ReportDirty replaces the unsaved files of an open Workspace, which the
+	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+	// FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+	// a query, best first. The files are listed as the Realm's user once,
+	// honouring .gitignore, and kept current from the Workspace's watch.
+	FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error)
+	// SearchText is Find in Files (M8.7): matching lines under the Workspace,
+	// file by file as they are found, then a summary. ripgrep runs as the
+	// Realm's user when installed, AOS's own search otherwise; both honour
+	// .gitignore and skip binary files. A regular expression that does not
+	// compile is InvalidArgument.
+	SearchText(context.Context, *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error)
+	// Navigation (M8.8), from a symbol index of the Workspace that
+	// universal-ctags builds as the Realm's user: in memory, built at the first
+	// question and then kept current from the Workspace's watch. It is by name,
+	// not by type: two Run methods are both offered. Past 20 000 files only the
+	// folders of the files asked from are indexed (IndexState.partial). Without
+	// universal-ctags these are FailedPrecondition, saying to install it.
+	//
+	// Definition: where a name is defined, nearest to the file asked from first.
+	Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error)
+	// References: the name's whole-word, case-sensitive uses in files of the
+	// same language as the file asked from. A text search, so it needs no ctags.
+	References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error)
+	// DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+	DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error)
+	// WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+	// completion.
+	WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error)
+}
+
+// NewCodeServiceClient constructs a client for the aos.v1.CodeService service. By default, it uses
+// the Connect protocol with the binary Protobuf Codec, asks for gzipped responses, and sends
+// uncompressed requests. To use the gRPC or gRPC-Web protocols, supply the connect.WithGRPC() or
+// connect.WithGRPCWeb() options.
+//
+// The URL supplied here should be the base URL for the Connect or gRPC server (for example,
+// http://api.acme.com or https://acme.com/grpc).
+func NewCodeServiceClient(httpClient connect.HTTPClient, baseURL string, opts ...connect.ClientOption) CodeServiceClient {
+	baseURL = strings.TrimRight(baseURL, "/")
+	codeServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("CodeService").Methods()
+	return &codeServiceClient{
+		openWorkspace: connect.NewClient[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse](
+			httpClient,
+			baseURL+CodeServiceOpenWorkspaceProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("OpenWorkspace")),
+			connect.WithClientOptions(opts...),
+		),
+		closeWorkspace: connect.NewClient[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse](
+			httpClient,
+			baseURL+CodeServiceCloseWorkspaceProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("CloseWorkspace")),
+			connect.WithClientOptions(opts...),
+		),
+		reportDirty: connect.NewClient[v1.ReportDirtyRequest, v1.ReportDirtyResponse](
+			httpClient,
+			baseURL+CodeServiceReportDirtyProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
+			connect.WithClientOptions(opts...),
+		),
+		findFiles: connect.NewClient[v1.FindFilesRequest, v1.FindFilesResponse](
+			httpClient,
+			baseURL+CodeServiceFindFilesProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("FindFiles")),
+			connect.WithClientOptions(opts...),
+		),
+		searchText: connect.NewClient[v1.SearchTextRequest, v1.SearchTextResponse](
+			httpClient,
+			baseURL+CodeServiceSearchTextProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("SearchText")),
+			connect.WithClientOptions(opts...),
+		),
+		definition: connect.NewClient[v1.DefinitionRequest, v1.DefinitionResponse](
+			httpClient,
+			baseURL+CodeServiceDefinitionProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("Definition")),
+			connect.WithClientOptions(opts...),
+		),
+		references: connect.NewClient[v1.ReferencesRequest, v1.ReferencesResponse](
+			httpClient,
+			baseURL+CodeServiceReferencesProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("References")),
+			connect.WithClientOptions(opts...),
+		),
+		documentSymbols: connect.NewClient[v1.DocumentSymbolsRequest, v1.DocumentSymbolsResponse](
+			httpClient,
+			baseURL+CodeServiceDocumentSymbolsProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("DocumentSymbols")),
+			connect.WithClientOptions(opts...),
+		),
+		workspaceSymbols: connect.NewClient[v1.WorkspaceSymbolsRequest, v1.WorkspaceSymbolsResponse](
+			httpClient,
+			baseURL+CodeServiceWorkspaceSymbolsProcedure,
+			connect.WithSchema(codeServiceMethods.ByName("WorkspaceSymbols")),
+			connect.WithClientOptions(opts...),
+		),
+	}
+}
+
+// codeServiceClient implements CodeServiceClient.
+type codeServiceClient struct {
+	openWorkspace    *connect.Client[v1.OpenWorkspaceRequest, v1.OpenWorkspaceResponse]
+	closeWorkspace   *connect.Client[v1.CloseWorkspaceRequest, v1.CloseWorkspaceResponse]
+	reportDirty      *connect.Client[v1.ReportDirtyRequest, v1.ReportDirtyResponse]
+	findFiles        *connect.Client[v1.FindFilesRequest, v1.FindFilesResponse]
+	searchText       *connect.Client[v1.SearchTextRequest, v1.SearchTextResponse]
+	definition       *connect.Client[v1.DefinitionRequest, v1.DefinitionResponse]
+	references       *connect.Client[v1.ReferencesRequest, v1.ReferencesResponse]
+	documentSymbols  *connect.Client[v1.DocumentSymbolsRequest, v1.DocumentSymbolsResponse]
+	workspaceSymbols *connect.Client[v1.WorkspaceSymbolsRequest, v1.WorkspaceSymbolsResponse]
+}
+
+// OpenWorkspace calls aos.v1.CodeService.OpenWorkspace.
+func (c *codeServiceClient) OpenWorkspace(ctx context.Context, req *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error) {
+	return c.openWorkspace.CallUnary(ctx, req)
+}
+
+// CloseWorkspace calls aos.v1.CodeService.CloseWorkspace.
+func (c *codeServiceClient) CloseWorkspace(ctx context.Context, req *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error) {
+	return c.closeWorkspace.CallUnary(ctx, req)
+}
+
+// ReportDirty calls aos.v1.CodeService.ReportDirty.
+func (c *codeServiceClient) ReportDirty(ctx context.Context, req *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
+	return c.reportDirty.CallUnary(ctx, req)
+}
+
+// FindFiles calls aos.v1.CodeService.FindFiles.
+func (c *codeServiceClient) FindFiles(ctx context.Context, req *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error) {
+	return c.findFiles.CallUnary(ctx, req)
+}
+
+// SearchText calls aos.v1.CodeService.SearchText.
+func (c *codeServiceClient) SearchText(ctx context.Context, req *connect.Request[v1.SearchTextRequest]) (*connect.ServerStreamForClient[v1.SearchTextResponse], error) {
+	return c.searchText.CallServerStream(ctx, req)
+}
+
+// Definition calls aos.v1.CodeService.Definition.
+func (c *codeServiceClient) Definition(ctx context.Context, req *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error) {
+	return c.definition.CallUnary(ctx, req)
+}
+
+// References calls aos.v1.CodeService.References.
+func (c *codeServiceClient) References(ctx context.Context, req *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error) {
+	return c.references.CallUnary(ctx, req)
+}
+
+// DocumentSymbols calls aos.v1.CodeService.DocumentSymbols.
+func (c *codeServiceClient) DocumentSymbols(ctx context.Context, req *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error) {
+	return c.documentSymbols.CallUnary(ctx, req)
+}
+
+// WorkspaceSymbols calls aos.v1.CodeService.WorkspaceSymbols.
+func (c *codeServiceClient) WorkspaceSymbols(ctx context.Context, req *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error) {
+	return c.workspaceSymbols.CallUnary(ctx, req)
+}
+
+// CodeServiceHandler is an implementation of the aos.v1.CodeService service.
+type CodeServiceHandler interface {
+	// OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+	// tab's subscription. The Workspace's changes then arrive on that
+	// subscription as WorkspaceChanged events: first how it is watched, then
+	// what appears, changes or goes under it. They travel on another connection,
+	// so one may arrive before this response does.
+	//
+	// A folder the Realm's user cannot read is refused (PermissionDenied), and a
+	// path that is not a folder is InvalidArgument. An unknown or ended
+	// subscription is NotFound; more than 32 Workspaces in one tab is
+	// ResourceExhausted. While any Workspace is open, the Realm cannot be
+	// switched (M8.13).
+	OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error)
+	// CloseWorkspace closes a Workspace when its window closes. NotFound once
+	// it is already closed.
+	CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error)
+	// ReportDirty replaces the unsaved files of an open Workspace, which the
+	// Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+	ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error)
+	// FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+	// a query, best first. The files are listed as the Realm's user once,
+	// honouring .gitignore, and kept current from the Workspace's watch.
+	FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error)
+	// SearchText is Find in Files (M8.7): matching lines under the Workspace,
+	// file by file as they are found, then a summary. ripgrep runs as the
+	// Realm's user when installed, AOS's own search otherwise; both honour
+	// .gitignore and skip binary files. A regular expression that does not
+	// compile is InvalidArgument.
+	SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error
+	// Navigation (M8.8), from a symbol index of the Workspace that
+	// universal-ctags builds as the Realm's user: in memory, built at the first
+	// question and then kept current from the Workspace's watch. It is by name,
+	// not by type: two Run methods are both offered. Past 20 000 files only the
+	// folders of the files asked from are indexed (IndexState.partial). Without
+	// universal-ctags these are FailedPrecondition, saying to install it.
+	//
+	// Definition: where a name is defined, nearest to the file asked from first.
+	Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error)
+	// References: the name's whole-word, case-sensitive uses in files of the
+	// same language as the file asked from. A text search, so it needs no ctags.
+	References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error)
+	// DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+	DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error)
+	// WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+	// completion.
+	WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error)
+}
+
+// NewCodeServiceHandler builds an HTTP handler from the service implementation. It returns the path
+// on which to mount the handler and the handler itself.
+//
+// By default, handlers support the Connect, gRPC, and gRPC-Web protocols with the binary Protobuf
+// and JSON codecs. They also support gzip compression.
+func NewCodeServiceHandler(svc CodeServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
+	codeServiceMethods := v1.File_aos_v1_services_proto.Services().ByName("CodeService").Methods()
+	codeServiceOpenWorkspaceHandler := connect.NewUnaryHandler(
+		CodeServiceOpenWorkspaceProcedure,
+		svc.OpenWorkspace,
+		connect.WithSchema(codeServiceMethods.ByName("OpenWorkspace")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceCloseWorkspaceHandler := connect.NewUnaryHandler(
+		CodeServiceCloseWorkspaceProcedure,
+		svc.CloseWorkspace,
+		connect.WithSchema(codeServiceMethods.ByName("CloseWorkspace")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceReportDirtyHandler := connect.NewUnaryHandler(
+		CodeServiceReportDirtyProcedure,
+		svc.ReportDirty,
+		connect.WithSchema(codeServiceMethods.ByName("ReportDirty")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceFindFilesHandler := connect.NewUnaryHandler(
+		CodeServiceFindFilesProcedure,
+		svc.FindFiles,
+		connect.WithSchema(codeServiceMethods.ByName("FindFiles")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceSearchTextHandler := connect.NewServerStreamHandler(
+		CodeServiceSearchTextProcedure,
+		svc.SearchText,
+		connect.WithSchema(codeServiceMethods.ByName("SearchText")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceDefinitionHandler := connect.NewUnaryHandler(
+		CodeServiceDefinitionProcedure,
+		svc.Definition,
+		connect.WithSchema(codeServiceMethods.ByName("Definition")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceReferencesHandler := connect.NewUnaryHandler(
+		CodeServiceReferencesProcedure,
+		svc.References,
+		connect.WithSchema(codeServiceMethods.ByName("References")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceDocumentSymbolsHandler := connect.NewUnaryHandler(
+		CodeServiceDocumentSymbolsProcedure,
+		svc.DocumentSymbols,
+		connect.WithSchema(codeServiceMethods.ByName("DocumentSymbols")),
+		connect.WithHandlerOptions(opts...),
+	)
+	codeServiceWorkspaceSymbolsHandler := connect.NewUnaryHandler(
+		CodeServiceWorkspaceSymbolsProcedure,
+		svc.WorkspaceSymbols,
+		connect.WithSchema(codeServiceMethods.ByName("WorkspaceSymbols")),
+		connect.WithHandlerOptions(opts...),
+	)
+	return "/aos.v1.CodeService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case CodeServiceOpenWorkspaceProcedure:
+			codeServiceOpenWorkspaceHandler.ServeHTTP(w, r)
+		case CodeServiceCloseWorkspaceProcedure:
+			codeServiceCloseWorkspaceHandler.ServeHTTP(w, r)
+		case CodeServiceReportDirtyProcedure:
+			codeServiceReportDirtyHandler.ServeHTTP(w, r)
+		case CodeServiceFindFilesProcedure:
+			codeServiceFindFilesHandler.ServeHTTP(w, r)
+		case CodeServiceSearchTextProcedure:
+			codeServiceSearchTextHandler.ServeHTTP(w, r)
+		case CodeServiceDefinitionProcedure:
+			codeServiceDefinitionHandler.ServeHTTP(w, r)
+		case CodeServiceReferencesProcedure:
+			codeServiceReferencesHandler.ServeHTTP(w, r)
+		case CodeServiceDocumentSymbolsProcedure:
+			codeServiceDocumentSymbolsHandler.ServeHTTP(w, r)
+		case CodeServiceWorkspaceSymbolsProcedure:
+			codeServiceWorkspaceSymbolsHandler.ServeHTTP(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+}
+
+// UnimplementedCodeServiceHandler returns CodeUnimplemented from all methods.
+type UnimplementedCodeServiceHandler struct{}
+
+func (UnimplementedCodeServiceHandler) OpenWorkspace(context.Context, *connect.Request[v1.OpenWorkspaceRequest]) (*connect.Response[v1.OpenWorkspaceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.OpenWorkspace is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) CloseWorkspace(context.Context, *connect.Request[v1.CloseWorkspaceRequest]) (*connect.Response[v1.CloseWorkspaceResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.CloseWorkspace is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) ReportDirty(context.Context, *connect.Request[v1.ReportDirtyRequest]) (*connect.Response[v1.ReportDirtyResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.ReportDirty is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) FindFiles(context.Context, *connect.Request[v1.FindFilesRequest]) (*connect.Response[v1.FindFilesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.FindFiles is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) SearchText(context.Context, *connect.Request[v1.SearchTextRequest], *connect.ServerStream[v1.SearchTextResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.SearchText is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) Definition(context.Context, *connect.Request[v1.DefinitionRequest]) (*connect.Response[v1.DefinitionResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.Definition is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) References(context.Context, *connect.Request[v1.ReferencesRequest]) (*connect.Response[v1.ReferencesResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.References is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) DocumentSymbols(context.Context, *connect.Request[v1.DocumentSymbolsRequest]) (*connect.Response[v1.DocumentSymbolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.DocumentSymbols is not implemented"))
+}
+
+func (UnimplementedCodeServiceHandler) WorkspaceSymbols(context.Context, *connect.Request[v1.WorkspaceSymbolsRequest]) (*connect.Response[v1.WorkspaceSymbolsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aos.v1.CodeService.WorkspaceSymbols is not implemented"))
 }

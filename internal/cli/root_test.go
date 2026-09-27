@@ -131,6 +131,42 @@ func TestSwitchRootRefusedWhileActive(t *testing.T) {
 	}
 }
 
+// TestSwitchRootRefusedWhileCodeIsOpen: a switch refused because Code is open
+// (M8.13) lists each folder with its unsaved files and exits non-zero.
+func TestSwitchRootRefusedWhileCodeIsOpen(t *testing.T) {
+	blocked := connect.NewError(connect.CodeFailedPrecondition, errors.New("Code is open"))
+	detail, err := connect.NewErrorDetail(&aosv1.RootModeBlocked{Workspaces: []*aosv1.BlockingWorkspace{
+		{Id: "ws_1", Path: "/home/aos/project", Unsaved: []string{"/home/aos/project/cmd/main.go", "/tmp/scratch.txt"}},
+		{Id: "ws_2", Path: "/etc"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked.AddDetail(detail)
+
+	f := &fakeSystem{rootMode: true, setErr: blocked}
+	var out strings.Builder
+	got := switchRoot(context.Background(), strings.NewReader(""), &out, &client{system: f}, false, true)
+
+	var exit exitError
+	if !errors.As(got, &exit) || exit.code == 0 {
+		t.Fatalf("switchRoot error = %v, want a non-zero exitError", got)
+	}
+	s := out.String()
+	for _, want := range []string{
+		"Code is open. Please save your files and close Code before switching mode:",
+		"  /home/aos/project — 2 unsaved files\n      cmd/main.go\n      /tmp/scratch.txt\n",
+		"  /etc\n",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("blocked output missing %q:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "aos cancel") {
+		t.Errorf("no Task is running, yet the output points at aos cancel:\n%s", s)
+	}
+}
+
 // TestClearRootNeedsAYes checks `aos root clear`'s confirmation gate: without
 // --yes, anything but `yes` cancels and never reaches aosd; `yes` clears (M7.12).
 func TestClearRootNeedsAYes(t *testing.T) {

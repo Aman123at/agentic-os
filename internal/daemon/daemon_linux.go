@@ -31,6 +31,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/catalogue"
+	"github.com/Aman123at/agentic-os/internal/code"
 	"github.com/Aman123at/agentic-os/internal/config"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
@@ -238,7 +239,7 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 		Model: model, ReasoningEffort: cfg.ReasoningEffort, Instructions: instructions,
 		Autonomy: cfg.Autonomy, MaxTasks: cfg.MaxTasks, MaxRetries: cfg.MaxRetries, Landlock: d.abi >= 1, Home: d.agentHome, Root: d.realm.IsRoot(),
 		Usage: d.usage, TaskCostLimit: cfg.TaskCostLimit, DailyCostLimit: cfg.DailyCostLimit, Context: d.agentContext,
-		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values,
+		NewEnv: d.newEnv, Protection: d.protection, Settings: d.settings.Values, Outputs: d.outputs.Dir,
 	})
 	if err != nil {
 		return err
@@ -270,7 +271,10 @@ func Run(ctx context.Context, cfg config.Config, assets fs.FS) error {
 	userFiles := files.AsUser{Ops: userOps, UID: d.agentUID, GID: d.agentGID, Exe: d.exe, Env: d.workerEnv()}
 	srv := &api.Server{
 		Auth: d.auth, Tasks: d.tasks, Bus: d.bus, Audit: d.audit, Home: d.agentHome,
-		UserFiles: userFiles, FileOps: userOps, Protected: d.locks,
+		UserFiles: userFiles, FileOps: userOps, Protected: d.locks, OwnState: d.ownState(),
+		// What confirmed writes to Sensitive System Files replace (M8.5), kept
+		// with the Realm's outputs; only Root Mode writes them.
+		Backups:  &code.Backups{Dir: filepath.Join(d.outputs.Dir, "sensitive-backups")},
 		Sessions: &userSessions{d: d}, Memories: d.memories, Software: d.software, Supervisor: d.services,
 		Desktop: &desktop.State{DB: d.db}, Settings: d.settings, Catalogue: d.models, APIKey: keys, Usage: d.usage, Info: d.info, Restart: restarter.Restart, Assets: assets,
 		// Clearing Root Mode history removes the Root Realm's whole subtree — its
@@ -551,6 +555,17 @@ func (d *Daemon) rootPolicy() sandbox.Policy {
 		Protected: []string{d.exe, "/usr/local/bin/aos", "/usr/local/lib/aos", unitPath},
 		Writable:  []string{"/"},
 	}
+}
+
+// ownState is what Code shows read-only whatever the Realm's user may write
+// (M8.4): in Root Mode, AOS's own state — what rootPolicy hides from a root
+// Agent or keeps read-only. In Standard Mode aos can't write it anyway.
+func (d *Daemon) ownState() []string {
+	if !d.realm.IsRoot() {
+		return nil
+	}
+	p := d.rootPolicy()
+	return append(append([]string{}, p.Hidden...), p.Protected...)
 }
 
 // widenToHost opens the Writable set from home to the whole VPS minus an explicit

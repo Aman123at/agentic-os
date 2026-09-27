@@ -116,11 +116,29 @@ _Avoid_: sudo tool, admin tool
 A long-lived shell on the Machine. Every Task has its own Session; the user may open others, and may watch or type into a Task's Session.
 _Avoid_: terminal (when you mean the Session), shell, PTY
 
+### Editing code
+
+**Code**:
+The Desktop's code editor: a folder's files in tabs, with search, navigation across files, a Terminal panel and the Agent in a sidebar. It reads and writes with the Realm's rights — as `aos` in Standard Mode, as root in Root Mode — and adds none of its own.
+_Avoid_: IDE, VS Code, TextEdit (TextEdit is the one-file editor), the editor (in product copy)
+
+**Workspace**:
+The folder a Code window has open, with everything under it. While any Workspace is open, the Realm cannot be switched.
+_Avoid_: project, repo, root (a Workspace need not be a Git repository), Realm
+
+**Change Review**:
+Deciding, hunk by hunk, whether to keep or discard the changes an Agent made to files, shown against each file as it was before that Task first changed it. The changes are already on disk; discarding puts the old lines back.
+_Avoid_: diff approval, staging, accept/reject (an Approval is asked before a Tool runs; Change Review comes after)
+
 ### Protecting the user's data
 
 **Protected Path**:
 A file or folder that no Agent may change or delete without an Approval, at every Autonomy level including `auto`.
 _Avoid_: important file, locked file, safe path
+
+**Sensitive System File**:
+A file the Machine needs to boot, sign in or stay reachable, such as `/etc/sudoers`, `/etc/fstab` or anything in `/boot`. Only Root Mode can change one; saving it asks first, with what can go wrong, and keeps the previous version. Unlike a Protected Path, it is about keeping the system working, not about the user's data.
+_Avoid_: system file, critical file, protected file
 
 **Trash**:
 The holding area for files deleted on the Machine, from which they can be restored until the user empties it or they expire.

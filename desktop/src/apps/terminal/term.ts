@@ -39,6 +39,13 @@ function socketURL(id: string, ticket: string): string {
 
 const encoder = new TextEncoder();
 
+// The Sessions some window in this tab already shows — a Terminal window or a
+// Code window's Terminal panel. Another window re-attaches only to what is
+// left, so two windows never type into one shell.
+export const claimed = new Set<string>();
+export const claim = (id: string) => void claimed.add(id);
+export const release = (id: string) => void claimed.delete(id);
+
 export interface TermOptions {
   id: string;
   // A watched Agent Session is read-only: no keystrokes and no resize are sent,

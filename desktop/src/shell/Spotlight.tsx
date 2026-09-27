@@ -13,9 +13,12 @@ import { useDesktop } from "../store";
 const ROOTS = PLACES.filter((p) => p.path !== "");
 // Apps offered by name.
 const APP_LIST = Object.values(APPS);
+// Commands offered by name: what they do, and the words that find them.
+const COMMANDS = [{ id: "open-in-code" as const, label: "Open Folder in Code…", icon: "🧑‍💻", words: "open folder in code editor project" }];
 
 type Result =
   | { kind: "app"; app: AppDef }
+  | { kind: "command"; id: "open-in-code"; label: string; icon: string }
   | { kind: "file"; dir: string; file: FileInfo }
   | { kind: "task"; prompt: string };
 
@@ -69,6 +72,9 @@ export default function Spotlight() {
       if (!q || app.name.toLowerCase().includes(q)) out.push({ kind: "app", app });
     }
     if (q) {
+      for (const c of COMMANDS) {
+        if (q.split(/\s+/).every((w) => c.words.includes(w))) out.push({ kind: "command", id: c.id, label: c.label, icon: c.icon });
+      }
       for (const { dir, file } of index) {
         if (file.name.toLowerCase().includes(q)) out.push({ kind: "file", dir, file });
         if (out.length > 40) break;
@@ -87,6 +93,7 @@ export default function Spotlight() {
   function activate(r: Result | undefined) {
     if (!r) return;
     if (r.kind === "app") openApp(r.app.id as AppId);
+    else if (r.kind === "command") openApp("code");
     else if (r.kind === "file") revealInFinder(r.dir, r.file.path);
     else void createTask(r.prompt);
     toggle(false);
@@ -144,21 +151,25 @@ export default function Spotlight() {
 
 function rowKey(r: Result, i: number): string {
   if (r.kind === "app") return `app-${r.app.id}`;
+  if (r.kind === "command") return `command-${r.id}`;
   if (r.kind === "file") return `file-${r.file.path}`;
   return `task-${i}`;
 }
 function rowIcon(r: Result): string {
   if (r.kind === "app") return r.app.icon;
+  if (r.kind === "command") return r.icon;
   if (r.kind === "file") return iconFor(r.file);
   return "🤖";
 }
 function rowLabel(r: Result): string {
   if (r.kind === "app") return r.app.name;
+  if (r.kind === "command") return r.label;
   if (r.kind === "file") return r.file.name;
   return `Ask the Agent: “${r.prompt}”`;
 }
 function rowKind(r: Result): string {
   if (r.kind === "app") return "App";
+  if (r.kind === "command") return "Command";
   if (r.kind === "file") return "File";
   return "New Task";
 }

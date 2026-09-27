@@ -1,6 +1,8 @@
 // The draggable divider between two side-by-side panes. It sits between them in
 // the flex row and sizes the pane *before* it: the Agent app's view sidebar and
-// Task list, and Finder's Places sidebar.
+// Task list, and Finder's Places sidebar. With axis "y" it lies between two
+// stacked panes and sizes the one *after* it, by height: Code's Terminal panel.
+// With side "after" it sizes the pane after it, by width: Code's Agent sidebar.
 //
 // A drag writes the pane's width straight to the DOM inside
 // requestAnimationFrame and commits to the caller once, on pointer-up (PLAN.md
@@ -26,6 +28,8 @@ export function Splitter({
   max,
   label,
   restore = min,
+  axis = "x",
+  side = "before",
 }: {
   // The pane's current width in pixels; 0 means collapsed.
   size: number;
@@ -36,7 +40,13 @@ export function Splitter({
   label: string;
   // The width a collapsed pane comes back to when nothing better is remembered.
   restore?: number;
+  // "y" sizes the pane below by height; dragging up grows it.
+  axis?: "x" | "y";
+  // "after" sizes the pane to the right; dragging left grows it.
+  side?: "before" | "after";
 }) {
+  const y = axis === "y";
+  const after = y || side === "after";
   const el = useRef<HTMLDivElement>(null);
   const drag = useRef<{ px: number; from: number; at: number } | null>(null);
   const frame = useRef(0);
@@ -47,7 +57,8 @@ export function Splitter({
   // The pane being sized is the element in front of the divider. Reaching for
   // it beats threading a ref through every caller, and keeps the two in step by
   // construction: the divider can only ever size the pane it is next to.
-  const pane = () => el.current?.previousElementSibling as HTMLElement | null;
+  const pane = () => (after ? el.current?.nextElementSibling : el.current?.previousElementSibling) as HTMLElement | null;
+  const at = (e: ReactPointerEvent) => (y ? -e.clientY : after ? -e.clientX : e.clientX);
 
   function clamp(w: number) {
     if (w < min - COLLAPSE) return 0;
@@ -58,7 +69,7 @@ export function Splitter({
     cancelAnimationFrame(frame.current);
     frame.current = requestAnimationFrame(() => {
       const p = pane();
-      if (p) p.style.width = `${w}px`;
+      if (p) p.style[y ? "height" : "width"] = `${w}px`;
     });
   }
 
@@ -73,7 +84,7 @@ export function Splitter({
       commit(last.current || restore);
       return;
     }
-    drag.current = { px: e.clientX, from: size, at: size };
+    drag.current = { px: at(e), from: size, at: size };
     e.currentTarget.setPointerCapture(e.pointerId);
     el.current?.classList.add("split--live");
   }
@@ -81,7 +92,7 @@ export function Splitter({
   function onPointerMove(e: ReactPointerEvent) {
     const d = drag.current;
     if (!d) return;
-    d.at = clamp(d.from + e.clientX - d.px);
+    d.at = clamp(d.from + at(e) - d.px);
     paint(d.at);
   }
 
@@ -93,7 +104,7 @@ export function Splitter({
     cancelAnimationFrame(frame.current);
     // React owns the width again; drop the inline one written during the drag.
     const p = pane();
-    if (p) p.style.width = "";
+    if (p) p.style[y ? "height" : "width"] = "";
     if (d.at !== d.from) commit(d.at);
   }
 
@@ -102,9 +113,10 @@ export function Splitter({
   }
 
   function onKeyDown(e: ReactKeyboardEvent) {
+    const [shrink, grow] = y ? ["ArrowDown", "ArrowUp"] : after ? ["ArrowRight", "ArrowLeft"] : ["ArrowLeft", "ArrowRight"];
     const keys: Record<string, number> = {
-      ArrowLeft: Math.max(min, size - STEP),
-      ArrowRight: size === 0 ? min : Math.min(max, size + STEP),
+      [shrink]: Math.max(min, size - STEP),
+      [grow]: size === 0 ? min : Math.min(max, size + STEP),
       Home: min,
       End: max,
     };
@@ -121,13 +133,13 @@ export function Splitter({
     <div
       ref={el}
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={y ? "horizontal" : "vertical"}
       aria-label={label}
       aria-valuenow={size}
       aria-valuemin={0}
       aria-valuemax={max}
       tabIndex={0}
-      className={`split${size === 0 ? " split--off" : ""}`}
+      className={`split${y ? " split--y" : ""}${size === 0 ? " split--off" : ""}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

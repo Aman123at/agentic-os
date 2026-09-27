@@ -2,7 +2,11 @@ package agent
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
+
+	aosv1 "github.com/Aman123at/agentic-os/gen/go/aos/v1"
 )
 
 // Machine describes the Machine for the Agent's instructions.
@@ -75,4 +79,68 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// MaxSelection caps the text from the editor a Task is told about.
+const MaxSelection = 16 << 10
+
+// EditorNote tells an Agent the user is working in Code (PLAN.md M8.11): the
+// Workspace, how to change code there, the files open, and any text the user
+// added to the chat. It is a message of its own, not part of Instructions, so
+// the instructions stay the same for every Task and cached. "" for nil.
+func EditorNote(e *aosv1.EditorContext) string {
+	if e.GetWorkspace() == "" {
+		return ""
+	}
+	root := filepath.Clean(e.Workspace)
+	rel := func(p string) string {
+		p = filepath.Clean(p)
+		if r, err := filepath.Rel(root, p); err == nil && r != ".." && !strings.HasPrefix(r, "../") {
+			return r
+		}
+		return p
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `# Working in Code
+The user is working in Code, AOS's editor, on the folder %s (the Workspace), and wrote this from its Agent sidebar. Every file you change with the Files Tools is shown to them as a diff they keep or discard hunk by hunk.
+- Unless the user says otherwise, work in the Workspace. Your Session doesn't start there: give full paths, or cd into it first.
+- Read a file before you change it. Prefer edit_file for changes to existing code, with enough surrounding lines to match once; write_file is for new files.
+- Keep changes small and to the point: don't reformat, reorder or rename what the Task doesn't need.
+- Build and test your change with run_command where the project allows.
+- Finish with the files you changed, a line each saying what and why.
+`, root)
+	if e.ActiveFile != "" {
+		fmt.Fprintf(&b, "\nThe file in front: %s\n", rel(e.ActiveFile))
+	}
+	if len(e.OpenFiles) > 0 {
+		open := make([]string, len(e.OpenFiles))
+		for i, p := range e.OpenFiles {
+			open[i] = rel(p)
+		}
+		fmt.Fprintf(&b, "Open files: %s\n", strings.Join(open, ", "))
+	}
+	if sel := e.Selection; strings.TrimSpace(sel) != "" {
+		cut := ""
+		if len(sel) > MaxSelection {
+			sel = sel[:MaxSelection]
+			for !utf8.ValidString(sel) {
+				sel = sel[:len(sel)-1]
+			}
+			cut = " (cut short)"
+		}
+		where := "the editor"
+		if e.ActiveFile != "" {
+			where = rel(e.ActiveFile)
+		}
+		if e.SelectionStartLine > 0 {
+			where = fmt.Sprintf("lines %d–%d of %s", e.SelectionStartLine, max(e.SelectionEndLine, e.SelectionStartLine), where)
+		}
+		// A fence longer than any run of backticks in the text.
+		fence := "```"
+		for strings.Contains(sel, fence) {
+			fence += "`"
+		}
+		fmt.Fprintf(&b, "\nThe user added this from %s to the chat%s:\n%s\n%s\n%s\n", where, cut, fence, strings.TrimRight(sel, "\n"), fence)
+	}
+	return b.String()
 }

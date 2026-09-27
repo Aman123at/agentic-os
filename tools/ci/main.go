@@ -1,7 +1,7 @@
 // Command ci runs every check (PLAN.md §17): `go run ./tools/ci [stage…]`.
 // It works the same locally and in GitHub Actions.
 //
-// Stages: lint, unit, unit-linux, ui, auth-ui, image, e2e, playwright. With
+// Stages: lint, unit, unit-linux, ui, auth-ui, code-ui, image, e2e, playwright. With
 // no arguments, all run in order. `live` (the real-model suite, §16 M4.7),
 // `release` (the tarball build, M6.18) and `docs` (the documentation site,
 // M6.21) are optional: they run only when named — `go run ./tools/ci live`,
@@ -59,6 +59,7 @@ var stages = []struct {
 	{"unit-linux", unitLinux, false},
 	{"ui", ui, false},
 	{"auth-ui", authUI, false},
+	{"code-ui", codeUI, false},
 	{"image", image, false},
 	{"e2e", e2e, false},
 	{"playwright", playwright, false},
@@ -123,6 +124,9 @@ func lint() error {
 	if err := readmeLinks(); err != nil {
 		return err
 	}
+	if err := docsLinks(); err != nil {
+		return err
+	}
 	for _, goos := range []string{"", "linux"} {
 		env := []string{}
 		if goos != "" {
@@ -185,6 +189,61 @@ func readmeLinks() error {
 			len(broken), strings.Join(broken, "\n"))
 	}
 	return nil
+}
+
+// docsLinks fails when a page of the docs site links to a page the site does
+// not have (M8.15). Starlight builds a broken internal link without a word, so
+// this is the site's link-check, pure Go beside readmeLinks. Only root-absolute
+// targets ("/use/code/") are pages of the site; each must be a .md or .mdx file
+// under docs-site/src/content/docs, or a folder's index.
+func docsLinks() error {
+	pages := filepath.Join(docsDir, "src", "content", "docs")
+	var broken []string
+	err := filepath.WalkDir(pages, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || (filepath.Ext(path) != ".md" && filepath.Ext(path) != ".mdx") {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		for _, m := range mdLink.FindAllStringSubmatch(string(data), -1) {
+			target := strings.TrimSpace(m[1])
+			if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") {
+				continue // external, relative or in-page
+			}
+			page := target
+			if i := strings.IndexAny(page, "#?"); i >= 0 {
+				page = page[:i]
+			}
+			page = strings.Trim(page, "/")
+			if page == "" {
+				page = "index"
+			}
+			if !docsPageExists(filepath.Join(pages, filepath.FromSlash(page))) {
+				broken = append(broken, fmt.Sprintf("%s: %s", path, target))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(broken) > 0 {
+		sort.Strings(broken)
+		return fmt.Errorf("the docs site links to %d missing page(s):\n%s", len(broken), strings.Join(broken, "\n"))
+	}
+	return nil
+}
+
+// docsPageExists reports whether a site path, without its extension, is a page.
+func docsPageExists(base string) bool {
+	for _, p := range []string{base + ".md", base + ".mdx", filepath.Join(base, "index.md"), filepath.Join(base, "index.mdx")} {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // desktopProductLanguage guards the M6.14 sweep: "Host" is retired product
@@ -399,6 +458,23 @@ func authUI() error {
 		return err
 	}
 	return run("npm", "--prefix", desktopDir, "run", "e2e:auth")
+}
+
+// codeUI runs Code's suite (PLAN.md M8). Like auth-ui it needs no Docker: the
+// specs fake aosd inside the page (desktop/e2e-code/fake.ts), event stream and
+// all, so opening, editing, saving and live reloads run on any machine.
+func codeUI() error {
+	if _, err := os.Stat(filepath.Join(desktopDir, "e2e-code")); os.IsNotExist(err) {
+		fmt.Println("    no Code specs")
+		return nil
+	}
+	if err := npmInstall(); err != nil {
+		return err
+	}
+	if err := run("npm", "--prefix", desktopDir, "exec", "--", "playwright", "install", "chromium"); err != nil {
+		return err
+	}
+	return run("npm", "--prefix", desktopDir, "run", "e2e:code")
 }
 
 // playwright runs the Desktop's browser e2e and performance suite (§16, §17).

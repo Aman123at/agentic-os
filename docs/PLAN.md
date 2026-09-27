@@ -91,6 +91,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 | `sandbox` | Landlock rulesets, `no_new_privs`, capability detection and fallback |
 | `session` | PTY Sessions, command framing, background processes, attach/watch |
 | `files` | File operations, Trash, file watching (fsnotify, plus polling for the Shared Folder) |
+| `code` | Code's Workspaces (M8): which are open and their unsaved files, each one's recursive watch, Quick Open's file list, Find in Files (ripgrep or its own search) and the ctags symbol index |
 | `software` | Install Ledger; apt, pipx and npm adapters; Checkpoints; Restore; Replay |
 | `service` | Service supervisor, restart policies, logs, listening-port discovery |
 | `proxy` | Forwarding Services to the Host by subdomain and by path |
@@ -134,7 +135,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 
 ### 4.3 Desktop
 
-**Stack:** React + Vite + TypeScript, Zustand for state, `@connectrpc/connect-web` generated clients, `@xterm/xterm` with the WebGL renderer, CodeMirror 6, pdf.js.
+**Stack:** React + Vite + TypeScript, Zustand for state, `@connectrpc/connect-web` generated clients, `@xterm/xterm` with the WebGL renderer, CodeMirror 6 (with `@codemirror/merge` for Code's compares), pdf.js.
 
 **Shell**
 
@@ -153,6 +154,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 | Terminal | Tabs of User Sessions; "Watch" opens an Agent's Session |
 | Agent | Task list, live step feed, chat and Follow-ups, Approvals, cancel, Resume, tokens and cost, Audit Log browser, usage and Cost Limits. While it has the focus on a Task, that Task's Approvals are answered inline instead of in the pop-up (M4) |
 | TextEdit | CodeMirror 6 editor with syntax highlighting; one file per window, up to 1 MiB; asks before saving over a file that changed on disk since it was opened (M4) |
+| Code | A code editor over one folder of the Machine (its **Workspace**) per window, many windows (M8): Explorer, tabs, ⌘S and Auto Save, files up to 4 MiB; Quick Open (⌘P) and Find in Files (⌘⇧F); Go to Definition (F12), references (⇧F12), symbols (⌘⇧O, ⌘T) and an Outline from `universal-ctags`, by name rather than type; highlighting for 37 languages; gutter marks and *Compare with Saved*; a Terminal panel (⌃\`) in the Workspace; the Agent in a sidebar (⌘L) whose edits are kept or discarded hunk by hunk in **Change Review**. Acts with the Realm's rights, like Finder: files `aos` can't write open read-only in Standard Mode, and saving a **Sensitive System File** asks in Root Mode (§7.10). Opened from the Dock, Finder's *Open in Code* and Spotlight |
 | Preview | Images, PDF, audio, video; one file per window (M4) |
 | Activity Monitor | Processes, CPU, memory, disk, network; running Agents; Services and their ports |
 | Software | Install Ledger, Checkpoints, Restore, Replay progress |
@@ -167,7 +169,7 @@ _The diagram shows a **Compose install**. On a **native install** (M6, ADR-0009)
 2. Animations touch only compositor-friendly properties (`transform`, `opacity`) through the Web Animations API.
 3. Each app is its own lazily loaded chunk. The first load of the shell is under 150 KB gzipped.
 4. Event-stream updates are batched to one store commit per animation frame.
-5. Long lists (Finder, Activity Monitor, Audit Log) are virtualised.
+5. Long lists (Finder, Activity Monitor, Audit Log, Code's Explorer and search results) are virtualised.
 6. Terminal output goes straight into xterm.js, never through React state.
 
 **Appearance**
@@ -313,6 +315,7 @@ volumes:
 - **Network:** `curl`, `wget`, `ca-certificates`, `iproute2`, `iputils-ping`, `openssh-client`
 - **Transfer and archives:** `git`, `rsync`, `rclone`, `zip`, `unzip`, `xz-utils`, `p7zip-full`
 - **Python:** `python3`, `python3-venv`, `python3-pip`, `pipx`
+- **Code's search and navigation (M8.7–M8.8):** `ripgrep`, `universal-ctags` — also installed by `install.sh` where apt is available; without them Code searches on its own, and navigation says to install `universal-ctags`
 - **Node.js 24 LTS** from the official binaries (Ubuntu's apt package is much older), with `npm` and `corepack`
 
 Everything else is installed on demand and recorded in the Install Ledger.
@@ -364,7 +367,7 @@ There is deliberately **no step limit**.
 
 A plain `docker compose exec aos …` runs as root (aosd is the container's main process, so the container's user is root). The `aos` CLI works either way.
 
-**Root Mode.** A second **Realm** in which Agents, the Terminal and Finder act as root (§18 M7, ADR-0011): the §7.4 policy check drops its Protected-Path step, so locks and Protected Paths are not enforced and every file is writable; only AOS's own state stays hidden (§7.2). Its history is a separate database (§14) that the API never serves from Standard Mode. This is a **privacy boundary between the two histories, not a security boundary against a root Agent** — a root Agent can get around anything on the machine, AOS included. The switch restarts the Machine and shows a warning that says exactly this.
+**Root Mode.** A second **Realm** in which Agents, the Terminal, Finder and Code act as root (§18 M7, ADR-0011): the §7.4 policy check drops its Protected-Path step, so locks and Protected Paths are not enforced and every file is writable; only AOS's own state stays hidden (§7.2). Its history is a separate database (§14) that the API never serves from Standard Mode. This is a **privacy boundary between the two histories, not a security boundary against a root Agent** — a root Agent can get around anything on the machine, AOS included. The switch restarts the Machine and shows a warning that says exactly this.
 
 **M6.** On a native install `aosd` is run by systemd as root; the `aos` user is in sudoers with `NOPASSWD:ALL`, so a User Session — and the Desktop password behind it — is effectively root on the VPS. Kept deliberately (a single-user personal server), but said out loud (M6.17, ADR-0009). Agents stay confined: `no_new_privs` still blocks `sudo`, and the Landlock ruleset widens only to `/` minus the Protected list (M6.8, ADR-0004).
 
@@ -438,7 +441,7 @@ The built-in defaults below are read-only in System Settings — weakening `~/.s
 
 Shell analysis is only an early warning so the Agent can ask first. Landlock is the actual enforcement.
 
-**In Root Mode (M7.4)**, step 1 is dropped — Protected Paths, locks, `.env` and dirty-git rules are not checked — while step 2 is unchanged, so Risky Actions still follow the Autonomy level and `confirm-risky` still asks before `rm -rf` or a package removal (set Autonomy to `auto` for none).
+**In Root Mode (M7.4)**, step 1 is dropped — Protected Paths, locks, `.env` and dirty-git rules are not checked — while step 2 is unchanged, so Risky Actions still follow the Autonomy level and `confirm-risky` still asks before `rm -rf` or a package removal (set Autonomy to `auto` for none). A change to a Sensitive System File (§7.10) is a Risky Action there, and a Task-scoped grant never covers one (M8.5).
 
 **Running an approved call on a Protected Path**
 
@@ -500,6 +503,25 @@ by default, behind a username and password (one user, M6.3).
 ### 7.9 Audit Log
 
 Every Tool call is recorded with: Task, Tool, arguments (secrets redacted), policy decision, who approved, result summary, duration and time. It is append-only and kept forever. Full step output is kept for 90 days.
+
+### 7.10 Sensitive System Files (Root Mode, M8.5)
+
+In Root Mode root may write every file, and a few can lock everyone out or stop the Machine booting with one wrong line. One list, `policy.Sensitive(path)`, names them, each with a one-line *what can go wrong*:
+
+- **Accounts and login:** `/etc/{passwd,shadow,group,gshadow}`, `/etc/pam.d/`, `/etc/security/`, `/etc/sudoers`, `/etc/sudoers.d/`
+- **Booting:** `/etc/fstab`, `/etc/crypttab`, `/etc/default/grub`, `/boot/`; the kernel's settings `/etc/sysctl.conf`, `/etc/sysctl.d/`, `/etc/modprobe.d/`
+- **Network and SSH:** `/etc/{hosts,hostname,resolv.conf}`, `/etc/netplan/`, `/etc/network/`, `/etc/ssh/`, and every `~/.ssh/authorized_keys`, root's included
+- **Services, software and schedules:** `/etc/systemd/`, `/etc/apt/`, `/etc/crontab`, `/etc/cron.d/`
+- **Programs and libraries:** `/bin/`, `/sbin/`, `/lib*`, `/usr/{bin,sbin,lib}/`
+- **AOS itself:** `aosd`'s and `aos`'s binaries and `aos.service`
+
+What the list does, in Root Mode only (in Standard Mode `aos` can't write any of them, so nothing asks):
+
+- **The server enforces it.** `FileService.Write`, `MakeFolder`, `Move`, `Copy`'s destination and `Delete` — and a move or delete of a folder holding one, such as `/etc` — are refused (`FailedPrecondition`, detail `SensitivePath{path, reason}`) without `confirm_sensitive=true`, so no client changes one by accident; `/upload` refuses one outright. A confirmed write is audited as `write_sensitive`.
+- **A way back.** Before a confirmed write the previous version is copied to the Realm's `outputs/sensitive-backups/` (the last 5 per file); `RestoreSensitiveBackup` puts one back. A folder moved or deleted keeps no backup — the Trash has it.
+- **A check first, where one exists.** `CheckSensitive` runs `visudo -cf` for sudoers, `sshd -t -f` for `sshd_config` and `findmnt --verify` for `fstab` on the new content; a failed check is shown and the button becomes *Save anyway (check failed)*.
+- **The Desktop asks.** Code shows a yellow banner on the tab and a red *Save anyway* modal that names the file and the risk and says AOS can't undo it; **Auto Save never saves one**. Finder and TextEdit ask the same way.
+- **Agents too.** An Agent's change to one is a Risky Action (§7.4), asked under `confirm-risky` and never covered by a Task-scoped grant; `auto` still runs it, as for every Risky Action.
 
 ## 8. Agent runtime
 
@@ -563,6 +585,11 @@ stateDiagram-v2
 
 - **Machine Profile** (< 1 KB, rebuilt on change): Ubuntu version and architecture, Mode, Landlock status, installed software from the Ledger, running Services and ports, key folders, and hints (e.g. "avoid heavy work in `~/Shared`: slow on this Host").
 - **Memory:** the `remember` Tool only *proposes* an entry. It is saved when the user accepts it, or directly when the user says "remember …". Entries are editable in System Settings.
+
+### 8.6 Working in Code (M8.11–M8.12)
+
+- **`EditorContext`.** A Task started from Code's Agent sidebar, and each Follow-up sent from there, carries `EditorContext`: the Workspace, the file in front, the selection (capped at 16 KiB; ⌘L adds one) and the open files. It reaches the Agent as a message of its own in the transcript, `# Working in Code` — the Workspace root, read before editing, prefer `edit_file`, keep changes small, say what changed — **not** in the instructions, which stay the same for every Task so the prompt cache holds (§8.2). `Task.workspace` records the folder, and `ListTasks` filters by it for the sidebar. Such a Task is otherwise an ordinary Task in the Realm's history, with exactly the Agent's usual Tools and rights.
+- **Before-images.** The first time a Task changes a file with a Files Tool (`write_file`, `edit_file`, `move` — both ends — `copy`'s destination, `delete`), the file's previous content, or "did not exist", is kept in the Realm's `outputs/<task>/before/` and indexed in `task_file_changes`. The Tool reads it through the Task's own file worker, as the Realm's user inside the sandbox, and keeps it only once its change succeeds. Up to 64 MiB is kept; past 4 MiB or not UTF-8 text it is reviewed *whole*. Change Review compares each file with its **base** — the before-image plus the hunks you kept — and *Discard* puts that back as the Realm's user (stamp-checked, audited `discard_change`), or moves a file the Task created to the Trash. Files a `run_command` changed are noticed by the Workspace's watch, not kept by aosd.
 
 ## 9. Tool catalogue
 
@@ -671,16 +698,17 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 | Service | RPCs |
 |---|---|
 | `AuthService` | `ExchangeLoginCode` |
-| `TaskService` | `CreateTask`, `ListTasks`, `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll` |
+| `TaskService` | `CreateTask` (M8.11: with `EditorContext` from Code, §8.6), `ListTasks` (by Workspace), `GetTask`, `SendFollowUp`, `AnswerQuestion`, `CancelTask`, `ResumeTask`, `StopAll`, `DeleteTask`; Change Review (M8.11–M8.12): `ListChanges`, `GetBefore`, `ReviewChange` (records the hunks kept), `DiscardChange` |
 | `ApprovalService` | `ListPending`, `Decide` (allow once / allow for Task / deny) |
-| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
-| `FileService` | `List`, `Stat`, `Read`, `Write`, `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
+| `EventService` | `Subscribe` (server stream): `TaskChanged`, `TaskStep`, `TextDelta`, `ApprovalChanged`, `DownloadProgress`, `ServiceChanged`, `ReplayProgress`, `Notification` (also sent with `dismissed` set when one is dismissed), `OpenInDesktop` (M4), `WorkspaceChanged` (M8.2, only to the subscription that opened the Workspace). Folder changes and metrics are not events: `FileService.Watch` and `SystemService.Metrics` serve them only while a window shows them (decided in M4). |
+| `FileService` | `List`, `Stat`, `Read`, `Write`, `MakeFolder` (M8.3), `CheckSensitive`, `ListSensitiveBackups`, `RestoreSensitiveBackup` (M8.5; Sensitive System Files need `confirm_sensitive` in Root Mode, §7.10), `Move`, `Copy`, `Delete`, `Protect`, `Unprotect`, `ListProtected`; `Watch` (server stream: a folder's listing each time it changes). Browsers allow six HTTP/1.1 connections to aosd, so the Desktop shares one stream per folder, keeps at most three open, and lists any further folders every 2 s instead (M4) |
 | `TrashService` | `List`, `Restore`, `Empty` |
 | `SoftwareService` | `ListPackages`, `ListLedger`, `ListCheckpoints`, `CreateCheckpoint`, `RestoreCheckpoint` |
 | `SupervisorService` | `ListServices` (with every listening port), `StartService`, `StopService`, `RestartService`, `RemoveService`, `StreamLogs` |
-| `SessionService` | `Create`, `List`, `Close` (I/O via WebSocket) |
+| `SessionService` | `Create` (M8.6: an optional `cwd` the shell changes into as the Realm's user, home when it can't), `List`, `Close` (I/O via WebSocket) |
+| `CodeService` | Code's Workspaces (M8), refused to Agent callers. `OpenWorkspace`, `CloseWorkspace`, `ReportDirty` (M8.2): a Code window's Workspace belongs to its tab's `Subscribe` stream (`subscription_id`) and its file changes arrive there as `WorkspaceChanged` events, so Code holds no connection of its own; at most 32 per tab. `FindFiles` (Quick Open) and `SearchText` (Find in Files, server stream; ripgrep or AOS's own search, M8.7). `Definition`, `References`, `DocumentSymbols`, `WorkspaceSymbols` (M8.8), from a per-Workspace `universal-ctags` index — `FailedPrecondition` saying to install it when it is missing; `References` is a word search and needs no ctags. Everything runs as the Realm's user |
 | `SettingsService` | `ListMemory`, `AddMemory`, `AcceptMemory`, `ForgetMemory` (M2); `GetDesktopState`, `SaveDesktopState` (M3); `Get`, `Update` (M4: the settings that can change while AOS runs, §6.4, each with where its value comes from), `SetApiKey` (M4) |
-| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes` (M4: read from /proc when asked; a process belongs to a Task when it, an ancestor, its process group or its session is a process that Task's Agent started, matched by pid and start time; "confined" means no_new_privs), `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart), `Metrics` (M4: the Machine's CPU, memory, disks and network, read from its own cgroup first; polled by Activity Monitor while open), `ListNotifications` and `DismissNotification` (M4: notifications are kept, newest 200, until dismissed; a dismissal is published as a `Notification` event with `dismissed` set, so every tab drops it) |
+| `SystemService` | `Info` (Mode, versions, Landlock, Host hints), `Processes` (M4: read from /proc when asked; a process belongs to a Task when it, an ancestor, its process group or its session is a process that Task's Agent started, matched by pid and start time; "confined" means no_new_privs), `Audit`; `Usage` (M4: model usage per day, for the Agent app's chart), `Metrics` (M4: the Machine's CPU, memory, disks and network, read from its own cgroup first; polled by Activity Monitor while open), `ListNotifications` and `DismissNotification` (M4: notifications are kept, newest 200, until dismissed; a dismissal is published as a `Notification` event with `dismissed` set, so every tab drops it); `Restart`, `SetRootMode`, `ClearRootHistory` (M7) — `SetRootMode` is refused, both ways, while a Task is active or any Code window has a Workspace open, listing both (`RootModeBlocked`, M8.13) |
 
 **Plain HTTP routes:**
 - `GET /` serves the Desktop.
@@ -693,8 +721,8 @@ The states come from comparing `dpkg`, pipx/npm and `/etc` before and after each
 
 - **SQLite at `/var/lib/aos/aos.db`:**
   - WAL mode, a single writer goroutine, migrations embedded in the binary.
-  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`.
-- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
+  - Tables: `tasks`, `task_steps`, `approvals`, `grants`, `audit_log`, `usage`, `ledger_ops`, `ledger_entries`, `checkpoints`, `memories`, `protected_paths`, `services`, `settings`, `desktop_state`, `notifications`, `task_file_changes` (M8.11: each file a Task changed, its before-image and what Change Review kept).
+- **Files under `/var/lib/aos/`:** `outputs/` (full command output, 90 days; Tasks' before-images in `outputs/<task>/before/`, M8.11; Sensitive System Files' previous versions in `outputs/sensitive-backups/`, M8.5), `blobs/` (`/etc` contents the Ledger refers to), `services/` (Service logs), `keys/`, `token`, `prices.yaml`.
 - **Root Mode's Realm (M7.2)** is a second Realm with the same shape under `/var/lib/aos/root/` (mode 0700): its own `aos.db` and `outputs/`, created empty on the first Root start and never opened while in Standard Mode, so the two histories never mix. *Clear Root Mode history* (M7.12, `aos root clear`) deletes this subtree; the next Root start recreates it empty. What root already did to the server's files and packages is real and stays — only AOS's record of it is cleared.
 
 ## 15. Install shapes and clients
@@ -740,6 +768,9 @@ it prefers (`browserOS()`, M6.14) and where a download should land.
 | `aosd` idle memory | < 50 MB RSS | `aos doctor` + CI assertion: the `playwright` stage reads aosd's RSS after 10 s idle, once after startup and again after the whole Desktop suite |
 | Image size | Unpacked: `cli` < 520 MB · `ui` < 540 MB. Compressed: < 180 MB | CI assertion on `du -sx /` in the image and `docker image inspect` |
 | Desktop initial bundle | < 150 KB gzipped | Vite build size check |
+| Code window interactive, warm (M8.14) | < 400 ms | `e2e-code/perf.spec.ts`: from the click that opens a folder to the frame where the Explorer lists it, on a generated 10 000-file Workspace |
+| Code ⌘P results (M8.14) | < 100 ms p95, 10 000 files | aosd: `internal/code/perf_test.go` (file list and ranking); Desktop: `perf.spec.ts`, per key typed |
+| Code F12, once indexed (M8.14) | < 150 ms p95, 10 000 files | aosd: `perf_test.go` (index lookup, with saves between); Desktop: `perf.spec.ts`, to a definition in another file |
 
 A CI run that misses any deterministic target fails.
 
@@ -1787,6 +1818,425 @@ all. Restart AOS
 from the System pane returns to a signed-in Desktop. `go run ./tools/ci` is green
 on this Mac.
 
+### M8 — Code (a code editor on the Desktop)
+
+*Approved 2026-09-24 with the recommended answer to each of A–E below. M8.1–M8.15 built: code-complete; the acceptance walkthrough below is Aman's.*
+
+A new Desktop app, **Code**: a VS Code–like editor over a folder of the
+Machine. You open a folder (or a file) and get an Explorer tree, tabs, syntax
+highlighting, Quick Open, Find in Files, Go to Definition across files, a
+Terminal panel at the bottom and the Agent in a sidebar on the right. The
+Agent's edits show as a diff you **keep or discard hunk by hunk**.
+
+Code acts with the **Realm's** rights, like Finder and the Terminal already do
+(M7.5): in Standard Mode it reads and writes as `aos`, in Root Mode as root.
+Nothing in Code widens what either Realm may do. Two new guards come with it:
+
+- **No Realm switch while Code is open.** Switching Realms restarts `aosd` and
+  reloads the Desktop (M7.3), which would drop unsaved edits and leave editors
+  holding files with the other Realm's rights. So a switch — either way — is
+  refused while any Code window is open, with *"Save your files and close Code
+  before switching mode"* and the list of open folders and unsaved files.
+- **Sensitive System Files in Root Mode.** Saving a file such as
+  `/etc/sudoers`, `/etc/fstab` or `/boot/…` as root asks first, with what can
+  go wrong; *Save anyway* goes ahead. The server enforces the ask, so no client
+  saves one by accident.
+
+**Two decisions to record in ADR-0012** (written in M8.1):
+
+1. **The Agent writes to disk, then you review** — not "staged edits that land
+   only when kept". The Agent must be able to build and test its own change
+   with `run_command`; staged edits it can't run are worth less. AOS keeps each
+   file's *before* image the first time a Task changes it, so *Discard* can
+   always put the old lines back. (Cursor and Copilot's agent mode work the
+   same way.)
+2. **Code intelligence from `universal-ctags` + `ripgrep`, not language
+   servers, in M8.** Definitions, symbols and references by name, for ~100
+   languages, with two small apt packages and no per-language install. It is
+   not type-aware (two `Run` methods are both offered); language servers
+   (completion, rename, hover, diagnostics) are the natural M9 and fit behind
+   the same `CodeService`.
+
+**Order of work.** Numbered in build order. Load-bearing orderings:
+
+- **Presence (M8.2) lands before the switch guard (M8.13)** — the guard is a
+  question to the presence registry.
+- **Sensitive-file enforcement (M8.5) lands before editing in Root Mode is
+  reachable** — M8.3 opens files read-only in Root Mode until M8.5 is in.
+- **Before-images (M8.11) land before the Change Review UI (M8.12).**
+
+#### Foundation
+
+1. **Vocabulary, ADR-0012, version.** CONTEXT.md gains *Code* (the app),
+   *Workspace* (the folder a Code window has open), *Change Review* and
+   *Sensitive System File*. ADR-0012 records the two decisions above. This
+   heading bumps `Version` to `0.1.0-m7` (`version_linux_test.go`). *Tests:*
+   the version test.
+
+2. **`CodeService` and Workspace presence.** New `internal/code` package and
+   `CodeService` in `proto/aos/v1`. *Built on the tab's event stream, not a
+   stream per window (changed while building, Aman 2026-09-24):* browsers
+   allow six connections to aosd across all the Desktop's tabs, the event
+   stream and Finder's watch already hold two per tab and Terminals hold more,
+   so two or three Code windows each holding a stream would stall every other
+   request.
+   - `EventService.Subscribe`'s first message carries a `subscription_id`; the
+     subscription can own Workspaces.
+   - `OpenWorkspace(subscription_id, path)` (unary) checks the folder as the
+     Realm's user and returns the Workspace (id, root, Realm). Its changes
+     arrive on that subscription only, as `Event.workspace`
+     (`WorkspaceChanged`): first how it is watched (live / polling / stopped,
+     with why), then *created / changed / deleted / rescan* batches from a
+     recursive inotify watch run **as the Realm's user** in a files worker
+     process (so a Standard Workspace never sees what `aos` can't read).
+     `.git`, `node_modules` and caches are skipped; past 8000 folders or the
+     Machine's inotify limit it falls back to polling and says so.
+   - `CloseWorkspace(workspace_id)` when the window closes;
+     `ReportDirty(workspace_id, paths)` — the window's unsaved files.
+   - The presence is an in-memory registry of open Workspaces and their
+     unsaved files. A Workspace closes with its window, or with its tab's
+     subscription (tab closed, sign-out, the stream dropped); a tab whose
+     subscription restarts opens its Workspaces again (M8.3). At most 32 per tab.
+   Refused for Agent callers (§7.5 guard). *Tests:* registry open/close and
+   drop with the subscription; events for create/change/delete/rename; a
+   folder `aos` can't read is refused in Standard; watch-limit fallback.
+
+3. **The Code app: Explorer, tabs, editing, saving.** `APPS.code`, in the Dock,
+   one Workspace per window, many windows. Opened from the Dock (asks for a
+   folder, `~` default), Finder's right-click *Open in Code* on a folder or
+   file (a file opens its folder with it in a tab), and Spotlight
+   (*Open Folder in Code…*). Layout: activity bar (Explorer, Search, Changes),
+   the Explorer tree (lazy `FileService.List`, live from M8.2's events; new
+   file/folder, rename, delete to Trash), tabs with an unsaved dot, a status bar
+   (language, Ln/Col, spaces/tabs, UTF-8, the Realm). ⌘S saves, ⌘⌥S saves all.
+   **Auto Save** after 1 s idle, a per-window toggle — on by default in
+   Standard Mode, off in Root Mode (decision C). Files up to **4 MiB** (chunked `Read`; `Write`'s limit raised to
+   match); binary files open in Preview. A file changed on disk while open:
+   clean tab → reloads; unsaved tab → the M8.10 compare view. The editor core
+   (theme, highlight, languages) moves out of TextEdit into a shared
+   `desktop/src/editor/` module; TextEdit keeps working unchanged on it. Window
+   close with unsaved files asks (Save all / Discard / Cancel). *Tests:*
+   Playwright on the faked aosd — open folder, edit, save, Auto Save, reload
+   on outside change, close-with-unsaved prompt, TextEdit regression.
+   *As built:* New Folder needed `FileService.MakeFolder` (new); `Write` had
+   no size cap to raise, so Code enforces 4 MiB itself. The activity bar gains
+   Search and Changes with M8.7 and M8.12 rather than showing empty panes now.
+   "The faked aosd" is `desktop/e2e-code/fake.ts`, an in-page fake with a live
+   event stream (the `code-ui` CI stage), since the Docker suite's sign-in is
+   still the retired `desktop-url` flow.
+
+#### Rights
+
+4. **What each Realm may edit, shown up front.** `FileInfo` gains `writable`,
+   computed by the worker with `access(W_OK)` **as the Realm's user**. In
+   Standard Mode a file `aos` can't write (e.g. `/etc/hosts`) opens
+   **read-only** with a lock in its tab and a banner *"Read-only in Standard
+   Mode — aos can't write this file."*; Protected Paths follow the rules Finder
+   already follows — Code adds no new way past them. In Root Mode every file is
+   writable except AOS's own state (Hidden, §7.2 `rootPolicy()`). *Tests:*
+   `files` — `writable` per Realm; Playwright — read-only tab and banner.
+   *As built:* aosd's `OwnState` is Root Mode's list of AOS's own state (the
+   root Agent policy's Hidden and read-only paths); it is shown read-only, not
+   refused — `FileService` refuses exactly what it refused before.
+
+5. **Sensitive System Files (Root Mode).** One list, `policy.Sensitive(path)
+   (reason, ok)`, shared by the server, Code and the Agent's policy:
+   `/etc/{passwd,shadow,group,gshadow,sudoers,sudoers.d/,fstab,crypttab,hosts,hostname,resolv.conf,ssh/,pam.d/,security/,systemd/,netplan/,network/,apt/,default/grub,sysctl.conf,sysctl.d/,modprobe.d/,crontab,cron.d/}`,
+   `/boot/`, `/bin`, `/sbin`, `/lib*`, `/usr/{bin,sbin,lib}`,
+   `/{usr/,}lib/systemd/`, every `~/.ssh/authorized_keys`, and `aosd`'s unit
+   and binary. Each entry carries a one-line *what can go wrong* ("a mistake
+   here can lock everyone out of `sudo`"). Then:
+   - `FileInfo` gains `sensitive_reason`; Code shows a yellow banner on such a
+     tab in Root Mode.
+   - Saving asks: a red modal names the file and the risk, says AOS can't undo
+     it, *Cancel* / *Save anyway*. **Auto Save never saves a Sensitive System
+     File.**
+   - **The server enforces it:** in Root Mode `Write`, `Move` and `Delete` to a
+     Sensitive System File without `confirm_sensitive=true` are refused
+     (`FailedPrecondition`, detail `SensitivePath{path, reason}`); confirmed
+     writes are audited as `write_sensitive`.
+   - **A way back:** before a confirmed write, the previous version is copied
+     to the Realm's `outputs/sensitive-backups/` (last 5 per file); the banner
+     offers *Restore previous version*.
+   - **A check before save where one exists:** `sudoers` → `visudo -cf`,
+     `sshd_config` → `sshd -t -f`, `fstab` → `findmnt --verify`. A failed check
+     shows its output and turns the button into *Save anyway (check failed)*.
+   - **The Agent too:** in Root Mode an Agent's write to a Sensitive System
+     File is a Risky Action (asks under `confirm-risky`; `auto` still runs it,
+     as §7.4 says for every Risky Action).
+   Standard Mode is unchanged: `aos` can't write these files anyway. *Tests:*
+   `policy` table (list + Risky in Root only); `api` — unconfirmed refused,
+   confirmed written + audited + backed up, Standard unaffected; checker
+   pass/fail; Playwright — banner, modal, Auto Save skips it, restore.
+   *As built:* the guard also covers `MakeFolder` and `Copy`'s destination, and
+   a `Move` or `Delete` of a folder holding one (`/etc` itself); `/upload`
+   refuses one outright (412, "open it in Code"). The checks and backups are
+   `FileService.CheckSensitive`, `ListSensitiveBackups` and
+   `RestoreSensitiveBackup`; a folder moved or deleted keeps no backup (the
+   Trash has it). A Task grant never covers an Agent's change to one — each
+   asks. Finder and TextEdit ask the same way Code does.
+
+#### Editor features
+
+6. **Terminal panel.** A bottom panel (⌃\` toggles) with tabs of User
+   Sessions, reusing the Terminal app's `term.ts`. `CreateSessionRequest`
+   gains `cwd`, checked to be a folder the Realm's user can enter (else the
+   home folder), so a panel opens in the Workspace. As `aos` in Standard, as
+   root in Root with the red strip (M7.5, M7.10) — no new rights. Sessions end
+   with the window. *Tests:* `session` — `cwd` honoured and refused;
+   Playwright — panel opens in the Workspace, `pwd`.
+   *As built:* the shell changes into `cwd` itself from its rc, so the kernel
+   checks it as the Realm's user (Landlock included), and reports where it
+   started (`SessionInfo.cwd`) — reading `/proc/<pid>/cwd` of another user's
+   shell needs `CAP_SYS_PTRACE`, which a container lacks. The panel says when a
+   shell started at home instead. Hiding the panel keeps its shells; a reload
+   takes them back; closing the window ends them.
+
+7. **Quick Open and Find in Files.** `CodeService.FindFiles(workspace, query)`
+   — fuzzy file-name match over a per-Workspace file list (honours
+   `.gitignore`, kept fresh by M8.2's events); ⌘P. `CodeService.SearchText(
+   workspace, query, regex, case, include/exclude globs) returns (stream …)`
+   — `ripgrep` run as the Realm's user through the worker, the existing Go
+   search (`files.SearchQuery`) when `rg` is missing; ⌘⇧F opens results
+   grouped by file, a click jumps to the line. Replace-in-files is out of M8.
+   *Tests:* ranking table; `.gitignore`; `rg` and fallback give the same
+   results; Playwright — ⌘P and ⌘⇧F.
+   *As built:* the fallback is a new search of AOS's own, not
+   `files.SearchQuery` (which has no regex, case or globs), walking exactly as
+   ripgrep is told to: hidden files in, the watch's skipped folders and binary
+   files out, no symlinks followed, only the Workspace's own `.gitignore` files
+   (not the parent's, the global one or `.git/info/exclude`). Include globs
+   are applied to ripgrep's results, because `--glob` would override
+   `.gitignore`. Quick Open's list is loaded on the first ⌘P and kept current
+   from the watch; a rescan or an edited `.gitignore` lists it afresh. Results
+   stop at 2000 lines; Quick Open lists up to 100 000 files. `ripgrep` joined
+   the image and `install.sh` here (best-effort, apt only). The activity bar
+   arrives with the Search view: Explorer (⌘⇧E) and Search (⌘⇧F).
+
+8. **Symbols and navigation across files.** `CodeService.Definition`,
+   `References`, `DocumentSymbols`, `WorkspaceSymbols`, backed by
+   `universal-ctags` (JSON output) run as the Realm's user, indexed per
+   Workspace in memory and updated per changed file from M8.2's events (cap
+   20 000 files; past it, index the open files' folders and say so). In the
+   editor: **F12 / ⌘-click** go to definition (several → a pick list, nearest
+   first), **⇧F12** references (word-boundary `SearchText`, filtered to the
+   file's language), **⌘⇧O** symbols in the file, **⌘T** symbols in the
+   Workspace, an Outline view, **⌃-** / **⌃⇧-** back and forward, and
+   completion from keywords + Workspace symbols. `universal-ctags` and
+   `ripgrep` join the baseline software (§6.3 Dockerfile) and `install.sh`'s
+   packages; on a Machine without ctags, navigation says *"install
+   universal-ctags"* instead of failing. *Tests:* `code` — index and incremental
+   update on a fixture repo (Go, TS, Python); definition ranking; Playwright —
+   F12 into another file and back.
+   *As built:* the index covers what Quick Open lists (so `.gitignore` holds),
+   is built at the first question, re-tags only the files the watch saw change
+   at the next one, and forgets deleted ones at once. Definitions in the asking
+   file's language win when there are any; a package clause comes after a real
+   definition. `References` needs no ctags: a whole-word, case-sensitive
+   search in the language's files (up to 1000 lines), shown in the palette
+   like several definitions. ⌘T is the browser's New Tab, which a page can't
+   always take, so the palette took VS Code's prefixes: `#` symbols anywhere,
+   `@` symbols in the file (⌘⇧O), `:` a line (⌃G). "Past 20 000 files, the
+   open files' folders" is the folders of files asked from. Completion
+   keywords are a list per language family in the Desktop.
+
+9. **Languages.** Lezer grammars for JavaScript/TypeScript/JSX/TSX, Python,
+   Go, Rust, C/C++, Java, PHP, SQL, HTML, CSS/SCSS/Less, JSON, YAML, XML,
+   Markdown; legacy modes for Shell, Dockerfile, TOML, Ruby, Kotlin, Swift,
+   Lua, Perl, R, PowerShell, Nginx, INI/properties, Makefile, diff. Chosen by
+   name, then by `#!` line. Each is its own lazy chunk; TextEdit gets them all
+   through the shared module. *Tests:* a table from names/shebangs to
+   languages.
+   *As built:* also C# and Protocol Buffers (legacy modes already shipped)
+   and indented Sass (SCSS's grammar); C uses the C++ grammar. CodeMirror has
+   no Makefile mode, so Code has a small one of its own
+   (`desktop/src/editor/makefile.ts`). Exact names come first (`Dockerfile`,
+   `Makefile`, `Gemfile`, `.bashrc`, `.env`), then the extension; in an
+   `nginx/` folder, files with no extension or `.conf` are Nginx, and systemd
+   units are INI. A `#!` line counts only when the name says nothing: `env`,
+   its options and `VAR=value` are skipped and a version dropped
+   (`python3.12` → Python; `deno` and `bun` → TypeScript). The status bar and
+   completion keywords take the same answer. The shared theme gained colours
+   for a diff's added and removed lines and for `$variables`. Besides the
+   table, a test loads every grammar in the page and checks what it
+   highlights; each is its own chunk and the initial bundle stays 147 KB.
+
+10. **Seeing your own changes.** Gutter marks for added / changed / deleted
+    lines against the saved version, *Compare with Saved*, and — when a file
+    changes on disk under an unsaved tab — a side-by-side compare with *Keep
+    mine* / *Take theirs* per hunk. Built on `@codemirror/merge` (new
+    dependency, lazily loaded). *Tests:* Playwright — marks, compare, per-hunk
+    choice.
+    *As built:* the gutter diffs by whole lines (each line one character
+    through `@codemirror/merge`'s diff; past ~63 000 distinct lines, by
+    character) and catches up 150 ms after typing pauses; a deleted run is
+    marked on the line after it. `desktop/src/editor/changes.ts` is its own
+    10 KB chunk, fetched with the first file Code opens. *Compare with Saved*
+    is in the status bar while a tab has unsaved changes, and a click on a
+    gutter mark opens it at that line; the right side is editable and every
+    change there — typed or a hunk reverted — goes straight into the tab, so
+    ⌘Z undoes it. A change on disk under unsaved edits gains *Compare…* in its
+    banner: per hunk *Take theirs* or *Keep mine* (the left side is a scratch
+    copy that takes your lines), *Take All Theirs*, and *Keep the Rest Mine* /
+    *Done*, which makes the disk's version the one the tab's edits are
+    against, so the next save doesn't ask again. Auto Save waits while a
+    compare is open. The compare groups differences one line apart into one
+    hunk (the merge view's rule); the gutter marks them separately.
+
+#### The Agent in Code
+
+11. **The Agent sidebar, and before-images.** The right sidebar is the same
+    Agent — the Agent app's chat, Follow-ups and inline Approvals, reused. A
+    chat started there is an ordinary Task in the Realm's history (it shows in
+    the Agent app too); the sidebar lists this Workspace's Tasks.
+    `CreateTaskRequest` gains `EditorContext` {workspace, active file,
+    selection (capped), open files}, and the Agent's instructions (§8) gain a
+    *working in Code* paragraph: the Workspace root, read before editing,
+    prefer `edit_file` for code, keep changes small, say what you changed.
+    **⌘L** adds the selection to the chat. The Agent keeps exactly its Tools
+    and Realm rights — it can already modify code.
+    **Before-images:** the first time a Task changes a file (`write_file`,
+    `edit_file`, `move`, `copy`, `delete`), the file's previous content — or
+    "did not exist" — is kept in the Realm's `outputs/<task>/before/` (up to
+    4 MiB a file; larger ones are whole-file keep/discard only) and indexed in a
+    new `task_file_changes` table. `TaskService.ListChanges(task)` and
+    `GetBefore(task, path)` serve them. Files a `run_command` changes inside the
+    Workspace are noticed by M8.2's watch and listed as *changed by a command*
+    (reviewable against what the editor last had, if the file was open).
+    *Tests:* `tool` — before-image kept once per Task and path, "did not
+    exist", size cap; `api` — ListChanges/GetBefore Realm-scoped, deleted with
+    the Task; instructions golden with `EditorContext`.
+    *As built:* each Files Tool reads the before-image itself, through the
+    Task's own file worker (so as the Realm's user, inside the sandbox), and
+    keeps it only once its change succeeds — a refused or failed call keeps
+    nothing. `move` keeps both ends, `copy` its destination. Kept up to
+    64 MiB; past 4 MiB, or not UTF-8 text, it is `whole` (kept or put back
+    whole, not hunk by hunk); a folder or a link keeps no content. A
+    Follow-up's change to a file the Task already changed is not a first
+    change. `EditorContext` reaches the Agent as a message of its own,
+    `# Working in Code`, at the start and with each Follow-up from Code —
+    not in the instructions, which stay the same for every Task so the
+    prompt cache holds; the selection is capped at 16 KiB. `Task.workspace`
+    records the folder and `ListTasks` filters by it. The sidebar is ✦ Agent
+    in the status bar (or ⌘L), reusing the Agent app's feed as `TaskFeed`;
+    the store keeps a live feed for each Task a sidebar shows. The lines ⌘L
+    added go as the selection, with their file as the active file. Files
+    changed by a command are listed with Change Review (M8.12), where the
+    list of changed files is.
+
+12. **Change Review: keep or discard, hunk by hunk.** While and after a Task
+    runs, the sidebar shows *"3 files changed — Review"*. Each opens as an
+    inline diff against its before-image with **Keep** / **Discard** on every
+    hunk, **Keep all** / **Discard all** per file and per Task. An open, clean
+    tab updates live as the Agent writes; an unsaved one gets M8.10's compare
+    instead of being overwritten. *Discard* writes the old lines back through
+    `FileService.Write` as the user (stamp-checked, audited; a Sensitive System
+    File still asks, M8.5). Undecided hunks survive closing the window and a
+    reload, until decided or the Task is deleted. *Tests:* Playwright on the
+    faked aosd — mixed keep/discard gives the expected file; discard of a file
+    the Agent created deletes it (to the Trash); a live update into a clean tab.
+    *As built:* a changed file is compared with its *base*: the
+    before-image with the hunks kept (`task_file_changes.base`, the kept text
+    beside the before-image). `TaskService.ReviewChange` records a keep — the
+    lines, or `keep_all` for the file as it is now — and `DiscardChange` puts
+    the file back as it is compared with, or to the Trash if the Task created
+    it, as the Realm's user, audited `discard_change`, a Sensitive System
+    File asking as `FileService` does; `ListChanges` says which files are
+    `pending`. The list sits above the chat's composer. A file under review
+    is read-only; a discarded hunk is put back in the editor and saved like
+    any edit, so it is stamp-checked and a Sensitive System File asks. Hunks
+    are whole lines, as the gutter's. A folder can only be kept (restore it
+    from the Trash); a file compared whole (past 4 MiB, or not text) is kept
+    or discarded whole from the list. What is left lives on aosd, so it
+    survives closing the window (the spec closes and reopens it; the in-page
+    fake can't outlive a reload). Files a command changed while the Task ran
+    come from the Workspace's watch and are compared with what the editor
+    had, kept only in the window. `base` joined migration 0007, which had
+    run nowhere yet.
+
+#### The mode switch
+
+13. **No Realm switch while Code is open.** `RootModeBlocked` gains
+    `repeated BlockingWorkspace workspaces` {path, unsaved files}. `SetRootMode`,
+    in both directions, is refused (`FailedPrecondition`) while M8.2's registry
+    has any Workspace open — checked alongside the Task check, before the
+    password, so no attempt is spent. The System pane's switch shows a popup:
+    *"Code is open. Please save your files and close Code before switching
+    mode."* listing each Workspace and its unsaved files, with *Show* (focuses
+    that window). It checks the Desktop's own windows first (instant), and the
+    server's answer covers Code open in another browser tab. `aos root on|off`
+    prints the same list and exits non-zero. **Restart AOS** and **Clear Root
+    Mode history** are not blocked but their confirms list unsaved files.
+    *Tests:* `api/system_test.go` — refused with the Workspace list either
+    direction, no password attempt spent, allowed once the Workspace closes;
+    `cli/root_test.go` — output and exit code; Playwright — popup, *Show*,
+    switch works after closing Code.
+    *Built:* `BlockingWorkspace` also carries the Workspace's id, so the
+    Desktop can tell its own windows (with *Show*) from another tab's. One
+    refusal lists Tasks and Workspaces together. Open Workspaces are read
+    before the queue gate, so a Task refusal also lists them, and again
+    inside it, just before the commit. The unsaved-file lists in the
+    *Restart AOS* and *Clear history* confirms cover only the tab they are
+    shown in.
+
+#### Finish
+
+14. **Speed.** Code is its own lazy chunk (the shell stays under 150 KB,
+    §4.3 rule 3); languages and `@codemirror/merge` load on use; the Explorer
+    and search results are virtualised (rule 5); Terminal output never goes
+    through React (rule 6). Targets added to §16: Code window interactive
+    < 400 ms warm; ⌘P results < 100 ms p95 on a 10 000-file Workspace; F12 <
+    150 ms p95 once indexed. *Tests:* perf spec on a generated Workspace.
+    *Built:* the lazy chunks and virtualised lists were already in place from
+    M8.3–M8.10; a Vite plugin now fails the build if opening Code would load
+    xterm.js, `@codemirror/merge`, a grammar or pdf.js. Measuring found F12 at
+    ~120 ms p95: the symbol index rebuilt its by-name table at every question
+    and re-split paths while ranking. It is now kept up to date file by file,
+    and F12 is ~17 ms in aosd (⌘P ~11 ms). In the Desktop, against the fake
+    aosd: window ~48 ms, ⌘P ~40 ms per key, F12 ~55 ms. The Desktop numbers
+    include the fake's work on the page's main thread; none was measured on
+    the VPS.
+
+15. **Docs.** §4.3's app table gains Code; §7 gains Sensitive System Files;
+    §8 notes `EditorContext`; §13 lists `CodeService`; §6.3 the two packages;
+    a docs-site page **Use it → Code** (editing per Realm, the switch rule,
+    Change Review, Sensitive System Files, what navigation can't do). *Tests:*
+    lint (docsgen drift, link check).
+    *Built:* §6.3 already had the two packages (M8.7–M8.8). Sensitive System
+    Files are §7.10 and Code's Agent is §8.6; §4.1 gained the `code` package,
+    §13 the rest of `CodeService`, Change Review's RPCs and `cwd`, and §14
+    `task_file_changes` and the new `outputs/` folders. The docs site's Root
+    Mode page now says Code acts as root and blocks the switch too. There was
+    no link check for the site's own pages (only the README's), so lint gained
+    one: every root-absolute link in `docs-site/src/content/docs` must name a
+    page there.
+
+**Accepted when:** on the Mac (Compose) and then the VPS, Aman opens a Go or TS
+project in Code, finds a file with ⌘P and a string with ⌘⇧F, jumps to a
+definition in another file with F12 and back, edits and saves, and runs a
+command in the Terminal panel in the Workspace folder. He asks the sidebar Agent
+for a change across two files, keeps some hunks and discards others, and the
+files on disk match. With Code open, the Root Mode switch shows the *save and
+close Code* popup, both ways; after closing Code it switches. In Standard Mode
+`/etc/hosts` opens read-only; in Root Mode editing `/etc/sudoers` warns on open,
+asks on save, runs `visudo -c`, and saves after *Save anyway*, with the previous
+version restorable. `go run ./tools/ci` is green on this Mac.
+
+**Not in M8** (candidates for M9+): language servers (type-aware completion,
+rename, hover, diagnostics); a Git view (stage, commit, blame) — M8's diffs are
+against the saved file and the Agent's before-images, not Git; split editors;
+Replace in Files; debugging; extensions; several folders in one window.
+
+**Decisions** (Aman, 2026-09-24 — the recommended answer each time):
+
+- **A. Agent edits:** written to disk, then reviewed hunk by hunk (M8.11–M8.12,
+  ADR-0012); not staged.
+- **B. Navigation:** `universal-ctags` + `ripgrep` in M8 (M8.7–M8.8, ADR-0012);
+  language servers are a candidate M9.
+- **C. Auto Save default:** on in Standard Mode, off in Root Mode; a Sensitive
+  System File never auto-saves in either (M8.3, M8.5).
+- **D. Switch rule:** blocked whenever Code is open, saved or not (M8.13).
+- **E. Agent + Sensitive System Files:** a Risky Action in Root Mode (M8.5).
 
 ## 19. Risks
 
@@ -1817,6 +2267,8 @@ on this Mac.
 | Agents write `/` minus Protected on a native install | [ADR-0004](adr/0004-privilege-separation-with-landlock.md) (amended, M6) |
 | Auth survives a public bind: password + JWT + single-use ticket | [ADR-0007](adr/0007-api-always-authenticated.md) (amended, M6) |
 | Replay is off on a native install | [ADR-0003](adr/0003-install-ledger-and-checkpoints.md) (amended, M6) |
+| Root Mode is a separate Realm, switched by restart | [ADR-0011](adr/0011-root-mode-realms.md) |
+| Code: the Agent writes then you review; navigation from ctags, not language servers | [ADR-0012](adr/0012-code-editor-review-and-navigation.md) |
 
 ## 21. Pending decisions
 

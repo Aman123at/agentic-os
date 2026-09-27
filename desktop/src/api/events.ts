@@ -11,12 +11,15 @@ export type ConnState = "connecting" | "online" | "offline";
 interface Options {
   onEvent: (event: Event) => void;
   onState: (state: ConnState) => void;
+  // Called with the stream's subscription id when it connects, and with "" when
+  // it drops: Code's Workspaces belong to the subscription (M8.2).
+  onSubscription?: (id: string) => void;
 }
 
 // subscribe streams events until the returned function is called. It reconnects
 // with backoff whenever the stream drops (aosd closes a subscriber that falls
 // behind), so a tab left open recovers on its own.
-export function subscribe({ onEvent, onState }: Options): () => void {
+export function subscribe({ onEvent, onState, onSubscription }: Options): () => void {
   const controller = new AbortController();
   let backoff = 500;
 
@@ -27,11 +30,14 @@ export function subscribe({ onEvent, onState }: Options): () => void {
         for await (const resp of events.subscribe({}, { signal: controller.signal })) {
           backoff = 500;
           onState("online");
+          if (resp.subscriptionId) onSubscription?.(resp.subscriptionId);
           if (resp.event) onEvent(resp.event);
         }
       } catch (err) {
+        onSubscription?.("");
         if (controller.signal.aborted || ConnectError.from(err).code === 1 /* Canceled */) return;
       }
+      onSubscription?.("");
       if (controller.signal.aborted) return;
       onState("offline");
       await sleep(backoff, controller.signal);

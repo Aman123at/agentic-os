@@ -2,13 +2,15 @@
 // holding the Root Mode switch and Restart AOS. Both restart aosd out of band
 // (M7.3) and are confirmed by watching Info's boot_id change, then reloading —
 // the refresh token signs back in silently and sessionStorage restores the
-// windows (M6.5).
+// windows (M6.5). The switch waits for Code to close (M8.13): a restart would
+// drop its unsaved files.
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ConnectError } from "@connectrpc/connect";
 
 import { system } from "../../api/client";
 import { friendlyError } from "../../api/error";
+import { openCode } from "../../api/workspaces";
 import { useDesktop } from "../../store";
 import { RootModeAttemptSchema, RootModeBlockedSchema, RootModeLockoutSchema } from "../../gen/aos/v1/services_pb";
 import { type Task, TaskState } from "../../gen/aos/v1/types_pb";
@@ -17,6 +19,26 @@ import { type Task, TaskState } from "../../gen/aos/v1/types_pb";
 // the live store (Task) or from the server's FailedPrecondition detail
 // (BlockingTask), which share these fields.
 type TaskRef = { id: string; title: string; state: TaskState };
+
+// CodeRef is an open Code Workspace in the way of a switch (M8.13): from this
+// tab's windows, which it can Show, or from the server's detail, which also
+// knows the other tabs'.
+type CodeRef = { id: string; path: string; unsaved: string[]; win?: string };
+
+// Blocked is what stands in the way of a switch; RootModeBlocked is one.
+type Blocked = { tasks: TaskRef[]; workspaces: CodeRef[] };
+
+// withWindows names this tab's window for each Workspace the server listed, so
+// it can be shown.
+function withWindows(workspaces: CodeRef[]): CodeRef[] {
+  const mine = openCode();
+  return workspaces.map((w) => ({ ...w, win: mine.find((m) => m.id === w.id)?.win }));
+}
+
+// unsavedInCode lists this tab's unsaved files in Code, which a restart drops.
+function unsavedInCode(): string[] {
+  return openCode().flatMap((w) => w.unsaved);
+}
 
 // The states that count as "an Agent is still working" and block a switch (M7.7).
 function activeTasks(tasks: Record<string, Task>): Task[] {
@@ -41,7 +63,7 @@ function stateLabel(s: TaskState): string {
 // flow is the modal sequence the pane is in.
 type Flow =
   | { kind: "idle" }
-  | { kind: "blocked"; tasks: TaskRef[]; goingTo: boolean }
+  | { kind: "blocked"; tasks: TaskRef[]; workspaces: CodeRef[] }
   | { kind: "warn" } // entering Root Mode: the red warning gate
   | { kind: "password" } // entering Root Mode: the password modal
   | { kind: "offConfirm" } // leaving Root Mode: one lighter confirm
@@ -53,6 +75,7 @@ export default function SystemPane() {
   const info = useDesktop((s) => s.info);
   const tasks = useDesktop((s) => s.tasks);
   const openTaskView = useDesktop((s) => s.openTaskView);
+  const focusWindow = useDesktop((s) => s.focusWindow);
   const rootMode = !!info?.rootMode;
   const [flow, setFlow] = useState<Flow>({ kind: "idle" });
 
@@ -61,10 +84,12 @@ export default function SystemPane() {
   const blocking = useMemo(() => activeTasks(tasks), [tasks]);
 
   // beginSwitch opens the flow to turn Root Mode on or off, unless an Agent is
-  // still working — then the switch springs back and the notice names the Tasks.
+  // still working or Code is open in this tab — then the switch springs back and
+  // the notice names them. Code open in another tab is the server's to say.
   const beginSwitch = (goingTo: boolean) => {
-    if (blocking.length > 0) {
-      setFlow({ kind: "blocked", tasks: blocking, goingTo });
+    const code = openCode();
+    if (blocking.length > 0 || code.length > 0) {
+      setFlow({ kind: "blocked", tasks: blocking, workspaces: code });
       return;
     }
     setFlow(goingTo ? { kind: "warn" } : { kind: "offConfirm" });
@@ -74,7 +99,7 @@ export default function SystemPane() {
   // working — the clear is refused mid-Task just as the switch is (M7.12).
   const beginClear = () => {
     if (blocking.length > 0) {
-      setFlow({ kind: "blocked", tasks: blocking, goingTo: rootMode });
+      setFlow({ kind: "blocked", tasks: blocking, workspaces: [] });
       return;
     }
     setFlow({ kind: "clearConfirm" });
@@ -83,8 +108,9 @@ export default function SystemPane() {
   const startWorking = (label: string) => setFlow({ kind: "working", label, fromBootId: info?.bootId ?? "" });
 
   // onServerBlocked handles a switch the server refused because a Task started
-  // while the modals were open (FailedPrecondition, M7.7): the same notice.
-  const onServerBlocked = (tasks: TaskRef[], goingTo: boolean) => setFlow({ kind: "blocked", tasks, goingTo });
+  // while the modals were open (FailedPrecondition, M7.7), or Code is open in
+  // another tab (M8.13): the same notice.
+  const onServerBlocked = (b: Blocked) => setFlow({ kind: "blocked", tasks: b.tasks, workspaces: withWindows(b.workspaces) });
 
   return (
     <div className="set__pane">
@@ -150,28 +176,34 @@ export default function SystemPane() {
       </section>
 
       {flow.kind === "blocked" && (
-        <BlockedNotice tasks={flow.tasks} onClose={() => setFlow({ kind: "idle" })} onOpen={(id) => openTaskView(id)} />
+        <BlockedNotice
+          tasks={flow.tasks}
+          workspaces={flow.workspaces}
+          onClose={() => setFlow({ kind: "idle" })}
+          onOpen={(id) => openTaskView(id)}
+          onShow={(win) => focusWindow(win)}
+        />
       )}
       {flow.kind === "warn" && <WarnModal onCancel={() => setFlow({ kind: "idle" })} onContinue={() => setFlow({ kind: "password" })} />}
       {flow.kind === "password" && (
         <PasswordModal
           onCancel={() => setFlow({ kind: "idle" })}
           onSwitched={() => startWorking("Switching to Root Mode…")}
-          onBlocked={(tasks) => onServerBlocked(tasks, true)}
+          onBlocked={onServerBlocked}
         />
       )}
       {flow.kind === "offConfirm" && (
         <OffConfirmModal
           onCancel={() => setFlow({ kind: "idle" })}
           onSwitched={() => startWorking("Switching to Standard Mode…")}
-          onBlocked={(tasks) => onServerBlocked(tasks, false)}
+          onBlocked={onServerBlocked}
         />
       )}
       {flow.kind === "clearConfirm" && (
         <ClearConfirmModal
           onCancel={() => setFlow({ kind: "idle" })}
           onClearing={() => startWorking("Clearing Root Mode history…")}
-          onBlocked={(tasks) => onServerBlocked(tasks, rootMode)}
+          onBlocked={onServerBlocked}
         />
       )}
       {flow.kind === "restartConfirm" && (
@@ -182,28 +214,95 @@ export default function SystemPane() {
   );
 }
 
-// BlockedNotice names the Tasks that must finish or be cancelled first, each with
-// an Open link into the Agent app (M7.9).
-function BlockedNotice({ tasks, onClose, onOpen }: { tasks: TaskRef[]; onClose: () => void; onOpen: (id: string) => void }) {
+// BlockedNotice names what must end first: the Tasks, each with an Open link
+// into the Agent app (M7.9), and the Code windows with their unsaved files,
+// each with Show when it is in this tab (M8.13).
+function BlockedNotice({
+  tasks,
+  workspaces,
+  onClose,
+  onOpen,
+  onShow,
+}: {
+  tasks: TaskRef[];
+  workspaces: CodeRef[];
+  onClose: () => void;
+  onOpen: (id: string) => void;
+  onShow: (win: string) => void;
+}) {
   return (
     <div className="rootmode__notice" role="alert" data-testid="rootmode-blocked">
-      <p className="rootmode__noticetitle">An Agent is still running — Root Mode can’t be switched until it finishes or you cancel it.</p>
-      <ul className="rootmode__tasks">
-        {tasks.map((t) => (
-          <li key={t.id} className="rootmode__task">
-            <span className="rootmode__taskname">{t.title || t.id}</span>
-            <span className="set__badge">{stateLabel(t.state)}</span>
-            <button className="set__reset" onClick={() => onOpen(t.id)}>
-              Open
-            </button>
-          </li>
-        ))}
-      </ul>
+      {tasks.length > 0 && (
+        <>
+          <p className="rootmode__noticetitle">An Agent is still running — Root Mode can’t be switched until it finishes or you cancel it.</p>
+          <ul className="rootmode__tasks">
+            {tasks.map((t) => (
+              <li key={t.id} className="rootmode__task">
+                <span className="rootmode__taskname">{t.title || t.id}</span>
+                <span className="set__badge">{stateLabel(t.state)}</span>
+                <button className="set__reset" onClick={() => onOpen(t.id)}>
+                  Open
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {workspaces.length > 0 && (
+        <>
+          <p className="rootmode__noticetitle">Code is open. Please save your files and close Code before switching mode.</p>
+          <ul className="rootmode__tasks" aria-label="Open in Code">
+            {workspaces.map((w) => (
+              <li key={w.id || w.win} className="rootmode__task rootmode__code">
+                <span className="rootmode__taskname" title={w.path}>
+                  {w.path}
+                </span>
+                <span className="set__badge">
+                  {w.unsaved.length === 0 ? "saved" : `${w.unsaved.length} unsaved`}
+                  {!w.win && " · another tab"}
+                </span>
+                {w.win && (
+                  <button className="set__reset" aria-label={`Show ${w.path}`} onClick={() => onShow(w.win!)}>
+                    Show
+                  </button>
+                )}
+                {w.unsaved.length > 0 && <UnsavedFiles files={w.unsaved} root={w.path} />}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       <div className="rootmode__actions">
         <button className="tasks__btn" onClick={onClose}>
           OK
         </button>
       </div>
+    </div>
+  );
+}
+
+// UnsavedFiles lists files with unsaved edits in Code, under root when given.
+function UnsavedFiles({ files, root }: { files: string[]; root?: string }) {
+  return (
+    <ul className="rootmode__unsaved" aria-label="Unsaved files">
+      {files.map((f) => (
+        <li key={f}>{root && f.startsWith(root + "/") ? f.slice(root.length + 1) : f}</li>
+      ))}
+    </ul>
+  );
+}
+
+// UnsavedWarning tells a restart's confirm what it would drop in Code: the
+// restart is not blocked by Code, but its unsaved files are lost.
+function UnsavedWarning() {
+  const files = useMemo(unsavedInCode, []);
+  if (files.length === 0) return null;
+  return (
+    <div className="rootmode__lose" role="note" aria-label="Unsaved in Code">
+      <p className="rootmode__losetext">
+        {files.length === 1 ? "This file has" : `These ${files.length} files have`} unsaved changes in Code, which the restart will lose:
+      </p>
+      <UnsavedFiles files={files} />
     </div>
   );
 }
@@ -257,7 +356,7 @@ function PasswordModal({
 }: {
   onCancel: () => void;
   onSwitched: () => void;
-  onBlocked: (tasks: TaskRef[]) => void;
+  onBlocked: (b: Blocked) => void;
 }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -277,7 +376,7 @@ function PasswordModal({
       const ce = ConnectError.from(err);
       const blocked = ce.findDetails(RootModeBlockedSchema)[0];
       if (blocked) {
-        onBlocked(blocked.tasks);
+        onBlocked(blocked);
         return;
       }
       const lock = ce.findDetails(RootModeLockoutSchema)[0];
@@ -350,7 +449,7 @@ function OffConfirmModal({
 }: {
   onCancel: () => void;
   onSwitched: () => void;
-  onBlocked: (tasks: TaskRef[]) => void;
+  onBlocked: (b: Blocked) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -364,7 +463,7 @@ function OffConfirmModal({
     } catch (err) {
       const blocked = ConnectError.from(err).findDetails(RootModeBlockedSchema)[0];
       if (blocked) {
-        onBlocked(blocked.tasks);
+        onBlocked(blocked);
         return;
       }
       setError(friendlyError(err));
@@ -404,7 +503,7 @@ function ClearConfirmModal({
 }: {
   onCancel: () => void;
   onClearing: () => void;
-  onBlocked: (tasks: TaskRef[]) => void;
+  onBlocked: (b: Blocked) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -418,7 +517,7 @@ function ClearConfirmModal({
     } catch (err) {
       const blocked = ConnectError.from(err).findDetails(RootModeBlockedSchema)[0];
       if (blocked) {
-        onBlocked(blocked.tasks);
+        onBlocked(blocked);
         return;
       }
       setError(friendlyError(err));
@@ -432,6 +531,7 @@ function ClearConfirmModal({
         This erases Root Mode’s own Tasks, Audit Log, chats and command outputs, then restarts AOS into an empty Root Mode. What root already
         did to the server’s files and packages is real and stays — only AOS’s record of it goes. This cannot be undone.
       </p>
+      <UnsavedWarning />
       {error && (
         <p className="tasks__error" role="alert">
           {error}
@@ -469,6 +569,7 @@ function RestartConfirmModal({ onCancel, onRestarting }: { onCancel: () => void;
     <Overlay label="Restart AOS">
       <p className="auth__title">Restart AOS?</p>
       <p className="boot__muted rootmode__confirmtext">Running Tasks will stop and be marked interrupted.</p>
+      <UnsavedWarning />
       {error && (
         <p className="tasks__error" role="alert">
           {error}

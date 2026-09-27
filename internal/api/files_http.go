@@ -136,6 +136,12 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("an upload can be at most %d GB", files.MaxUpload>>30), http.StatusRequestEntityTooLarge)
 		return
 	}
+	// An upload never replaces a Sensitive System File in Root Mode (M8.5):
+	// that asks first, which Code and TextEdit do.
+	if why, sensitive := (fileService{s}).sensitive(p, false); sensitive {
+		http.Error(w, fmt.Sprintf("%s is a Sensitive System File. %s Open it in Code to change it.", p, why), http.StatusPreconditionFailed)
+		return
+	}
 	args := files.WriteStreamArgs{Path: p, Overwrite: r.URL.Query().Get("overwrite") != "", Size: r.ContentLength}
 	n, err := st.WriteStream(r.Context(), args, http.MaxBytesReader(w, r.Body, files.MaxUpload))
 	(fileService{s}).audit(r.Context(), "upload", p, err)

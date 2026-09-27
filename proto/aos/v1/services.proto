@@ -100,6 +100,18 @@ service TaskService {
   // is queued, running or waiting: cancel it first. The Audit Log keeps its
   // record (it is append-only).
   rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
+  // The files a Task changed with its Tools, each with its before-image: the
+  // content it had before the Task first changed it (M8.11).
+  rpc ListChanges(ListChangesRequest) returns (ListChangesResponse);
+  // One changed file's before-image.
+  rpc GetBefore(GetBeforeRequest) returns (GetBeforeResponse);
+  // Records what the user kept of a Task's change to a file in Change Review
+  // (M8.12): the file is compared with this from now on.
+  rpc ReviewChange(ReviewChangeRequest) returns (ReviewChangeResponse);
+  // Discards what is left of a Task's change to a file: puts back what it is
+  // compared with, or moves it to the Trash if that is "did not exist". As
+  // the Realm's user, audited; a Sensitive System File needs confirming.
+  rpc DiscardChange(DiscardChangeRequest) returns (DiscardChangeResponse);
 }
 
 message CreateTaskRequest {
@@ -107,6 +119,26 @@ message CreateTaskRequest {
   // Unspecified uses the configured Autonomy.
   Autonomy autonomy = 2;
   bool interactive = 3;
+  // Set when the Task is started from Code's Agent sidebar (M8.11): the
+  // Agent is told where the user is working, and the Task belongs to the
+  // Workspace.
+  EditorContext editor = 4;
+}
+
+// EditorContext is what Code tells the Agent about where the user is working
+// (M8.11).
+message EditorContext {
+  // The Workspace's folder.
+  string workspace = 1;
+  // The file in front, if any.
+  string active_file = 2;
+  // Text the user added to the chat from the file in front (⌘L), capped at
+  // 16 KiB, and the lines it spans.
+  string selection = 3;
+  int32 selection_start_line = 4;
+  int32 selection_end_line = 5;
+  // Every file open in the window.
+  repeated string open_files = 6;
 }
 message CreateTaskResponse {
   Task task = 1;
@@ -114,6 +146,8 @@ message CreateTaskResponse {
 
 message ListTasksRequest {
   int32 limit = 1;
+  // Only the Tasks started from Code on this Workspace folder (M8.11).
+  string workspace = 2;
 }
 message ListTasksResponse {
   repeated Task tasks = 1;
@@ -133,6 +167,8 @@ message SendFollowUpRequest {
   string text = 2;
   // Whether someone can answer Approvals and questions from now on.
   bool interactive = 3;
+  // Where the user is working now, for a Follow-up from Code (M8.11).
+  EditorContext editor = 4;
 }
 message SendFollowUpResponse {
   Task task = 1;
@@ -166,6 +202,74 @@ message DeleteTaskRequest {
   string id = 1;
 }
 message DeleteTaskResponse {}
+
+// TaskFileChange is a file a Task changed with its Tools (M8.11). The first
+// change keeps what the file was before; later ones by the same Task don't.
+message TaskFileChange {
+  string path = 1;
+  // The Tool whose call first changed it: write_file, edit_file, move, copy
+  // or delete.
+  string tool = 2;
+  // False when the Task created the file: it did not exist before.
+  bool existed = 3;
+  // It was a folder (moved or deleted): nothing to compare, and no content kept.
+  bool folder = 4;
+  // Its size before.
+  int64 size = 5;
+  // Whether the before-image was kept. Files over 64 MiB are not.
+  bool kept = 6;
+  // Too big to compare line by line (over 4 MiB), or not text: it can be kept
+  // or put back whole, not hunk by hunk.
+  bool whole = 7;
+  google.protobuf.Timestamp changed_at = 8;
+  // Change Review (M8.12): the file on disk still differs from what it is
+  // compared with — the before-image, with what the user kept — so something
+  // is left to decide. Set by ListChanges.
+  bool pending = 9;
+  // The user kept some of the change, so the file is compared with the
+  // before-image as they left it, not as it was.
+  bool reviewed = 10;
+  // Whether what it is compared with exists; false while the Task's
+  // creating it is undecided, or once its deleting it is kept.
+  bool base_exists = 11;
+}
+message ListChangesRequest {
+  string task_id = 1;
+}
+message ListChangesResponse {
+  repeated TaskFileChange changes = 1;
+}
+message GetBeforeRequest {
+  string task_id = 1;
+  string path = 2;
+}
+message GetBeforeResponse {
+  TaskFileChange change = 1;
+  // What Change Review compares the file with: its content before the Task
+  // changed it, with the hunks the user kept. Empty when that does not exist
+  // (change.base_exists), was a folder, or is compared whole.
+  bytes content = 2;
+}
+message ReviewChangeRequest {
+  string task_id = 1;
+  string path = 2;
+  // What to compare the file with from now on: base, or "does not exist"
+  // when gone; or, with keep_all, the file as it is now on disk.
+  bytes base = 3;
+  bool gone = 4;
+  bool keep_all = 5;
+}
+message ReviewChangeResponse {
+  TaskFileChange change = 1;
+}
+message DiscardChangeRequest {
+  string task_id = 1;
+  string path = 2;
+  bool confirm_sensitive = 3;
+}
+message DiscardChangeResponse {
+  TaskFileChange change = 1;
+}
 
 // ---------------------------------------------------------------- Approvals
 
@@ -203,6 +307,10 @@ message SubscribeRequest {
 
 message SubscribeResponse {
   Event event = 1;
+  // Set on the first message only: this subscription's id, which
+  // CodeService.OpenWorkspace takes so a Code window's changes ride this
+  // stream instead of holding a connection of their own (M8.2).
+  string subscription_id = 2;
 }
 
 message Event {
@@ -218,6 +326,8 @@ message Event {
     ReplayProgress replay_progress = 9;
     OpenInDesktop open_in_desktop = 10;
     DesktopStateChanged desktop_state = 11;
+    // Only to the subscription that opened the Workspace (M8.2).
+    WorkspaceChanged workspace = 12;
   }
 }
 
@@ -305,6 +415,9 @@ service FileService {
   rpc Stat(StatRequest) returns (StatResponse);
   rpc Read(ReadRequest) returns (ReadResponse);
   rpc Write(WriteRequest) returns (WriteResponse);
+  // Makes a new folder, and any missing folders above it (M8.3). Something
+  // already at the path is AlreadyExists.
+  rpc MakeFolder(MakeFolderRequest) returns (MakeFolderResponse);
   rpc Move(MoveRequest) returns (MoveResponse);
   rpc Copy(CopyRequest) returns (CopyResponse);
   // Moves to the Trash.
@@ -316,7 +429,60 @@ service FileService {
   // client stays (PLAN.md §15: polled every 2 s, which sees changes on every
   // Host, a Windows Shared Folder included).
   rpc Watch(WatchRequest) returns (stream WatchResponse);
+
+  // Sensitive System Files (M8.5). In Root Mode Write, MakeFolder, Move, Copy
+  // and Delete refuse to change one unless confirm_sensitive is set
+  // (FailedPrecondition, with a SensitivePath detail). A confirmed write
+  // keeps the version it replaces, the last five per file.
+  //
+  // CheckSensitive runs the file's own checker, where it has one, on content
+  // about to be saved: visudo for sudoers, sshd -t for sshd_config, findmnt
+  // --verify for fstab.
+  rpc CheckSensitive(CheckSensitiveRequest) returns (CheckSensitiveResponse);
+  rpc ListSensitiveBackups(ListSensitiveBackupsRequest) returns (ListSensitiveBackupsResponse);
+  // Puts a kept version back; itself a confirmed write, so the version it
+  // replaces is kept in turn.
+  rpc RestoreSensitiveBackup(RestoreSensitiveBackupRequest) returns (RestoreSensitiveBackupResponse);
 }
+
+// SensitivePath is the detail on a refused change to a Sensitive System File.
+message SensitivePath {
+  string path = 1;
+  // What can go wrong, in a sentence.
+  string reason = 2;
+}
+
+message CheckSensitiveRequest {
+  string path = 1;
+  bytes content = 2;
+}
+message CheckSensitiveResponse {
+  // The check that ran, e.g. "visudo -c"; empty when the file has none.
+  string checker = 1;
+  bool passed = 2;
+  // What the checker printed.
+  string output = 3;
+  // The file has a check, but its program isn't installed.
+  bool unavailable = 4;
+}
+
+message SensitiveBackup {
+  string id = 1;
+  google.protobuf.Timestamp saved_at = 2;
+  int64 size = 3;
+}
+message ListSensitiveBackupsRequest {
+  string path = 1;
+}
+message ListSensitiveBackupsResponse {
+  // Newest first.
+  repeated SensitiveBackup backups = 1;
+}
+message RestoreSensitiveBackupRequest {
+  string path = 1;
+  string id = 2;
+}
+message RestoreSensitiveBackupResponse {}
 
 message WatchRequest {
   string path = 1;
@@ -341,6 +507,13 @@ message FileInfo {
   // Protected Path), "inherited" (inside one of those), or "" when it is not
   // protected at all.
   string protect_source = 10;
+  // Whether the Realm's user may write it (for a folder, add to it), checked
+  // as that user (M8.4). Code opens a file that isn't writable read-only. AOS's
+  // own state is never writable here, even to root.
+  bool writable = 11;
+  // In Root Mode, what can go wrong changing this Sensitive System File (M8.5);
+  // empty for any other file, and always in Standard Mode.
+  string sensitive_reason = 12;
 }
 
 message ListRequest {
@@ -372,13 +545,22 @@ message WriteRequest {
   string path = 1;
   bytes content = 2;
   bool overwrite = 3;
+  // Changes a Sensitive System File in Root Mode (M8.5).
+  bool confirm_sensitive = 4;
 }
 message WriteResponse {}
+
+message MakeFolderRequest {
+  string path = 1;
+  bool confirm_sensitive = 2;
+}
+message MakeFolderResponse {}
 
 message MoveRequest {
   string source = 1;
   string destination = 2;
   bool overwrite = 3;
+  bool confirm_sensitive = 4;
 }
 message MoveResponse {}
 
@@ -386,11 +568,13 @@ message CopyRequest {
   string source = 1;
   string destination = 2;
   bool overwrite = 3;
+  bool confirm_sensitive = 4;
 }
 message CopyResponse {}
 
 message DeleteRequest {
   string path = 1;
+  bool confirm_sensitive = 2;
 }
 message DeleteResponse {
   TrashItem item = 1;
@@ -470,11 +654,17 @@ message SessionInfo {
   // An Agent Session whose Task has ended, kept a while so a viewer can still
   // replay what it showed. It takes no input.
   bool ended = 6;
+  // The folder the shell started in; set on CreateSession's response only.
+  string cwd = 7;
 }
 
 message CreateSessionRequest {
   uint32 cols = 1;
   uint32 rows = 2;
+  // The folder to start in, such as a Code Workspace's (M8.6). The shell
+  // starts there only if the Realm's user can enter it, and in the home
+  // folder otherwise; SessionInfo.cwd says which. Empty is the home folder.
+  string cwd = 3;
 }
 message CreateSessionResponse {
   SessionInfo session = 1;
@@ -756,9 +946,11 @@ service SystemService {
   // root_mode key, which SettingsService.Update refuses. Turning it on needs the
   // Desktop account's password (verified like sign-in, M6.3); turning it off
   // needs none, since it lowers privilege. It is refused while any Task is
-  // Queued, Running or AwaitingUser (FailedPrecondition, detail RootModeBlocked),
-  // before the password is even checked, so a wrong-password try is never spent
-  // on a switch that cannot happen. A wrong password is Unauthenticated (detail
+  // Queued, Running or AwaitingUser, and while any Code window has a Workspace
+  // open (M8.13), since the restart would drop its unsaved files
+  // (FailedPrecondition, detail RootModeBlocked, listing both), before the
+  // password is even checked, so a wrong-password try is never spent on a
+  // switch that cannot happen. A wrong password is Unauthenticated (detail
   // RootModeAttempt with the attempts left); five wrong in fifteen minutes lock
   // the switch for fifteen (ResourceExhausted, detail RootModeLockout with the
   // unlock time). On success it audits the switch in the Realm it is made from
@@ -797,9 +989,22 @@ message SetRootModeRequest {
 message SetRootModeResponse {}
 
 // RootModeBlocked is the FailedPrecondition detail on SetRootMode: the Tasks that
-// must finish or be cancelled before the Realm can be switched.
+// must finish or be cancelled, and the Code Workspaces that must be closed
+// (M8.13), before the Realm can be switched. ClearRootHistory is refused for
+// Tasks only, so it lists no Workspaces.
 message RootModeBlocked {
   repeated BlockingTask tasks = 1;
+  repeated BlockingWorkspace workspaces = 2;
+}
+
+// BlockingWorkspace names one open Code Workspace, in any of the Desktop's tabs,
+// that blocks a Realm switch (M8.13), with its window's unsaved files.
+message BlockingWorkspace {
+  string id = 1;
+  // The Workspace's folder.
+  string path = 2;
+  // Absolute paths of the window's files with unsaved edits, sorted.
+  repeated string unsaved = 3;
 }
 
 // BlockingTask names one Task that blocks a Realm switch, enough for the Desktop
@@ -945,4 +1150,272 @@ message AuditRequest {
 }
 message AuditResponse {
   repeated AuditEntry entries = 1;
+}
+
+// ---------------------------------------------------------------- Code
+
+// CodeService serves Code, the Desktop's code editor (PLAN.md M8). Everything
+// in it acts with the Realm's rights, like FileService: as aos in Standard Mode,
+// as root in Root Mode. Agents never reach it: the control socket's §7.5 guard
+// refuses Agent-confined callers, and they hold no Desktop token.
+//
+// A Code window holds no stream of its own. Browsers allow six connections to
+// aosd across all the Desktop's tabs, so a Workspace rides its tab's
+// EventService subscription: it belongs to that subscription, its changes
+// arrive on it as WorkspaceChanged events, and it closes when the subscription
+// ends. A tab whose subscription restarts opens its Workspaces again.
+service CodeService {
+  // OpenWorkspace opens a folder as a Code window's Workspace, owned by the
+  // tab's subscription. The Workspace's changes then arrive on that
+  // subscription as WorkspaceChanged events: first how it is watched, then
+  // what appears, changes or goes under it. They travel on another connection,
+  // so one may arrive before this response does.
+  //
+  // A folder the Realm's user cannot read is refused (PermissionDenied), and a
+  // path that is not a folder is InvalidArgument. An unknown or ended
+  // subscription is NotFound; more than 32 Workspaces in one tab is
+  // ResourceExhausted. While any Workspace is open, the Realm cannot be
+  // switched (M8.13).
+  rpc OpenWorkspace(OpenWorkspaceRequest) returns (OpenWorkspaceResponse);
+  // CloseWorkspace closes a Workspace when its window closes. NotFound once
+  // it is already closed.
+  rpc CloseWorkspace(CloseWorkspaceRequest) returns (CloseWorkspaceResponse);
+  // ReportDirty replaces the unsaved files of an open Workspace, which the
+  // Realm switch lists when it refuses (M8.13). NotFound once it is closed.
+  rpc ReportDirty(ReportDirtyRequest) returns (ReportDirtyResponse);
+  // FindFiles is Quick Open (M8.7): the Workspace's files that fuzzily match
+  // a query, best first. The files are listed as the Realm's user once,
+  // honouring .gitignore, and kept current from the Workspace's watch.
+  rpc FindFiles(FindFilesRequest) returns (FindFilesResponse);
+  // SearchText is Find in Files (M8.7): matching lines under the Workspace,
+  // file by file as they are found, then a summary. ripgrep runs as the
+  // Realm's user when installed, AOS's own search otherwise; both honour
+  // .gitignore and skip binary files. A regular expression that does not
+  // compile is InvalidArgument.
+  rpc SearchText(SearchTextRequest) returns (stream SearchTextResponse);
+
+  // Navigation (M8.8), from a symbol index of the Workspace that
+  // universal-ctags builds as the Realm's user: in memory, built at the first
+  // question and then kept current from the Workspace's watch. It is by name,
+  // not by type: two Run methods are both offered. Past 20 000 files only the
+  // folders of the files asked from are indexed (IndexState.partial). Without
+  // universal-ctags these are FailedPrecondition, saying to install it.
+  //
+  // Definition: where a name is defined, nearest to the file asked from first.
+  rpc Definition(DefinitionRequest) returns (DefinitionResponse);
+  // References: the name's whole-word, case-sensitive uses in files of the
+  // same language as the file asked from. A text search, so it needs no ctags.
+  rpc References(ReferencesRequest) returns (ReferencesResponse);
+  // DocumentSymbols: a file's symbols as last saved, in order (⌘⇧O, Outline).
+  rpc DocumentSymbols(DocumentSymbolsRequest) returns (DocumentSymbolsResponse);
+  // WorkspaceSymbols: symbols whose names fuzzily match a query (⌘T), and
+  // completion.
+  rpc WorkspaceSymbols(WorkspaceSymbolsRequest) returns (WorkspaceSymbolsResponse);
+}
+
+message Symbol {
+  string name = 1;
+  // ctags' kind, such as "func", "method", "class", "struct", "const".
+  string kind = 2;
+  // Absolute.
+  string path = 3;
+  // From 1; end_line is 0 when ctags does not know it.
+  uint32 line = 4;
+  uint32 end_line = 5;
+  // What it is inside, such as "main.Server" for a Go method.
+  string scope = 6;
+  string signature = 7;
+  string language = 8;
+}
+
+// IndexState is how much of the Workspace the symbol index covers.
+message IndexState {
+  // Files with symbols, and files in the Workspace.
+  uint32 files = 1;
+  uint32 total = 2;
+  // The Workspace has more than 20 000 files: only the folders of files
+  // asked from are indexed.
+  bool partial = 3;
+}
+
+message DefinitionRequest {
+  string workspace_id = 1;
+  string name = 2;
+  // The file asked from, absolute: nearer definitions come first, and one
+  // in its language is preferred.
+  string path = 3;
+}
+message DefinitionResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
+}
+
+message ReferencesRequest {
+  string workspace_id = 1;
+  string name = 2;
+  // The file asked from, absolute; its language picks the files searched.
+  string path = 3;
+}
+message ReferencesResponse {
+  repeated TextFileMatches files = 1;
+  // It stopped at 1000 lines.
+  bool truncated = 2;
+}
+
+message DocumentSymbolsRequest {
+  string workspace_id = 1;
+  // Absolute.
+  string path = 2;
+}
+message DocumentSymbolsResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
+}
+
+message WorkspaceSymbolsRequest {
+  string workspace_id = 1;
+  string query = 2;
+  // 0 means 100; more than 500 is 500.
+  uint32 limit = 3;
+  // The file asked from, absolute, if any: past 20 000 files its folder is
+  // indexed first.
+  string path = 4;
+}
+message WorkspaceSymbolsResponse {
+  repeated Symbol symbols = 1;
+  IndexState index = 2;
+}
+
+message FindFilesRequest {
+  string workspace_id = 1;
+  // Characters to find in order in a file's path; case and spaces are
+  // ignored. Empty lists the first files by path.
+  string query = 2;
+  // At most this many; 0 means 50, and more than 500 is 500.
+  uint32 limit = 3;
+}
+message FindFilesResponse {
+  repeated FoundFile files = 1;
+  // How many files the Workspace has, and whether there were more than Code
+  // lists (100 000).
+  uint32 total = 2;
+  bool truncated = 3;
+}
+message FoundFile {
+  // Absolute.
+  string path = 1;
+  // Which characters matched, as UTF-16 offsets into the path relative to
+  // the Workspace's root.
+  repeated uint32 positions = 2;
+}
+
+message SearchTextRequest {
+  string workspace_id = 1;
+  string query = 2;
+  bool regex = 3;
+  bool case_sensitive = 4;
+  // gitignore-style globs relative to the root, such as *.go or src/**: only
+  // files matching one of include, and none of exclude.
+  repeated string include = 5;
+  repeated string exclude = 6;
+}
+message SearchTextResponse {
+  repeated TextFileMatches files = 1;
+  // Set on the last message only.
+  SearchTextSummary summary = 2;
+}
+message TextFileMatches {
+  // Absolute.
+  string path = 1;
+  repeated TextMatch matches = 2;
+}
+message TextMatch {
+  // From 1.
+  uint32 line = 1;
+  // The line, trimmed, and cut to 400 characters around the first match
+  // with "…" where it was cut.
+  string text = 2;
+  // Where the query matched in text, as UTF-16 offsets.
+  repeated TextRange ranges = 3;
+}
+message TextRange {
+  uint32 start = 1;
+  uint32 end = 2;
+}
+message SearchTextSummary {
+  uint32 files = 1;
+  uint32 matches = 2;
+  // The search stopped at 2000 matching lines.
+  bool truncated = 3;
+  // "ripgrep", or "built-in" on a Machine without it.
+  string engine = 4;
+}
+
+message OpenWorkspaceRequest {
+  // The tab's EventService subscription (SubscribeResponse.subscription_id).
+  string subscription_id = 1;
+  // A folder; ~ and relative paths start at the Realm's home, as in FileService.
+  string path = 2;
+}
+message OpenWorkspaceResponse {
+  string id = 1;
+  // The folder, absolute and clean.
+  string root = 2;
+  // The Realm it was opened in.
+  bool root_mode = 3;
+}
+
+message CloseWorkspaceRequest {
+  string workspace_id = 1;
+}
+message CloseWorkspaceResponse {}
+
+message ReportDirtyRequest {
+  string workspace_id = 1;
+  // Absolute paths of every file with unsaved edits in the window; empty when
+  // all are saved.
+  repeated string paths = 2;
+}
+message ReportDirtyResponse {}
+
+// WorkspaceChanged is sent only to the subscription that opened the Workspace.
+message WorkspaceChanged {
+  string workspace_id = 1;
+  // What appeared, changed or went under the root, in one burst. A path
+  // replaced by a rename (an editor's atomic save) comes as CREATED even when
+  // the client already has it: treat that as CHANGED.
+  repeated FileChange changes = 2;
+  // Set when how the Workspace is watched changes, the first time included.
+  WorkspaceWatch watch = 3;
+}
+
+message FileChange {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_CREATED = 1;
+    KIND_CHANGED = 2;
+    KIND_DELETED = 3;
+    // Changes under path were missed (the kernel dropped events, or the watch
+    // moved to polling): list it again.
+    KIND_RESCAN = 4;
+  }
+  Kind kind = 1;
+  string path = 2;
+  bool dir = 3;
+}
+
+message WorkspaceWatch {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    // inotify: changes arrive as they happen.
+    STATE_LIVE = 1;
+    // The tree is walked every 2 s: it has more folders than one Workspace may
+    // watch live, or the Machine's inotify limit was reached. `reason` says which.
+    STATE_POLLING = 2;
+    // No more changes will come, such as after the folder itself was deleted
+    // or moved; the Workspace stays open until its window closes it.
+    STATE_STOPPED = 3;
+  }
+  State state = 1;
+  string reason = 2;
 }

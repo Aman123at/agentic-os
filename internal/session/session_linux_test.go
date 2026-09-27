@@ -131,3 +131,63 @@ func TestUserSessionCredentialsPerRealm(t *testing.T) {
 		t.Errorf("root Session rc does not carry the root prompt:\n%s", rc)
 	}
 }
+
+// TestASessionStartsInTheFolderAskedFor covers M8.6: Code's Terminal panel
+// opens in the Workspace, and the shell changes into it itself, so a folder
+// that is missing or not a folder leaves it in the home folder.
+func TestASessionStartsInTheFolderAskedFor(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	file := work + "/a-file"
+	if err := os.WriteFile(file, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ cwd, want string }{
+		{work, work},
+		{work + "/missing", home},
+		{file, home},
+		{"", home},
+	} {
+		s, err := Start(Options{Dir: t.TempDir(), Home: home, Cwd: tc.cwd, UID: uint32(os.Getuid()), GID: uint32(os.Getgid())})
+		if err != nil {
+			t.Fatalf("Start(Cwd %q): %v", tc.cwd, err)
+		}
+		if got := s.StartedIn(); got != tc.want {
+			t.Errorf("Cwd %q: the shell started in %q, want %q", tc.cwd, got, tc.want)
+		}
+		if res := runIn(t, s, `printf '%s|%s\n' "$PWD" "${AOS_CWD-unset}"`); string(res.Output) != tc.want+"|unset\r\n" {
+			t.Errorf("Cwd %q: PWD|AOS_CWD = %q, want %s|unset", tc.cwd, res.Output, tc.want)
+		}
+		_ = s.Close()
+	}
+}
+
+// TestASessionNeverStartsInAFolderItsUserCannotEnter is the check as the
+// Realm's user: a folder only root may enter leaves an aos shell at home.
+func TestASessionNeverStartsInAFolderItsUserCannotEnter(t *testing.T) {
+	if os.Getuid() != 0 {
+		t.Skip("needs root to start a shell as another user")
+	}
+	const nobody = 65534
+	// Not t.TempDir: its parent is 0700, so nobody could not reach even home.
+	mk := func(mode os.FileMode) string {
+		d, err := os.MkdirTemp("", "aos-cwd-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(d) })
+		if err := os.Chmod(d, mode); err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	home, dir, private := mk(0o755), mk(0o755), mk(0o700)
+	s, err := Start(Options{Dir: dir, Home: home, Cwd: private, UID: nobody, GID: nobody})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if got := s.StartedIn(); got != home {
+		t.Errorf("a shell as nobody started in %q, want its home %q: root's 0700 folder must not be entered", got, home)
+	}
+}

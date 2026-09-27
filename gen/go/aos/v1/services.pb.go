@@ -22,6 +22,120 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type FileChange_Kind int32
+
+const (
+	FileChange_KIND_UNSPECIFIED FileChange_Kind = 0
+	FileChange_KIND_CREATED     FileChange_Kind = 1
+	FileChange_KIND_CHANGED     FileChange_Kind = 2
+	FileChange_KIND_DELETED     FileChange_Kind = 3
+	// Changes under path were missed (the kernel dropped events, or the watch
+	// moved to polling): list it again.
+	FileChange_KIND_RESCAN FileChange_Kind = 4
+)
+
+// Enum value maps for FileChange_Kind.
+var (
+	FileChange_Kind_name = map[int32]string{
+		0: "KIND_UNSPECIFIED",
+		1: "KIND_CREATED",
+		2: "KIND_CHANGED",
+		3: "KIND_DELETED",
+		4: "KIND_RESCAN",
+	}
+	FileChange_Kind_value = map[string]int32{
+		"KIND_UNSPECIFIED": 0,
+		"KIND_CREATED":     1,
+		"KIND_CHANGED":     2,
+		"KIND_DELETED":     3,
+		"KIND_RESCAN":      4,
+	}
+)
+
+func (x FileChange_Kind) Enum() *FileChange_Kind {
+	p := new(FileChange_Kind)
+	*p = x
+	return p
+}
+
+func (x FileChange_Kind) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (FileChange_Kind) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_services_proto_enumTypes[0].Descriptor()
+}
+
+func (FileChange_Kind) Type() protoreflect.EnumType {
+	return &file_aos_v1_services_proto_enumTypes[0]
+}
+
+func (x FileChange_Kind) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use FileChange_Kind.Descriptor instead.
+func (FileChange_Kind) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{202, 0}
+}
+
+type WorkspaceWatch_State int32
+
+const (
+	WorkspaceWatch_STATE_UNSPECIFIED WorkspaceWatch_State = 0
+	// inotify: changes arrive as they happen.
+	WorkspaceWatch_STATE_LIVE WorkspaceWatch_State = 1
+	// The tree is walked every 2 s: it has more folders than one Workspace may
+	// watch live, or the Machine's inotify limit was reached. `reason` says which.
+	WorkspaceWatch_STATE_POLLING WorkspaceWatch_State = 2
+	// No more changes will come, such as after the folder itself was deleted
+	// or moved; the Workspace stays open until its window closes it.
+	WorkspaceWatch_STATE_STOPPED WorkspaceWatch_State = 3
+)
+
+// Enum value maps for WorkspaceWatch_State.
+var (
+	WorkspaceWatch_State_name = map[int32]string{
+		0: "STATE_UNSPECIFIED",
+		1: "STATE_LIVE",
+		2: "STATE_POLLING",
+		3: "STATE_STOPPED",
+	}
+	WorkspaceWatch_State_value = map[string]int32{
+		"STATE_UNSPECIFIED": 0,
+		"STATE_LIVE":        1,
+		"STATE_POLLING":     2,
+		"STATE_STOPPED":     3,
+	}
+)
+
+func (x WorkspaceWatch_State) Enum() *WorkspaceWatch_State {
+	p := new(WorkspaceWatch_State)
+	*p = x
+	return p
+}
+
+func (x WorkspaceWatch_State) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WorkspaceWatch_State) Descriptor() protoreflect.EnumDescriptor {
+	return file_aos_v1_services_proto_enumTypes[1].Descriptor()
+}
+
+func (WorkspaceWatch_State) Type() protoreflect.EnumType {
+	return &file_aos_v1_services_proto_enumTypes[1]
+}
+
+func (x WorkspaceWatch_State) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WorkspaceWatch_State.Descriptor instead.
+func (WorkspaceWatch_State) EnumDescriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{203, 0}
+}
+
 type SignInRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Username      string                 `protobuf:"bytes,1,opt,name=username,proto3" json:"username,omitempty"`
@@ -590,8 +704,12 @@ type CreateTaskRequest struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Prompt string                 `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	// Unspecified uses the configured Autonomy.
-	Autonomy      Autonomy `protobuf:"varint,2,opt,name=autonomy,proto3,enum=aos.v1.Autonomy" json:"autonomy,omitempty"`
-	Interactive   bool     `protobuf:"varint,3,opt,name=interactive,proto3" json:"interactive,omitempty"`
+	Autonomy    Autonomy `protobuf:"varint,2,opt,name=autonomy,proto3,enum=aos.v1.Autonomy" json:"autonomy,omitempty"`
+	Interactive bool     `protobuf:"varint,3,opt,name=interactive,proto3" json:"interactive,omitempty"`
+	// Set when the Task is started from Code's Agent sidebar (M8.11): the
+	// Agent is told where the user is working, and the Task belongs to the
+	// Workspace.
+	Editor        *EditorContext `protobuf:"bytes,4,opt,name=editor,proto3" json:"editor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -647,6 +765,104 @@ func (x *CreateTaskRequest) GetInteractive() bool {
 	return false
 }
 
+func (x *CreateTaskRequest) GetEditor() *EditorContext {
+	if x != nil {
+		return x.Editor
+	}
+	return nil
+}
+
+// EditorContext is what Code tells the Agent about where the user is working
+// (M8.11).
+type EditorContext struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The Workspace's folder.
+	Workspace string `protobuf:"bytes,1,opt,name=workspace,proto3" json:"workspace,omitempty"`
+	// The file in front, if any.
+	ActiveFile string `protobuf:"bytes,2,opt,name=active_file,json=activeFile,proto3" json:"active_file,omitempty"`
+	// Text the user added to the chat from the file in front (⌘L), capped at
+	// 16 KiB, and the lines it spans.
+	Selection          string `protobuf:"bytes,3,opt,name=selection,proto3" json:"selection,omitempty"`
+	SelectionStartLine int32  `protobuf:"varint,4,opt,name=selection_start_line,json=selectionStartLine,proto3" json:"selection_start_line,omitempty"`
+	SelectionEndLine   int32  `protobuf:"varint,5,opt,name=selection_end_line,json=selectionEndLine,proto3" json:"selection_end_line,omitempty"`
+	// Every file open in the window.
+	OpenFiles     []string `protobuf:"bytes,6,rep,name=open_files,json=openFiles,proto3" json:"open_files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EditorContext) Reset() {
+	*x = EditorContext{}
+	mi := &file_aos_v1_services_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EditorContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EditorContext) ProtoMessage() {}
+
+func (x *EditorContext) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EditorContext.ProtoReflect.Descriptor instead.
+func (*EditorContext) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *EditorContext) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
+	}
+	return ""
+}
+
+func (x *EditorContext) GetActiveFile() string {
+	if x != nil {
+		return x.ActiveFile
+	}
+	return ""
+}
+
+func (x *EditorContext) GetSelection() string {
+	if x != nil {
+		return x.Selection
+	}
+	return ""
+}
+
+func (x *EditorContext) GetSelectionStartLine() int32 {
+	if x != nil {
+		return x.SelectionStartLine
+	}
+	return 0
+}
+
+func (x *EditorContext) GetSelectionEndLine() int32 {
+	if x != nil {
+		return x.SelectionEndLine
+	}
+	return 0
+}
+
+func (x *EditorContext) GetOpenFiles() []string {
+	if x != nil {
+		return x.OpenFiles
+	}
+	return nil
+}
+
 type CreateTaskResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
@@ -656,7 +872,7 @@ type CreateTaskResponse struct {
 
 func (x *CreateTaskResponse) Reset() {
 	*x = CreateTaskResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[13]
+	mi := &file_aos_v1_services_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -668,7 +884,7 @@ func (x *CreateTaskResponse) String() string {
 func (*CreateTaskResponse) ProtoMessage() {}
 
 func (x *CreateTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[13]
+	mi := &file_aos_v1_services_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -681,7 +897,7 @@ func (x *CreateTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTaskResponse.ProtoReflect.Descriptor instead.
 func (*CreateTaskResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{13}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CreateTaskResponse) GetTask() *Task {
@@ -692,15 +908,17 @@ func (x *CreateTaskResponse) GetTask() *Task {
 }
 
 type ListTasksRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Limit int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
+	// Only the Tasks started from Code on this Workspace folder (M8.11).
+	Workspace     string `protobuf:"bytes,2,opt,name=workspace,proto3" json:"workspace,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ListTasksRequest) Reset() {
 	*x = ListTasksRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[14]
+	mi := &file_aos_v1_services_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -712,7 +930,7 @@ func (x *ListTasksRequest) String() string {
 func (*ListTasksRequest) ProtoMessage() {}
 
 func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[14]
+	mi := &file_aos_v1_services_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -725,7 +943,7 @@ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
 func (*ListTasksRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{14}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListTasksRequest) GetLimit() int32 {
@@ -733,6 +951,13 @@ func (x *ListTasksRequest) GetLimit() int32 {
 		return x.Limit
 	}
 	return 0
+}
+
+func (x *ListTasksRequest) GetWorkspace() string {
+	if x != nil {
+		return x.Workspace
+	}
+	return ""
 }
 
 type ListTasksResponse struct {
@@ -744,7 +969,7 @@ type ListTasksResponse struct {
 
 func (x *ListTasksResponse) Reset() {
 	*x = ListTasksResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[15]
+	mi := &file_aos_v1_services_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -756,7 +981,7 @@ func (x *ListTasksResponse) String() string {
 func (*ListTasksResponse) ProtoMessage() {}
 
 func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[15]
+	mi := &file_aos_v1_services_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -769,7 +994,7 @@ func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTasksResponse.ProtoReflect.Descriptor instead.
 func (*ListTasksResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{15}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListTasksResponse) GetTasks() []*Task {
@@ -788,7 +1013,7 @@ type GetTaskRequest struct {
 
 func (x *GetTaskRequest) Reset() {
 	*x = GetTaskRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[16]
+	mi := &file_aos_v1_services_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -800,7 +1025,7 @@ func (x *GetTaskRequest) String() string {
 func (*GetTaskRequest) ProtoMessage() {}
 
 func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[16]
+	mi := &file_aos_v1_services_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -813,7 +1038,7 @@ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
 func (*GetTaskRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{16}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *GetTaskRequest) GetId() string {
@@ -834,7 +1059,7 @@ type GetTaskResponse struct {
 
 func (x *GetTaskResponse) Reset() {
 	*x = GetTaskResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[17]
+	mi := &file_aos_v1_services_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -846,7 +1071,7 @@ func (x *GetTaskResponse) String() string {
 func (*GetTaskResponse) ProtoMessage() {}
 
 func (x *GetTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[17]
+	mi := &file_aos_v1_services_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -859,7 +1084,7 @@ func (x *GetTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetTaskResponse.ProtoReflect.Descriptor instead.
 func (*GetTaskResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{17}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetTaskResponse) GetTask() *Task {
@@ -888,14 +1113,16 @@ type SendFollowUpRequest struct {
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Text  string                 `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	// Whether someone can answer Approvals and questions from now on.
-	Interactive   bool `protobuf:"varint,3,opt,name=interactive,proto3" json:"interactive,omitempty"`
+	Interactive bool `protobuf:"varint,3,opt,name=interactive,proto3" json:"interactive,omitempty"`
+	// Where the user is working now, for a Follow-up from Code (M8.11).
+	Editor        *EditorContext `protobuf:"bytes,4,opt,name=editor,proto3" json:"editor,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SendFollowUpRequest) Reset() {
 	*x = SendFollowUpRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[18]
+	mi := &file_aos_v1_services_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -907,7 +1134,7 @@ func (x *SendFollowUpRequest) String() string {
 func (*SendFollowUpRequest) ProtoMessage() {}
 
 func (x *SendFollowUpRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[18]
+	mi := &file_aos_v1_services_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -920,7 +1147,7 @@ func (x *SendFollowUpRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendFollowUpRequest.ProtoReflect.Descriptor instead.
 func (*SendFollowUpRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{18}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SendFollowUpRequest) GetId() string {
@@ -944,6 +1171,13 @@ func (x *SendFollowUpRequest) GetInteractive() bool {
 	return false
 }
 
+func (x *SendFollowUpRequest) GetEditor() *EditorContext {
+	if x != nil {
+		return x.Editor
+	}
+	return nil
+}
+
 type SendFollowUpResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Task          *Task                  `protobuf:"bytes,1,opt,name=task,proto3" json:"task,omitempty"`
@@ -953,7 +1187,7 @@ type SendFollowUpResponse struct {
 
 func (x *SendFollowUpResponse) Reset() {
 	*x = SendFollowUpResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[19]
+	mi := &file_aos_v1_services_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -965,7 +1199,7 @@ func (x *SendFollowUpResponse) String() string {
 func (*SendFollowUpResponse) ProtoMessage() {}
 
 func (x *SendFollowUpResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[19]
+	mi := &file_aos_v1_services_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -978,7 +1212,7 @@ func (x *SendFollowUpResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SendFollowUpResponse.ProtoReflect.Descriptor instead.
 func (*SendFollowUpResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{19}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SendFollowUpResponse) GetTask() *Task {
@@ -998,7 +1232,7 @@ type AnswerQuestionRequest struct {
 
 func (x *AnswerQuestionRequest) Reset() {
 	*x = AnswerQuestionRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[20]
+	mi := &file_aos_v1_services_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1010,7 +1244,7 @@ func (x *AnswerQuestionRequest) String() string {
 func (*AnswerQuestionRequest) ProtoMessage() {}
 
 func (x *AnswerQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[20]
+	mi := &file_aos_v1_services_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1023,7 +1257,7 @@ func (x *AnswerQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AnswerQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{20}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *AnswerQuestionRequest) GetId() string {
@@ -1048,7 +1282,7 @@ type AnswerQuestionResponse struct {
 
 func (x *AnswerQuestionResponse) Reset() {
 	*x = AnswerQuestionResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[21]
+	mi := &file_aos_v1_services_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1060,7 +1294,7 @@ func (x *AnswerQuestionResponse) String() string {
 func (*AnswerQuestionResponse) ProtoMessage() {}
 
 func (x *AnswerQuestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[21]
+	mi := &file_aos_v1_services_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1073,7 +1307,7 @@ func (x *AnswerQuestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerQuestionResponse.ProtoReflect.Descriptor instead.
 func (*AnswerQuestionResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{21}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{22}
 }
 
 type CancelTaskRequest struct {
@@ -1085,7 +1319,7 @@ type CancelTaskRequest struct {
 
 func (x *CancelTaskRequest) Reset() {
 	*x = CancelTaskRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[22]
+	mi := &file_aos_v1_services_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1097,7 +1331,7 @@ func (x *CancelTaskRequest) String() string {
 func (*CancelTaskRequest) ProtoMessage() {}
 
 func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[22]
+	mi := &file_aos_v1_services_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1110,7 +1344,7 @@ func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskRequest.ProtoReflect.Descriptor instead.
 func (*CancelTaskRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{22}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *CancelTaskRequest) GetId() string {
@@ -1128,7 +1362,7 @@ type CancelTaskResponse struct {
 
 func (x *CancelTaskResponse) Reset() {
 	*x = CancelTaskResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[23]
+	mi := &file_aos_v1_services_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1140,7 +1374,7 @@ func (x *CancelTaskResponse) String() string {
 func (*CancelTaskResponse) ProtoMessage() {}
 
 func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[23]
+	mi := &file_aos_v1_services_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1153,7 +1387,7 @@ func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskResponse.ProtoReflect.Descriptor instead.
 func (*CancelTaskResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{23}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{24}
 }
 
 type ResumeTaskRequest struct {
@@ -1166,7 +1400,7 @@ type ResumeTaskRequest struct {
 
 func (x *ResumeTaskRequest) Reset() {
 	*x = ResumeTaskRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[24]
+	mi := &file_aos_v1_services_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1178,7 +1412,7 @@ func (x *ResumeTaskRequest) String() string {
 func (*ResumeTaskRequest) ProtoMessage() {}
 
 func (x *ResumeTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[24]
+	mi := &file_aos_v1_services_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1191,7 +1425,7 @@ func (x *ResumeTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeTaskRequest.ProtoReflect.Descriptor instead.
 func (*ResumeTaskRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{24}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ResumeTaskRequest) GetId() string {
@@ -1217,7 +1451,7 @@ type ResumeTaskResponse struct {
 
 func (x *ResumeTaskResponse) Reset() {
 	*x = ResumeTaskResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[25]
+	mi := &file_aos_v1_services_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1229,7 +1463,7 @@ func (x *ResumeTaskResponse) String() string {
 func (*ResumeTaskResponse) ProtoMessage() {}
 
 func (x *ResumeTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[25]
+	mi := &file_aos_v1_services_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1242,7 +1476,7 @@ func (x *ResumeTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResumeTaskResponse.ProtoReflect.Descriptor instead.
 func (*ResumeTaskResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{25}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ResumeTaskResponse) GetTask() *Task {
@@ -1260,7 +1494,7 @@ type StopAllRequest struct {
 
 func (x *StopAllRequest) Reset() {
 	*x = StopAllRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[26]
+	mi := &file_aos_v1_services_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1272,7 +1506,7 @@ func (x *StopAllRequest) String() string {
 func (*StopAllRequest) ProtoMessage() {}
 
 func (x *StopAllRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[26]
+	mi := &file_aos_v1_services_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1285,7 +1519,7 @@ func (x *StopAllRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopAllRequest.ProtoReflect.Descriptor instead.
 func (*StopAllRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{26}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{27}
 }
 
 type StopAllResponse struct {
@@ -1297,7 +1531,7 @@ type StopAllResponse struct {
 
 func (x *StopAllResponse) Reset() {
 	*x = StopAllResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[27]
+	mi := &file_aos_v1_services_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1309,7 +1543,7 @@ func (x *StopAllResponse) String() string {
 func (*StopAllResponse) ProtoMessage() {}
 
 func (x *StopAllResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[27]
+	mi := &file_aos_v1_services_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1322,7 +1556,7 @@ func (x *StopAllResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopAllResponse.ProtoReflect.Descriptor instead.
 func (*StopAllResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{27}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *StopAllResponse) GetCancelled() int32 {
@@ -1341,7 +1575,7 @@ type DeleteTaskRequest struct {
 
 func (x *DeleteTaskRequest) Reset() {
 	*x = DeleteTaskRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[28]
+	mi := &file_aos_v1_services_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1353,7 +1587,7 @@ func (x *DeleteTaskRequest) String() string {
 func (*DeleteTaskRequest) ProtoMessage() {}
 
 func (x *DeleteTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[28]
+	mi := &file_aos_v1_services_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1366,7 +1600,7 @@ func (x *DeleteTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTaskRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTaskRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{28}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *DeleteTaskRequest) GetId() string {
@@ -1384,7 +1618,7 @@ type DeleteTaskResponse struct {
 
 func (x *DeleteTaskResponse) Reset() {
 	*x = DeleteTaskResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[29]
+	mi := &file_aos_v1_services_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1396,7 +1630,7 @@ func (x *DeleteTaskResponse) String() string {
 func (*DeleteTaskResponse) ProtoMessage() {}
 
 func (x *DeleteTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[29]
+	mi := &file_aos_v1_services_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1409,7 +1643,569 @@ func (x *DeleteTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTaskResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTaskResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{29}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{30}
+}
+
+// TaskFileChange is a file a Task changed with its Tools (M8.11). The first
+// change keeps what the file was before; later ones by the same Task don't.
+type TaskFileChange struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Path  string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// The Tool whose call first changed it: write_file, edit_file, move, copy
+	// or delete.
+	Tool string `protobuf:"bytes,2,opt,name=tool,proto3" json:"tool,omitempty"`
+	// False when the Task created the file: it did not exist before.
+	Existed bool `protobuf:"varint,3,opt,name=existed,proto3" json:"existed,omitempty"`
+	// It was a folder (moved or deleted): nothing to compare, and no content kept.
+	Folder bool `protobuf:"varint,4,opt,name=folder,proto3" json:"folder,omitempty"`
+	// Its size before.
+	Size int64 `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
+	// Whether the before-image was kept. Files over 64 MiB are not.
+	Kept bool `protobuf:"varint,6,opt,name=kept,proto3" json:"kept,omitempty"`
+	// Too big to compare line by line (over 4 MiB), or not text: it can be kept
+	// or put back whole, not hunk by hunk.
+	Whole     bool                   `protobuf:"varint,7,opt,name=whole,proto3" json:"whole,omitempty"`
+	ChangedAt *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=changed_at,json=changedAt,proto3" json:"changed_at,omitempty"`
+	// Change Review (M8.12): the file on disk still differs from what it is
+	// compared with — the before-image, with what the user kept — so something
+	// is left to decide. Set by ListChanges.
+	Pending bool `protobuf:"varint,9,opt,name=pending,proto3" json:"pending,omitempty"`
+	// The user kept some of the change, so the file is compared with the
+	// before-image as they left it, not as it was.
+	Reviewed bool `protobuf:"varint,10,opt,name=reviewed,proto3" json:"reviewed,omitempty"`
+	// Whether what it is compared with exists; false while the Task's
+	// creating it is undecided, or once its deleting it is kept.
+	BaseExists    bool `protobuf:"varint,11,opt,name=base_exists,json=baseExists,proto3" json:"base_exists,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TaskFileChange) Reset() {
+	*x = TaskFileChange{}
+	mi := &file_aos_v1_services_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TaskFileChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TaskFileChange) ProtoMessage() {}
+
+func (x *TaskFileChange) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TaskFileChange.ProtoReflect.Descriptor instead.
+func (*TaskFileChange) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *TaskFileChange) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *TaskFileChange) GetTool() string {
+	if x != nil {
+		return x.Tool
+	}
+	return ""
+}
+
+func (x *TaskFileChange) GetExisted() bool {
+	if x != nil {
+		return x.Existed
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetFolder() bool {
+	if x != nil {
+		return x.Folder
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+func (x *TaskFileChange) GetKept() bool {
+	if x != nil {
+		return x.Kept
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetWhole() bool {
+	if x != nil {
+		return x.Whole
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetChangedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ChangedAt
+	}
+	return nil
+}
+
+func (x *TaskFileChange) GetPending() bool {
+	if x != nil {
+		return x.Pending
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetReviewed() bool {
+	if x != nil {
+		return x.Reviewed
+	}
+	return false
+}
+
+func (x *TaskFileChange) GetBaseExists() bool {
+	if x != nil {
+		return x.BaseExists
+	}
+	return false
+}
+
+type ListChangesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListChangesRequest) Reset() {
+	*x = ListChangesRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListChangesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListChangesRequest) ProtoMessage() {}
+
+func (x *ListChangesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListChangesRequest.ProtoReflect.Descriptor instead.
+func (*ListChangesRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *ListChangesRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+type ListChangesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Changes       []*TaskFileChange      `protobuf:"bytes,1,rep,name=changes,proto3" json:"changes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListChangesResponse) Reset() {
+	*x = ListChangesResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListChangesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListChangesResponse) ProtoMessage() {}
+
+func (x *ListChangesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListChangesResponse.ProtoReflect.Descriptor instead.
+func (*ListChangesResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *ListChangesResponse) GetChanges() []*TaskFileChange {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+type GetBeforeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TaskId        string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBeforeRequest) Reset() {
+	*x = GetBeforeRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBeforeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBeforeRequest) ProtoMessage() {}
+
+func (x *GetBeforeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBeforeRequest.ProtoReflect.Descriptor instead.
+func (*GetBeforeRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *GetBeforeRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *GetBeforeRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type GetBeforeResponse struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Change *TaskFileChange        `protobuf:"bytes,1,opt,name=change,proto3" json:"change,omitempty"`
+	// What Change Review compares the file with: its content before the Task
+	// changed it, with the hunks the user kept. Empty when that does not exist
+	// (change.base_exists), was a folder, or is compared whole.
+	Content       []byte `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetBeforeResponse) Reset() {
+	*x = GetBeforeResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetBeforeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetBeforeResponse) ProtoMessage() {}
+
+func (x *GetBeforeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetBeforeResponse.ProtoReflect.Descriptor instead.
+func (*GetBeforeResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *GetBeforeResponse) GetChange() *TaskFileChange {
+	if x != nil {
+		return x.Change
+	}
+	return nil
+}
+
+func (x *GetBeforeResponse) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+type ReviewChangeRequest struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	TaskId string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Path   string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// What to compare the file with from now on: base, or "does not exist"
+	// when gone; or, with keep_all, the file as it is now on disk.
+	Base          []byte `protobuf:"bytes,3,opt,name=base,proto3" json:"base,omitempty"`
+	Gone          bool   `protobuf:"varint,4,opt,name=gone,proto3" json:"gone,omitempty"`
+	KeepAll       bool   `protobuf:"varint,5,opt,name=keep_all,json=keepAll,proto3" json:"keep_all,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewChangeRequest) Reset() {
+	*x = ReviewChangeRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewChangeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewChangeRequest) ProtoMessage() {}
+
+func (x *ReviewChangeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewChangeRequest.ProtoReflect.Descriptor instead.
+func (*ReviewChangeRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ReviewChangeRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *ReviewChangeRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *ReviewChangeRequest) GetBase() []byte {
+	if x != nil {
+		return x.Base
+	}
+	return nil
+}
+
+func (x *ReviewChangeRequest) GetGone() bool {
+	if x != nil {
+		return x.Gone
+	}
+	return false
+}
+
+func (x *ReviewChangeRequest) GetKeepAll() bool {
+	if x != nil {
+		return x.KeepAll
+	}
+	return false
+}
+
+type ReviewChangeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Change        *TaskFileChange        `protobuf:"bytes,1,opt,name=change,proto3" json:"change,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReviewChangeResponse) Reset() {
+	*x = ReviewChangeResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReviewChangeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReviewChangeResponse) ProtoMessage() {}
+
+func (x *ReviewChangeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReviewChangeResponse.ProtoReflect.Descriptor instead.
+func (*ReviewChangeResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ReviewChangeResponse) GetChange() *TaskFileChange {
+	if x != nil {
+		return x.Change
+	}
+	return nil
+}
+
+type DiscardChangeRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	TaskId           string                 `protobuf:"bytes,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
+	Path             string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	ConfirmSensitive bool                   `protobuf:"varint,3,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DiscardChangeRequest) Reset() {
+	*x = DiscardChangeRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscardChangeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscardChangeRequest) ProtoMessage() {}
+
+func (x *DiscardChangeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscardChangeRequest.ProtoReflect.Descriptor instead.
+func (*DiscardChangeRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *DiscardChangeRequest) GetTaskId() string {
+	if x != nil {
+		return x.TaskId
+	}
+	return ""
+}
+
+func (x *DiscardChangeRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *DiscardChangeRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
+}
+
+type DiscardChangeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Change        *TaskFileChange        `protobuf:"bytes,1,opt,name=change,proto3" json:"change,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DiscardChangeResponse) Reset() {
+	*x = DiscardChangeResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DiscardChangeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DiscardChangeResponse) ProtoMessage() {}
+
+func (x *DiscardChangeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DiscardChangeResponse.ProtoReflect.Descriptor instead.
+func (*DiscardChangeResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *DiscardChangeResponse) GetChange() *TaskFileChange {
+	if x != nil {
+		return x.Change
+	}
+	return nil
 }
 
 type ListPendingRequest struct {
@@ -1422,7 +2218,7 @@ type ListPendingRequest struct {
 
 func (x *ListPendingRequest) Reset() {
 	*x = ListPendingRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[30]
+	mi := &file_aos_v1_services_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1434,7 +2230,7 @@ func (x *ListPendingRequest) String() string {
 func (*ListPendingRequest) ProtoMessage() {}
 
 func (x *ListPendingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[30]
+	mi := &file_aos_v1_services_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1447,7 +2243,7 @@ func (x *ListPendingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPendingRequest.ProtoReflect.Descriptor instead.
 func (*ListPendingRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{30}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListPendingRequest) GetTaskId() string {
@@ -1466,7 +2262,7 @@ type ListPendingResponse struct {
 
 func (x *ListPendingResponse) Reset() {
 	*x = ListPendingResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[31]
+	mi := &file_aos_v1_services_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1478,7 +2274,7 @@ func (x *ListPendingResponse) String() string {
 func (*ListPendingResponse) ProtoMessage() {}
 
 func (x *ListPendingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[31]
+	mi := &file_aos_v1_services_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1491,7 +2287,7 @@ func (x *ListPendingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPendingResponse.ProtoReflect.Descriptor instead.
 func (*ListPendingResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{31}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *ListPendingResponse) GetApprovals() []*Approval {
@@ -1511,7 +2307,7 @@ type DecideRequest struct {
 
 func (x *DecideRequest) Reset() {
 	*x = DecideRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[32]
+	mi := &file_aos_v1_services_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1523,7 +2319,7 @@ func (x *DecideRequest) String() string {
 func (*DecideRequest) ProtoMessage() {}
 
 func (x *DecideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[32]
+	mi := &file_aos_v1_services_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,7 +2332,7 @@ func (x *DecideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideRequest.ProtoReflect.Descriptor instead.
 func (*DecideRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{32}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *DecideRequest) GetApprovalId() string {
@@ -1562,7 +2358,7 @@ type DecideResponse struct {
 
 func (x *DecideResponse) Reset() {
 	*x = DecideResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[33]
+	mi := &file_aos_v1_services_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1574,7 +2370,7 @@ func (x *DecideResponse) String() string {
 func (*DecideResponse) ProtoMessage() {}
 
 func (x *DecideResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[33]
+	mi := &file_aos_v1_services_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1587,7 +2383,7 @@ func (x *DecideResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideResponse.ProtoReflect.Descriptor instead.
 func (*DecideResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{33}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *DecideResponse) GetApproval() *Approval {
@@ -1607,7 +2403,7 @@ type SubscribeRequest struct {
 
 func (x *SubscribeRequest) Reset() {
 	*x = SubscribeRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[34]
+	mi := &file_aos_v1_services_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1619,7 +2415,7 @@ func (x *SubscribeRequest) String() string {
 func (*SubscribeRequest) ProtoMessage() {}
 
 func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[34]
+	mi := &file_aos_v1_services_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1632,7 +2428,7 @@ func (x *SubscribeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeRequest.ProtoReflect.Descriptor instead.
 func (*SubscribeRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{34}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *SubscribeRequest) GetTaskId() string {
@@ -1643,15 +2439,19 @@ func (x *SubscribeRequest) GetTaskId() string {
 }
 
 type SubscribeResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Event         *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Event *Event                 `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	// Set on the first message only: this subscription's id, which
+	// CodeService.OpenWorkspace takes so a Code window's changes ride this
+	// stream instead of holding a connection of their own (M8.2).
+	SubscriptionId string `protobuf:"bytes,2,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *SubscribeResponse) Reset() {
 	*x = SubscribeResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[35]
+	mi := &file_aos_v1_services_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1663,7 +2463,7 @@ func (x *SubscribeResponse) String() string {
 func (*SubscribeResponse) ProtoMessage() {}
 
 func (x *SubscribeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[35]
+	mi := &file_aos_v1_services_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1676,7 +2476,7 @@ func (x *SubscribeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubscribeResponse.ProtoReflect.Descriptor instead.
 func (*SubscribeResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{35}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *SubscribeResponse) GetEvent() *Event {
@@ -1684,6 +2484,13 @@ func (x *SubscribeResponse) GetEvent() *Event {
 		return x.Event
 	}
 	return nil
+}
+
+func (x *SubscribeResponse) GetSubscriptionId() string {
+	if x != nil {
+		return x.SubscriptionId
+	}
+	return ""
 }
 
 type Event struct {
@@ -1701,6 +2508,7 @@ type Event struct {
 	//	*Event_ReplayProgress
 	//	*Event_OpenInDesktop
 	//	*Event_DesktopState
+	//	*Event_Workspace
 	Kind          isEvent_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1708,7 +2516,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_aos_v1_services_proto_msgTypes[36]
+	mi := &file_aos_v1_services_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1720,7 +2528,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[36]
+	mi := &file_aos_v1_services_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1733,7 +2541,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{36}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *Event) GetTime() *timestamppb.Timestamp {
@@ -1840,6 +2648,15 @@ func (x *Event) GetDesktopState() *DesktopStateChanged {
 	return nil
 }
 
+func (x *Event) GetWorkspace() *WorkspaceChanged {
+	if x != nil {
+		if x, ok := x.Kind.(*Event_Workspace); ok {
+			return x.Workspace
+		}
+	}
+	return nil
+}
+
 type isEvent_Kind interface {
 	isEvent_Kind()
 }
@@ -1884,6 +2701,11 @@ type Event_DesktopState struct {
 	DesktopState *DesktopStateChanged `protobuf:"bytes,11,opt,name=desktop_state,json=desktopState,proto3,oneof"`
 }
 
+type Event_Workspace struct {
+	// Only to the subscription that opened the Workspace (M8.2).
+	Workspace *WorkspaceChanged `protobuf:"bytes,12,opt,name=workspace,proto3,oneof"`
+}
+
 func (*Event_TaskChanged) isEvent_Kind() {}
 
 func (*Event_TaskStep) isEvent_Kind() {}
@@ -1904,6 +2726,8 @@ func (*Event_OpenInDesktop) isEvent_Kind() {}
 
 func (*Event_DesktopState) isEvent_Kind() {}
 
+func (*Event_Workspace) isEvent_Kind() {}
+
 // A tab saved the Desktop's state. Other tabs adopt the preferences in it
 // (theme, wallpaper, Liquid Glass, shortcuts); the window layout stays per tab
 // (PLAN.md §4.3). `origin` is the id of the tab that saved, so it can ignore
@@ -1918,7 +2742,7 @@ type DesktopStateChanged struct {
 
 func (x *DesktopStateChanged) Reset() {
 	*x = DesktopStateChanged{}
-	mi := &file_aos_v1_services_proto_msgTypes[37]
+	mi := &file_aos_v1_services_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1930,7 +2754,7 @@ func (x *DesktopStateChanged) String() string {
 func (*DesktopStateChanged) ProtoMessage() {}
 
 func (x *DesktopStateChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[37]
+	mi := &file_aos_v1_services_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1943,7 +2767,7 @@ func (x *DesktopStateChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DesktopStateChanged.ProtoReflect.Descriptor instead.
 func (*DesktopStateChanged) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{37}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *DesktopStateChanged) GetState() string {
@@ -1976,7 +2800,7 @@ type OpenInDesktop struct {
 
 func (x *OpenInDesktop) Reset() {
 	*x = OpenInDesktop{}
-	mi := &file_aos_v1_services_proto_msgTypes[38]
+	mi := &file_aos_v1_services_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1988,7 +2812,7 @@ func (x *OpenInDesktop) String() string {
 func (*OpenInDesktop) ProtoMessage() {}
 
 func (x *OpenInDesktop) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[38]
+	mi := &file_aos_v1_services_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2001,7 +2825,7 @@ func (x *OpenInDesktop) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenInDesktop.ProtoReflect.Descriptor instead.
 func (*OpenInDesktop) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{38}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *OpenInDesktop) GetTaskId() string {
@@ -2042,7 +2866,7 @@ type ServiceChanged struct {
 
 func (x *ServiceChanged) Reset() {
 	*x = ServiceChanged{}
-	mi := &file_aos_v1_services_proto_msgTypes[39]
+	mi := &file_aos_v1_services_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2054,7 +2878,7 @@ func (x *ServiceChanged) String() string {
 func (*ServiceChanged) ProtoMessage() {}
 
 func (x *ServiceChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[39]
+	mi := &file_aos_v1_services_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2067,7 +2891,7 @@ func (x *ServiceChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceChanged.ProtoReflect.Descriptor instead.
 func (*ServiceChanged) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{39}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *ServiceChanged) GetService() *ServiceInfo {
@@ -2093,7 +2917,7 @@ type ReplayProgress struct {
 
 func (x *ReplayProgress) Reset() {
 	*x = ReplayProgress{}
-	mi := &file_aos_v1_services_proto_msgTypes[40]
+	mi := &file_aos_v1_services_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2105,7 +2929,7 @@ func (x *ReplayProgress) String() string {
 func (*ReplayProgress) ProtoMessage() {}
 
 func (x *ReplayProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[40]
+	mi := &file_aos_v1_services_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2118,7 +2942,7 @@ func (x *ReplayProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplayProgress.ProtoReflect.Descriptor instead.
 func (*ReplayProgress) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{40}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *ReplayProgress) GetStatus() *ReplayStatus {
@@ -2140,7 +2964,7 @@ type TaskChanged struct {
 
 func (x *TaskChanged) Reset() {
 	*x = TaskChanged{}
-	mi := &file_aos_v1_services_proto_msgTypes[41]
+	mi := &file_aos_v1_services_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2152,7 +2976,7 @@ func (x *TaskChanged) String() string {
 func (*TaskChanged) ProtoMessage() {}
 
 func (x *TaskChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[41]
+	mi := &file_aos_v1_services_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2165,7 +2989,7 @@ func (x *TaskChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskChanged.ProtoReflect.Descriptor instead.
 func (*TaskChanged) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{41}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *TaskChanged) GetTask() *Task {
@@ -2191,7 +3015,7 @@ type TaskStepChanged struct {
 
 func (x *TaskStepChanged) Reset() {
 	*x = TaskStepChanged{}
-	mi := &file_aos_v1_services_proto_msgTypes[42]
+	mi := &file_aos_v1_services_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2203,7 +3027,7 @@ func (x *TaskStepChanged) String() string {
 func (*TaskStepChanged) ProtoMessage() {}
 
 func (x *TaskStepChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[42]
+	mi := &file_aos_v1_services_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2216,7 +3040,7 @@ func (x *TaskStepChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskStepChanged.ProtoReflect.Descriptor instead.
 func (*TaskStepChanged) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{42}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *TaskStepChanged) GetStep() *TaskStep {
@@ -2237,7 +3061,7 @@ type TextDelta struct {
 
 func (x *TextDelta) Reset() {
 	*x = TextDelta{}
-	mi := &file_aos_v1_services_proto_msgTypes[43]
+	mi := &file_aos_v1_services_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2249,7 +3073,7 @@ func (x *TextDelta) String() string {
 func (*TextDelta) ProtoMessage() {}
 
 func (x *TextDelta) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[43]
+	mi := &file_aos_v1_services_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2262,7 +3086,7 @@ func (x *TextDelta) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextDelta.ProtoReflect.Descriptor instead.
 func (*TextDelta) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{43}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *TextDelta) GetTaskId() string {
@@ -2295,7 +3119,7 @@ type ApprovalChanged struct {
 
 func (x *ApprovalChanged) Reset() {
 	*x = ApprovalChanged{}
-	mi := &file_aos_v1_services_proto_msgTypes[44]
+	mi := &file_aos_v1_services_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2307,7 +3131,7 @@ func (x *ApprovalChanged) String() string {
 func (*ApprovalChanged) ProtoMessage() {}
 
 func (x *ApprovalChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[44]
+	mi := &file_aos_v1_services_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2320,7 +3144,7 @@ func (x *ApprovalChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApprovalChanged.ProtoReflect.Descriptor instead.
 func (*ApprovalChanged) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{44}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ApprovalChanged) GetApproval() *Approval {
@@ -2345,7 +3169,7 @@ type DownloadProgress struct {
 
 func (x *DownloadProgress) Reset() {
 	*x = DownloadProgress{}
-	mi := &file_aos_v1_services_proto_msgTypes[45]
+	mi := &file_aos_v1_services_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2357,7 +3181,7 @@ func (x *DownloadProgress) String() string {
 func (*DownloadProgress) ProtoMessage() {}
 
 func (x *DownloadProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[45]
+	mi := &file_aos_v1_services_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2370,7 +3194,7 @@ func (x *DownloadProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadProgress.ProtoReflect.Descriptor instead.
 func (*DownloadProgress) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{45}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *DownloadProgress) GetTaskId() string {
@@ -2437,7 +3261,7 @@ type Notification struct {
 
 func (x *Notification) Reset() {
 	*x = Notification{}
-	mi := &file_aos_v1_services_proto_msgTypes[46]
+	mi := &file_aos_v1_services_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2449,7 +3273,7 @@ func (x *Notification) String() string {
 func (*Notification) ProtoMessage() {}
 
 func (x *Notification) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[46]
+	mi := &file_aos_v1_services_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2462,7 +3286,7 @@ func (x *Notification) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Notification.ProtoReflect.Descriptor instead.
 func (*Notification) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{46}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *Notification) GetTitle() string {
@@ -2521,6 +3345,420 @@ func (x *Notification) GetPort() int32 {
 	return 0
 }
 
+// SensitivePath is the detail on a refused change to a Sensitive System File.
+type SensitivePath struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Path  string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// What can go wrong, in a sentence.
+	Reason        string `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SensitivePath) Reset() {
+	*x = SensitivePath{}
+	mi := &file_aos_v1_services_proto_msgTypes[57]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SensitivePath) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SensitivePath) ProtoMessage() {}
+
+func (x *SensitivePath) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[57]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SensitivePath.ProtoReflect.Descriptor instead.
+func (*SensitivePath) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{57}
+}
+
+func (x *SensitivePath) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *SensitivePath) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
+}
+
+type CheckSensitiveRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckSensitiveRequest) Reset() {
+	*x = CheckSensitiveRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[58]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckSensitiveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckSensitiveRequest) ProtoMessage() {}
+
+func (x *CheckSensitiveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[58]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckSensitiveRequest.ProtoReflect.Descriptor instead.
+func (*CheckSensitiveRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{58}
+}
+
+func (x *CheckSensitiveRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *CheckSensitiveRequest) GetContent() []byte {
+	if x != nil {
+		return x.Content
+	}
+	return nil
+}
+
+type CheckSensitiveResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The check that ran, e.g. "visudo -c"; empty when the file has none.
+	Checker string `protobuf:"bytes,1,opt,name=checker,proto3" json:"checker,omitempty"`
+	Passed  bool   `protobuf:"varint,2,opt,name=passed,proto3" json:"passed,omitempty"`
+	// What the checker printed.
+	Output string `protobuf:"bytes,3,opt,name=output,proto3" json:"output,omitempty"`
+	// The file has a check, but its program isn't installed.
+	Unavailable   bool `protobuf:"varint,4,opt,name=unavailable,proto3" json:"unavailable,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CheckSensitiveResponse) Reset() {
+	*x = CheckSensitiveResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[59]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CheckSensitiveResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CheckSensitiveResponse) ProtoMessage() {}
+
+func (x *CheckSensitiveResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[59]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CheckSensitiveResponse.ProtoReflect.Descriptor instead.
+func (*CheckSensitiveResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{59}
+}
+
+func (x *CheckSensitiveResponse) GetChecker() string {
+	if x != nil {
+		return x.Checker
+	}
+	return ""
+}
+
+func (x *CheckSensitiveResponse) GetPassed() bool {
+	if x != nil {
+		return x.Passed
+	}
+	return false
+}
+
+func (x *CheckSensitiveResponse) GetOutput() string {
+	if x != nil {
+		return x.Output
+	}
+	return ""
+}
+
+func (x *CheckSensitiveResponse) GetUnavailable() bool {
+	if x != nil {
+		return x.Unavailable
+	}
+	return false
+}
+
+type SensitiveBackup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	SavedAt       *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=saved_at,json=savedAt,proto3" json:"saved_at,omitempty"`
+	Size          int64                  `protobuf:"varint,3,opt,name=size,proto3" json:"size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SensitiveBackup) Reset() {
+	*x = SensitiveBackup{}
+	mi := &file_aos_v1_services_proto_msgTypes[60]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SensitiveBackup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SensitiveBackup) ProtoMessage() {}
+
+func (x *SensitiveBackup) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[60]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SensitiveBackup.ProtoReflect.Descriptor instead.
+func (*SensitiveBackup) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{60}
+}
+
+func (x *SensitiveBackup) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SensitiveBackup) GetSavedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SavedAt
+	}
+	return nil
+}
+
+func (x *SensitiveBackup) GetSize() int64 {
+	if x != nil {
+		return x.Size
+	}
+	return 0
+}
+
+type ListSensitiveBackupsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSensitiveBackupsRequest) Reset() {
+	*x = ListSensitiveBackupsRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[61]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSensitiveBackupsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSensitiveBackupsRequest) ProtoMessage() {}
+
+func (x *ListSensitiveBackupsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[61]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSensitiveBackupsRequest.ProtoReflect.Descriptor instead.
+func (*ListSensitiveBackupsRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{61}
+}
+
+func (x *ListSensitiveBackupsRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ListSensitiveBackupsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Newest first.
+	Backups       []*SensitiveBackup `protobuf:"bytes,1,rep,name=backups,proto3" json:"backups,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListSensitiveBackupsResponse) Reset() {
+	*x = ListSensitiveBackupsResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[62]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListSensitiveBackupsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListSensitiveBackupsResponse) ProtoMessage() {}
+
+func (x *ListSensitiveBackupsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[62]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListSensitiveBackupsResponse.ProtoReflect.Descriptor instead.
+func (*ListSensitiveBackupsResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{62}
+}
+
+func (x *ListSensitiveBackupsResponse) GetBackups() []*SensitiveBackup {
+	if x != nil {
+		return x.Backups
+	}
+	return nil
+}
+
+type RestoreSensitiveBackupRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Id            string                 `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestoreSensitiveBackupRequest) Reset() {
+	*x = RestoreSensitiveBackupRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[63]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestoreSensitiveBackupRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestoreSensitiveBackupRequest) ProtoMessage() {}
+
+func (x *RestoreSensitiveBackupRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[63]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestoreSensitiveBackupRequest.ProtoReflect.Descriptor instead.
+func (*RestoreSensitiveBackupRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{63}
+}
+
+func (x *RestoreSensitiveBackupRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *RestoreSensitiveBackupRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type RestoreSensitiveBackupResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RestoreSensitiveBackupResponse) Reset() {
+	*x = RestoreSensitiveBackupResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[64]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RestoreSensitiveBackupResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RestoreSensitiveBackupResponse) ProtoMessage() {}
+
+func (x *RestoreSensitiveBackupResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[64]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RestoreSensitiveBackupResponse.ProtoReflect.Descriptor instead.
+func (*RestoreSensitiveBackupResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{64}
+}
+
 type WatchRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -2530,7 +3768,7 @@ type WatchRequest struct {
 
 func (x *WatchRequest) Reset() {
 	*x = WatchRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[47]
+	mi := &file_aos_v1_services_proto_msgTypes[65]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2542,7 +3780,7 @@ func (x *WatchRequest) String() string {
 func (*WatchRequest) ProtoMessage() {}
 
 func (x *WatchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[47]
+	mi := &file_aos_v1_services_proto_msgTypes[65]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2555,7 +3793,7 @@ func (x *WatchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
 func (*WatchRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{47}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *WatchRequest) GetPath() string {
@@ -2575,7 +3813,7 @@ type WatchResponse struct {
 
 func (x *WatchResponse) Reset() {
 	*x = WatchResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[48]
+	mi := &file_aos_v1_services_proto_msgTypes[66]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2587,7 +3825,7 @@ func (x *WatchResponse) String() string {
 func (*WatchResponse) ProtoMessage() {}
 
 func (x *WatchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[48]
+	mi := &file_aos_v1_services_proto_msgTypes[66]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2600,7 +3838,7 @@ func (x *WatchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchResponse.ProtoReflect.Descriptor instead.
 func (*WatchResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{48}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *WatchResponse) GetEntries() []*FileInfo {
@@ -2626,13 +3864,20 @@ type FileInfo struct {
 	// Protected Path), "inherited" (inside one of those), or "" when it is not
 	// protected at all.
 	ProtectSource string `protobuf:"bytes,10,opt,name=protect_source,json=protectSource,proto3" json:"protect_source,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// Whether the Realm's user may write it (for a folder, add to it), checked
+	// as that user (M8.4). Code opens a file that isn't writable read-only. AOS's
+	// own state is never writable here, even to root.
+	Writable bool `protobuf:"varint,11,opt,name=writable,proto3" json:"writable,omitempty"`
+	// In Root Mode, what can go wrong changing this Sensitive System File (M8.5);
+	// empty for any other file, and always in Standard Mode.
+	SensitiveReason string `protobuf:"bytes,12,opt,name=sensitive_reason,json=sensitiveReason,proto3" json:"sensitive_reason,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *FileInfo) Reset() {
 	*x = FileInfo{}
-	mi := &file_aos_v1_services_proto_msgTypes[49]
+	mi := &file_aos_v1_services_proto_msgTypes[67]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2644,7 +3889,7 @@ func (x *FileInfo) String() string {
 func (*FileInfo) ProtoMessage() {}
 
 func (x *FileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[49]
+	mi := &file_aos_v1_services_proto_msgTypes[67]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2657,7 +3902,7 @@ func (x *FileInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileInfo.ProtoReflect.Descriptor instead.
 func (*FileInfo) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{49}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *FileInfo) GetPath() string {
@@ -2730,6 +3975,20 @@ func (x *FileInfo) GetProtectSource() string {
 	return ""
 }
 
+func (x *FileInfo) GetWritable() bool {
+	if x != nil {
+		return x.Writable
+	}
+	return false
+}
+
+func (x *FileInfo) GetSensitiveReason() string {
+	if x != nil {
+		return x.SensitiveReason
+	}
+	return ""
+}
+
 type ListRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
@@ -2739,7 +3998,7 @@ type ListRequest struct {
 
 func (x *ListRequest) Reset() {
 	*x = ListRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[50]
+	mi := &file_aos_v1_services_proto_msgTypes[68]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2751,7 +4010,7 @@ func (x *ListRequest) String() string {
 func (*ListRequest) ProtoMessage() {}
 
 func (x *ListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[50]
+	mi := &file_aos_v1_services_proto_msgTypes[68]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2764,7 +4023,7 @@ func (x *ListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRequest.ProtoReflect.Descriptor instead.
 func (*ListRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{50}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *ListRequest) GetPath() string {
@@ -2783,7 +4042,7 @@ type ListResponse struct {
 
 func (x *ListResponse) Reset() {
 	*x = ListResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[51]
+	mi := &file_aos_v1_services_proto_msgTypes[69]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2795,7 +4054,7 @@ func (x *ListResponse) String() string {
 func (*ListResponse) ProtoMessage() {}
 
 func (x *ListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[51]
+	mi := &file_aos_v1_services_proto_msgTypes[69]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2808,7 +4067,7 @@ func (x *ListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListResponse.ProtoReflect.Descriptor instead.
 func (*ListResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{51}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *ListResponse) GetEntries() []*FileInfo {
@@ -2827,7 +4086,7 @@ type StatRequest struct {
 
 func (x *StatRequest) Reset() {
 	*x = StatRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[52]
+	mi := &file_aos_v1_services_proto_msgTypes[70]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2839,7 +4098,7 @@ func (x *StatRequest) String() string {
 func (*StatRequest) ProtoMessage() {}
 
 func (x *StatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[52]
+	mi := &file_aos_v1_services_proto_msgTypes[70]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2852,7 +4111,7 @@ func (x *StatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatRequest.ProtoReflect.Descriptor instead.
 func (*StatRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{52}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *StatRequest) GetPath() string {
@@ -2871,7 +4130,7 @@ type StatResponse struct {
 
 func (x *StatResponse) Reset() {
 	*x = StatResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[53]
+	mi := &file_aos_v1_services_proto_msgTypes[71]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2883,7 +4142,7 @@ func (x *StatResponse) String() string {
 func (*StatResponse) ProtoMessage() {}
 
 func (x *StatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[53]
+	mi := &file_aos_v1_services_proto_msgTypes[71]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2896,7 +4155,7 @@ func (x *StatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatResponse.ProtoReflect.Descriptor instead.
 func (*StatResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{53}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *StatResponse) GetInfo() *FileInfo {
@@ -2918,7 +4177,7 @@ type ReadRequest struct {
 
 func (x *ReadRequest) Reset() {
 	*x = ReadRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[54]
+	mi := &file_aos_v1_services_proto_msgTypes[72]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2930,7 +4189,7 @@ func (x *ReadRequest) String() string {
 func (*ReadRequest) ProtoMessage() {}
 
 func (x *ReadRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[54]
+	mi := &file_aos_v1_services_proto_msgTypes[72]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2943,7 +4202,7 @@ func (x *ReadRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadRequest.ProtoReflect.Descriptor instead.
 func (*ReadRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{54}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{72}
 }
 
 func (x *ReadRequest) GetPath() string {
@@ -2977,7 +4236,7 @@ type ReadResponse struct {
 
 func (x *ReadResponse) Reset() {
 	*x = ReadResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[55]
+	mi := &file_aos_v1_services_proto_msgTypes[73]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2989,7 +4248,7 @@ func (x *ReadResponse) String() string {
 func (*ReadResponse) ProtoMessage() {}
 
 func (x *ReadResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[55]
+	mi := &file_aos_v1_services_proto_msgTypes[73]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3002,7 +4261,7 @@ func (x *ReadResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadResponse.ProtoReflect.Descriptor instead.
 func (*ReadResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{55}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{73}
 }
 
 func (x *ReadResponse) GetContent() []byte {
@@ -3020,17 +4279,19 @@ func (x *ReadResponse) GetEof() bool {
 }
 
 type WriteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Content       []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
-	Overwrite     bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Path      string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Content   []byte                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
+	Overwrite bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
+	// Changes a Sensitive System File in Root Mode (M8.5).
+	ConfirmSensitive bool `protobuf:"varint,4,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *WriteRequest) Reset() {
 	*x = WriteRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[56]
+	mi := &file_aos_v1_services_proto_msgTypes[74]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3042,7 +4303,7 @@ func (x *WriteRequest) String() string {
 func (*WriteRequest) ProtoMessage() {}
 
 func (x *WriteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[56]
+	mi := &file_aos_v1_services_proto_msgTypes[74]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3055,7 +4316,7 @@ func (x *WriteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteRequest.ProtoReflect.Descriptor instead.
 func (*WriteRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{56}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{74}
 }
 
 func (x *WriteRequest) GetPath() string {
@@ -3079,6 +4340,13 @@ func (x *WriteRequest) GetOverwrite() bool {
 	return false
 }
 
+func (x *WriteRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
+}
+
 type WriteResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3087,7 +4355,7 @@ type WriteResponse struct {
 
 func (x *WriteResponse) Reset() {
 	*x = WriteResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[57]
+	mi := &file_aos_v1_services_proto_msgTypes[75]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3099,7 +4367,7 @@ func (x *WriteResponse) String() string {
 func (*WriteResponse) ProtoMessage() {}
 
 func (x *WriteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[57]
+	mi := &file_aos_v1_services_proto_msgTypes[75]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3112,21 +4380,110 @@ func (x *WriteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteResponse.ProtoReflect.Descriptor instead.
 func (*WriteResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{57}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{75}
 }
 
-type MoveRequest struct {
+type MakeFolderRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Path             string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	ConfirmSensitive bool                   `protobuf:"varint,2,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *MakeFolderRequest) Reset() {
+	*x = MakeFolderRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[76]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MakeFolderRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MakeFolderRequest) ProtoMessage() {}
+
+func (x *MakeFolderRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[76]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MakeFolderRequest.ProtoReflect.Descriptor instead.
+func (*MakeFolderRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{76}
+}
+
+func (x *MakeFolderRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *MakeFolderRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
+}
+
+type MakeFolderResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Overwrite     bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *MakeFolderResponse) Reset() {
+	*x = MakeFolderResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[77]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MakeFolderResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MakeFolderResponse) ProtoMessage() {}
+
+func (x *MakeFolderResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[77]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MakeFolderResponse.ProtoReflect.Descriptor instead.
+func (*MakeFolderResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{77}
+}
+
+type MoveRequest struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Source           string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Destination      string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
+	Overwrite        bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
+	ConfirmSensitive bool                   `protobuf:"varint,4,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
 func (x *MoveRequest) Reset() {
 	*x = MoveRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[58]
+	mi := &file_aos_v1_services_proto_msgTypes[78]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3138,7 +4495,7 @@ func (x *MoveRequest) String() string {
 func (*MoveRequest) ProtoMessage() {}
 
 func (x *MoveRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[58]
+	mi := &file_aos_v1_services_proto_msgTypes[78]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3151,7 +4508,7 @@ func (x *MoveRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveRequest.ProtoReflect.Descriptor instead.
 func (*MoveRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{58}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{78}
 }
 
 func (x *MoveRequest) GetSource() string {
@@ -3175,6 +4532,13 @@ func (x *MoveRequest) GetOverwrite() bool {
 	return false
 }
 
+func (x *MoveRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
+}
+
 type MoveResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3183,7 +4547,7 @@ type MoveResponse struct {
 
 func (x *MoveResponse) Reset() {
 	*x = MoveResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[59]
+	mi := &file_aos_v1_services_proto_msgTypes[79]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3195,7 +4559,7 @@ func (x *MoveResponse) String() string {
 func (*MoveResponse) ProtoMessage() {}
 
 func (x *MoveResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[59]
+	mi := &file_aos_v1_services_proto_msgTypes[79]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3208,21 +4572,22 @@ func (x *MoveResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MoveResponse.ProtoReflect.Descriptor instead.
 func (*MoveResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{59}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{79}
 }
 
 type CopyRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Source        string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
-	Destination   string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
-	Overwrite     bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Source           string                 `protobuf:"bytes,1,opt,name=source,proto3" json:"source,omitempty"`
+	Destination      string                 `protobuf:"bytes,2,opt,name=destination,proto3" json:"destination,omitempty"`
+	Overwrite        bool                   `protobuf:"varint,3,opt,name=overwrite,proto3" json:"overwrite,omitempty"`
+	ConfirmSensitive bool                   `protobuf:"varint,4,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CopyRequest) Reset() {
 	*x = CopyRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[60]
+	mi := &file_aos_v1_services_proto_msgTypes[80]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3234,7 +4599,7 @@ func (x *CopyRequest) String() string {
 func (*CopyRequest) ProtoMessage() {}
 
 func (x *CopyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[60]
+	mi := &file_aos_v1_services_proto_msgTypes[80]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3247,7 +4612,7 @@ func (x *CopyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyRequest.ProtoReflect.Descriptor instead.
 func (*CopyRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{60}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{80}
 }
 
 func (x *CopyRequest) GetSource() string {
@@ -3271,6 +4636,13 @@ func (x *CopyRequest) GetOverwrite() bool {
 	return false
 }
 
+func (x *CopyRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
+}
+
 type CopyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -3279,7 +4651,7 @@ type CopyResponse struct {
 
 func (x *CopyResponse) Reset() {
 	*x = CopyResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[61]
+	mi := &file_aos_v1_services_proto_msgTypes[81]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3291,7 +4663,7 @@ func (x *CopyResponse) String() string {
 func (*CopyResponse) ProtoMessage() {}
 
 func (x *CopyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[61]
+	mi := &file_aos_v1_services_proto_msgTypes[81]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3304,19 +4676,20 @@ func (x *CopyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CopyResponse.ProtoReflect.Descriptor instead.
 func (*CopyResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{61}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{81}
 }
 
 type DeleteRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Path             string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	ConfirmSensitive bool                   `protobuf:"varint,2,opt,name=confirm_sensitive,json=confirmSensitive,proto3" json:"confirm_sensitive,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DeleteRequest) Reset() {
 	*x = DeleteRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[62]
+	mi := &file_aos_v1_services_proto_msgTypes[82]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3328,7 +4701,7 @@ func (x *DeleteRequest) String() string {
 func (*DeleteRequest) ProtoMessage() {}
 
 func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[62]
+	mi := &file_aos_v1_services_proto_msgTypes[82]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3341,7 +4714,7 @@ func (x *DeleteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteRequest.ProtoReflect.Descriptor instead.
 func (*DeleteRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{62}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{82}
 }
 
 func (x *DeleteRequest) GetPath() string {
@@ -3349,6 +4722,13 @@ func (x *DeleteRequest) GetPath() string {
 		return x.Path
 	}
 	return ""
+}
+
+func (x *DeleteRequest) GetConfirmSensitive() bool {
+	if x != nil {
+		return x.ConfirmSensitive
+	}
+	return false
 }
 
 type DeleteResponse struct {
@@ -3360,7 +4740,7 @@ type DeleteResponse struct {
 
 func (x *DeleteResponse) Reset() {
 	*x = DeleteResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[63]
+	mi := &file_aos_v1_services_proto_msgTypes[83]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3372,7 +4752,7 @@ func (x *DeleteResponse) String() string {
 func (*DeleteResponse) ProtoMessage() {}
 
 func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[63]
+	mi := &file_aos_v1_services_proto_msgTypes[83]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3385,7 +4765,7 @@ func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
 func (*DeleteResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{63}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{83}
 }
 
 func (x *DeleteResponse) GetItem() *TrashItem {
@@ -3404,7 +4784,7 @@ type ProtectRequest struct {
 
 func (x *ProtectRequest) Reset() {
 	*x = ProtectRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[64]
+	mi := &file_aos_v1_services_proto_msgTypes[84]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3416,7 +4796,7 @@ func (x *ProtectRequest) String() string {
 func (*ProtectRequest) ProtoMessage() {}
 
 func (x *ProtectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[64]
+	mi := &file_aos_v1_services_proto_msgTypes[84]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3429,7 +4809,7 @@ func (x *ProtectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtectRequest.ProtoReflect.Descriptor instead.
 func (*ProtectRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{64}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{84}
 }
 
 func (x *ProtectRequest) GetPath() string {
@@ -3447,7 +4827,7 @@ type ProtectResponse struct {
 
 func (x *ProtectResponse) Reset() {
 	*x = ProtectResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[65]
+	mi := &file_aos_v1_services_proto_msgTypes[85]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3459,7 +4839,7 @@ func (x *ProtectResponse) String() string {
 func (*ProtectResponse) ProtoMessage() {}
 
 func (x *ProtectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[65]
+	mi := &file_aos_v1_services_proto_msgTypes[85]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3472,7 +4852,7 @@ func (x *ProtectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProtectResponse.ProtoReflect.Descriptor instead.
 func (*ProtectResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{65}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{85}
 }
 
 type UnprotectRequest struct {
@@ -3484,7 +4864,7 @@ type UnprotectRequest struct {
 
 func (x *UnprotectRequest) Reset() {
 	*x = UnprotectRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[66]
+	mi := &file_aos_v1_services_proto_msgTypes[86]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3496,7 +4876,7 @@ func (x *UnprotectRequest) String() string {
 func (*UnprotectRequest) ProtoMessage() {}
 
 func (x *UnprotectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[66]
+	mi := &file_aos_v1_services_proto_msgTypes[86]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3509,7 +4889,7 @@ func (x *UnprotectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnprotectRequest.ProtoReflect.Descriptor instead.
 func (*UnprotectRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{66}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{86}
 }
 
 func (x *UnprotectRequest) GetPath() string {
@@ -3527,7 +4907,7 @@ type UnprotectResponse struct {
 
 func (x *UnprotectResponse) Reset() {
 	*x = UnprotectResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[67]
+	mi := &file_aos_v1_services_proto_msgTypes[87]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3539,7 +4919,7 @@ func (x *UnprotectResponse) String() string {
 func (*UnprotectResponse) ProtoMessage() {}
 
 func (x *UnprotectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[67]
+	mi := &file_aos_v1_services_proto_msgTypes[87]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3552,7 +4932,7 @@ func (x *UnprotectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnprotectResponse.ProtoReflect.Descriptor instead.
 func (*UnprotectResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{67}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{87}
 }
 
 type ListProtectedRequest struct {
@@ -3563,7 +4943,7 @@ type ListProtectedRequest struct {
 
 func (x *ListProtectedRequest) Reset() {
 	*x = ListProtectedRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[68]
+	mi := &file_aos_v1_services_proto_msgTypes[88]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3575,7 +4955,7 @@ func (x *ListProtectedRequest) String() string {
 func (*ListProtectedRequest) ProtoMessage() {}
 
 func (x *ListProtectedRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[68]
+	mi := &file_aos_v1_services_proto_msgTypes[88]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3588,7 +4968,7 @@ func (x *ListProtectedRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtectedRequest.ProtoReflect.Descriptor instead.
 func (*ListProtectedRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{68}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{88}
 }
 
 type ListProtectedResponse struct {
@@ -3600,7 +4980,7 @@ type ListProtectedResponse struct {
 
 func (x *ListProtectedResponse) Reset() {
 	*x = ListProtectedResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[69]
+	mi := &file_aos_v1_services_proto_msgTypes[89]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3612,7 +4992,7 @@ func (x *ListProtectedResponse) String() string {
 func (*ListProtectedResponse) ProtoMessage() {}
 
 func (x *ListProtectedResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[69]
+	mi := &file_aos_v1_services_proto_msgTypes[89]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3625,7 +5005,7 @@ func (x *ListProtectedResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtectedResponse.ProtoReflect.Descriptor instead.
 func (*ListProtectedResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{69}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{89}
 }
 
 func (x *ListProtectedResponse) GetEntries() []*ListProtectedResponse_Entry {
@@ -3649,7 +5029,7 @@ type TrashItem struct {
 
 func (x *TrashItem) Reset() {
 	*x = TrashItem{}
-	mi := &file_aos_v1_services_proto_msgTypes[70]
+	mi := &file_aos_v1_services_proto_msgTypes[90]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3661,7 +5041,7 @@ func (x *TrashItem) String() string {
 func (*TrashItem) ProtoMessage() {}
 
 func (x *TrashItem) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[70]
+	mi := &file_aos_v1_services_proto_msgTypes[90]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3674,7 +5054,7 @@ func (x *TrashItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TrashItem.ProtoReflect.Descriptor instead.
 func (*TrashItem) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{70}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{90}
 }
 
 func (x *TrashItem) GetId() string {
@@ -3720,7 +5100,7 @@ type ListTrashRequest struct {
 
 func (x *ListTrashRequest) Reset() {
 	*x = ListTrashRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[71]
+	mi := &file_aos_v1_services_proto_msgTypes[91]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3732,7 +5112,7 @@ func (x *ListTrashRequest) String() string {
 func (*ListTrashRequest) ProtoMessage() {}
 
 func (x *ListTrashRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[71]
+	mi := &file_aos_v1_services_proto_msgTypes[91]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3745,7 +5125,7 @@ func (x *ListTrashRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTrashRequest.ProtoReflect.Descriptor instead.
 func (*ListTrashRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{71}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{91}
 }
 
 type ListTrashResponse struct {
@@ -3757,7 +5137,7 @@ type ListTrashResponse struct {
 
 func (x *ListTrashResponse) Reset() {
 	*x = ListTrashResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[72]
+	mi := &file_aos_v1_services_proto_msgTypes[92]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3769,7 +5149,7 @@ func (x *ListTrashResponse) String() string {
 func (*ListTrashResponse) ProtoMessage() {}
 
 func (x *ListTrashResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[72]
+	mi := &file_aos_v1_services_proto_msgTypes[92]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3782,7 +5162,7 @@ func (x *ListTrashResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTrashResponse.ProtoReflect.Descriptor instead.
 func (*ListTrashResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{72}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{92}
 }
 
 func (x *ListTrashResponse) GetItems() []*TrashItem {
@@ -3801,7 +5181,7 @@ type RestoreRequest struct {
 
 func (x *RestoreRequest) Reset() {
 	*x = RestoreRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[73]
+	mi := &file_aos_v1_services_proto_msgTypes[93]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3813,7 +5193,7 @@ func (x *RestoreRequest) String() string {
 func (*RestoreRequest) ProtoMessage() {}
 
 func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[73]
+	mi := &file_aos_v1_services_proto_msgTypes[93]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3826,7 +5206,7 @@ func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreRequest.ProtoReflect.Descriptor instead.
 func (*RestoreRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{73}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{93}
 }
 
 func (x *RestoreRequest) GetId() string {
@@ -3845,7 +5225,7 @@ type RestoreResponse struct {
 
 func (x *RestoreResponse) Reset() {
 	*x = RestoreResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[74]
+	mi := &file_aos_v1_services_proto_msgTypes[94]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3857,7 +5237,7 @@ func (x *RestoreResponse) String() string {
 func (*RestoreResponse) ProtoMessage() {}
 
 func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[74]
+	mi := &file_aos_v1_services_proto_msgTypes[94]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3870,7 +5250,7 @@ func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreResponse.ProtoReflect.Descriptor instead.
 func (*RestoreResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{74}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{94}
 }
 
 func (x *RestoreResponse) GetPath() string {
@@ -3888,7 +5268,7 @@ type EmptyRequest struct {
 
 func (x *EmptyRequest) Reset() {
 	*x = EmptyRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[75]
+	mi := &file_aos_v1_services_proto_msgTypes[95]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3900,7 +5280,7 @@ func (x *EmptyRequest) String() string {
 func (*EmptyRequest) ProtoMessage() {}
 
 func (x *EmptyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[75]
+	mi := &file_aos_v1_services_proto_msgTypes[95]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3913,7 +5293,7 @@ func (x *EmptyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmptyRequest.ProtoReflect.Descriptor instead.
 func (*EmptyRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{75}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{95}
 }
 
 type EmptyResponse struct {
@@ -3925,7 +5305,7 @@ type EmptyResponse struct {
 
 func (x *EmptyResponse) Reset() {
 	*x = EmptyResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[76]
+	mi := &file_aos_v1_services_proto_msgTypes[96]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3937,7 +5317,7 @@ func (x *EmptyResponse) String() string {
 func (*EmptyResponse) ProtoMessage() {}
 
 func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[76]
+	mi := &file_aos_v1_services_proto_msgTypes[96]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3950,7 +5330,7 @@ func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmptyResponse.ProtoReflect.Descriptor instead.
 func (*EmptyResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{76}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{96}
 }
 
 func (x *EmptyResponse) GetRemoved() int32 {
@@ -3970,14 +5350,16 @@ type SessionInfo struct {
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// An Agent Session whose Task has ended, kept a while so a viewer can still
 	// replay what it showed. It takes no input.
-	Ended         bool `protobuf:"varint,6,opt,name=ended,proto3" json:"ended,omitempty"`
+	Ended bool `protobuf:"varint,6,opt,name=ended,proto3" json:"ended,omitempty"`
+	// The folder the shell started in; set on CreateSession's response only.
+	Cwd           string `protobuf:"bytes,7,opt,name=cwd,proto3" json:"cwd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SessionInfo) Reset() {
 	*x = SessionInfo{}
-	mi := &file_aos_v1_services_proto_msgTypes[77]
+	mi := &file_aos_v1_services_proto_msgTypes[97]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3989,7 +5371,7 @@ func (x *SessionInfo) String() string {
 func (*SessionInfo) ProtoMessage() {}
 
 func (x *SessionInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[77]
+	mi := &file_aos_v1_services_proto_msgTypes[97]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4002,7 +5384,7 @@ func (x *SessionInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SessionInfo.ProtoReflect.Descriptor instead.
 func (*SessionInfo) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{77}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{97}
 }
 
 func (x *SessionInfo) GetId() string {
@@ -4047,17 +5429,28 @@ func (x *SessionInfo) GetEnded() bool {
 	return false
 }
 
+func (x *SessionInfo) GetCwd() string {
+	if x != nil {
+		return x.Cwd
+	}
+	return ""
+}
+
 type CreateSessionRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cols          uint32                 `protobuf:"varint,1,opt,name=cols,proto3" json:"cols,omitempty"`
-	Rows          uint32                 `protobuf:"varint,2,opt,name=rows,proto3" json:"rows,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Cols  uint32                 `protobuf:"varint,1,opt,name=cols,proto3" json:"cols,omitempty"`
+	Rows  uint32                 `protobuf:"varint,2,opt,name=rows,proto3" json:"rows,omitempty"`
+	// The folder to start in, such as a Code Workspace's (M8.6). The shell
+	// starts there only if the Realm's user can enter it, and in the home
+	// folder otherwise; SessionInfo.cwd says which. Empty is the home folder.
+	Cwd           string `protobuf:"bytes,3,opt,name=cwd,proto3" json:"cwd,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *CreateSessionRequest) Reset() {
 	*x = CreateSessionRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[78]
+	mi := &file_aos_v1_services_proto_msgTypes[98]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4069,7 +5462,7 @@ func (x *CreateSessionRequest) String() string {
 func (*CreateSessionRequest) ProtoMessage() {}
 
 func (x *CreateSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[78]
+	mi := &file_aos_v1_services_proto_msgTypes[98]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4082,7 +5475,7 @@ func (x *CreateSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSessionRequest.ProtoReflect.Descriptor instead.
 func (*CreateSessionRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{78}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{98}
 }
 
 func (x *CreateSessionRequest) GetCols() uint32 {
@@ -4099,6 +5492,13 @@ func (x *CreateSessionRequest) GetRows() uint32 {
 	return 0
 }
 
+func (x *CreateSessionRequest) GetCwd() string {
+	if x != nil {
+		return x.Cwd
+	}
+	return ""
+}
+
 type CreateSessionResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Session       *SessionInfo           `protobuf:"bytes,1,opt,name=session,proto3" json:"session,omitempty"`
@@ -4108,7 +5508,7 @@ type CreateSessionResponse struct {
 
 func (x *CreateSessionResponse) Reset() {
 	*x = CreateSessionResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[79]
+	mi := &file_aos_v1_services_proto_msgTypes[99]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4120,7 +5520,7 @@ func (x *CreateSessionResponse) String() string {
 func (*CreateSessionResponse) ProtoMessage() {}
 
 func (x *CreateSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[79]
+	mi := &file_aos_v1_services_proto_msgTypes[99]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4133,7 +5533,7 @@ func (x *CreateSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSessionResponse.ProtoReflect.Descriptor instead.
 func (*CreateSessionResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{79}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{99}
 }
 
 func (x *CreateSessionResponse) GetSession() *SessionInfo {
@@ -4151,7 +5551,7 @@ type ListSessionsRequest struct {
 
 func (x *ListSessionsRequest) Reset() {
 	*x = ListSessionsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[80]
+	mi := &file_aos_v1_services_proto_msgTypes[100]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4163,7 +5563,7 @@ func (x *ListSessionsRequest) String() string {
 func (*ListSessionsRequest) ProtoMessage() {}
 
 func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[80]
+	mi := &file_aos_v1_services_proto_msgTypes[100]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4176,7 +5576,7 @@ func (x *ListSessionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsRequest.ProtoReflect.Descriptor instead.
 func (*ListSessionsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{80}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{100}
 }
 
 type ListSessionsResponse struct {
@@ -4188,7 +5588,7 @@ type ListSessionsResponse struct {
 
 func (x *ListSessionsResponse) Reset() {
 	*x = ListSessionsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[81]
+	mi := &file_aos_v1_services_proto_msgTypes[101]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4200,7 +5600,7 @@ func (x *ListSessionsResponse) String() string {
 func (*ListSessionsResponse) ProtoMessage() {}
 
 func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[81]
+	mi := &file_aos_v1_services_proto_msgTypes[101]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4213,7 +5613,7 @@ func (x *ListSessionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSessionsResponse.ProtoReflect.Descriptor instead.
 func (*ListSessionsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{81}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{101}
 }
 
 func (x *ListSessionsResponse) GetSessions() []*SessionInfo {
@@ -4232,7 +5632,7 @@ type CloseSessionRequest struct {
 
 func (x *CloseSessionRequest) Reset() {
 	*x = CloseSessionRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[82]
+	mi := &file_aos_v1_services_proto_msgTypes[102]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4244,7 +5644,7 @@ func (x *CloseSessionRequest) String() string {
 func (*CloseSessionRequest) ProtoMessage() {}
 
 func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[82]
+	mi := &file_aos_v1_services_proto_msgTypes[102]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4257,7 +5657,7 @@ func (x *CloseSessionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionRequest.ProtoReflect.Descriptor instead.
 func (*CloseSessionRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{82}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{102}
 }
 
 func (x *CloseSessionRequest) GetId() string {
@@ -4275,7 +5675,7 @@ type CloseSessionResponse struct {
 
 func (x *CloseSessionResponse) Reset() {
 	*x = CloseSessionResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[83]
+	mi := &file_aos_v1_services_proto_msgTypes[103]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4287,7 +5687,7 @@ func (x *CloseSessionResponse) String() string {
 func (*CloseSessionResponse) ProtoMessage() {}
 
 func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[83]
+	mi := &file_aos_v1_services_proto_msgTypes[103]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4300,7 +5700,7 @@ func (x *CloseSessionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CloseSessionResponse.ProtoReflect.Descriptor instead.
 func (*CloseSessionResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{83}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{103}
 }
 
 type ListPackagesRequest struct {
@@ -4311,7 +5711,7 @@ type ListPackagesRequest struct {
 
 func (x *ListPackagesRequest) Reset() {
 	*x = ListPackagesRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[84]
+	mi := &file_aos_v1_services_proto_msgTypes[104]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4323,7 +5723,7 @@ func (x *ListPackagesRequest) String() string {
 func (*ListPackagesRequest) ProtoMessage() {}
 
 func (x *ListPackagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[84]
+	mi := &file_aos_v1_services_proto_msgTypes[104]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4336,7 +5736,7 @@ func (x *ListPackagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackagesRequest.ProtoReflect.Descriptor instead.
 func (*ListPackagesRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{84}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{104}
 }
 
 type ListPackagesResponse struct {
@@ -4348,7 +5748,7 @@ type ListPackagesResponse struct {
 
 func (x *ListPackagesResponse) Reset() {
 	*x = ListPackagesResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[85]
+	mi := &file_aos_v1_services_proto_msgTypes[105]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4360,7 +5760,7 @@ func (x *ListPackagesResponse) String() string {
 func (*ListPackagesResponse) ProtoMessage() {}
 
 func (x *ListPackagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[85]
+	mi := &file_aos_v1_services_proto_msgTypes[105]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4373,7 +5773,7 @@ func (x *ListPackagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPackagesResponse.ProtoReflect.Descriptor instead.
 func (*ListPackagesResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{85}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{105}
 }
 
 func (x *ListPackagesResponse) GetPackages() []*Package {
@@ -4394,7 +5794,7 @@ type ListLedgerRequest struct {
 
 func (x *ListLedgerRequest) Reset() {
 	*x = ListLedgerRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[86]
+	mi := &file_aos_v1_services_proto_msgTypes[106]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4406,7 +5806,7 @@ func (x *ListLedgerRequest) String() string {
 func (*ListLedgerRequest) ProtoMessage() {}
 
 func (x *ListLedgerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[86]
+	mi := &file_aos_v1_services_proto_msgTypes[106]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4419,7 +5819,7 @@ func (x *ListLedgerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLedgerRequest.ProtoReflect.Descriptor instead.
 func (*ListLedgerRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{86}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{106}
 }
 
 func (x *ListLedgerRequest) GetLimit() int32 {
@@ -4445,7 +5845,7 @@ type ListLedgerResponse struct {
 
 func (x *ListLedgerResponse) Reset() {
 	*x = ListLedgerResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[87]
+	mi := &file_aos_v1_services_proto_msgTypes[107]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4457,7 +5857,7 @@ func (x *ListLedgerResponse) String() string {
 func (*ListLedgerResponse) ProtoMessage() {}
 
 func (x *ListLedgerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[87]
+	mi := &file_aos_v1_services_proto_msgTypes[107]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4470,7 +5870,7 @@ func (x *ListLedgerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListLedgerResponse.ProtoReflect.Descriptor instead.
 func (*ListLedgerResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{87}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{107}
 }
 
 func (x *ListLedgerResponse) GetOps() []*LedgerOp {
@@ -4488,7 +5888,7 @@ type ListCheckpointsRequest struct {
 
 func (x *ListCheckpointsRequest) Reset() {
 	*x = ListCheckpointsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[88]
+	mi := &file_aos_v1_services_proto_msgTypes[108]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4500,7 +5900,7 @@ func (x *ListCheckpointsRequest) String() string {
 func (*ListCheckpointsRequest) ProtoMessage() {}
 
 func (x *ListCheckpointsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[88]
+	mi := &file_aos_v1_services_proto_msgTypes[108]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4513,7 +5913,7 @@ func (x *ListCheckpointsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCheckpointsRequest.ProtoReflect.Descriptor instead.
 func (*ListCheckpointsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{88}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{108}
 }
 
 type ListCheckpointsResponse struct {
@@ -4525,7 +5925,7 @@ type ListCheckpointsResponse struct {
 
 func (x *ListCheckpointsResponse) Reset() {
 	*x = ListCheckpointsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[89]
+	mi := &file_aos_v1_services_proto_msgTypes[109]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4537,7 +5937,7 @@ func (x *ListCheckpointsResponse) String() string {
 func (*ListCheckpointsResponse) ProtoMessage() {}
 
 func (x *ListCheckpointsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[89]
+	mi := &file_aos_v1_services_proto_msgTypes[109]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4550,7 +5950,7 @@ func (x *ListCheckpointsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCheckpointsResponse.ProtoReflect.Descriptor instead.
 func (*ListCheckpointsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{89}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{109}
 }
 
 func (x *ListCheckpointsResponse) GetCheckpoints() []*Checkpoint {
@@ -4569,7 +5969,7 @@ type CreateCheckpointRequest struct {
 
 func (x *CreateCheckpointRequest) Reset() {
 	*x = CreateCheckpointRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[90]
+	mi := &file_aos_v1_services_proto_msgTypes[110]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4581,7 +5981,7 @@ func (x *CreateCheckpointRequest) String() string {
 func (*CreateCheckpointRequest) ProtoMessage() {}
 
 func (x *CreateCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[90]
+	mi := &file_aos_v1_services_proto_msgTypes[110]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4594,7 +5994,7 @@ func (x *CreateCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*CreateCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{90}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{110}
 }
 
 func (x *CreateCheckpointRequest) GetName() string {
@@ -4613,7 +6013,7 @@ type CreateCheckpointResponse struct {
 
 func (x *CreateCheckpointResponse) Reset() {
 	*x = CreateCheckpointResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[91]
+	mi := &file_aos_v1_services_proto_msgTypes[111]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4625,7 +6025,7 @@ func (x *CreateCheckpointResponse) String() string {
 func (*CreateCheckpointResponse) ProtoMessage() {}
 
 func (x *CreateCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[91]
+	mi := &file_aos_v1_services_proto_msgTypes[111]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4638,7 +6038,7 @@ func (x *CreateCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*CreateCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{91}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{111}
 }
 
 func (x *CreateCheckpointResponse) GetCheckpoint() *Checkpoint {
@@ -4657,7 +6057,7 @@ type RestoreCheckpointRequest struct {
 
 func (x *RestoreCheckpointRequest) Reset() {
 	*x = RestoreCheckpointRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[92]
+	mi := &file_aos_v1_services_proto_msgTypes[112]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4669,7 +6069,7 @@ func (x *RestoreCheckpointRequest) String() string {
 func (*RestoreCheckpointRequest) ProtoMessage() {}
 
 func (x *RestoreCheckpointRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[92]
+	mi := &file_aos_v1_services_proto_msgTypes[112]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4682,7 +6082,7 @@ func (x *RestoreCheckpointRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreCheckpointRequest.ProtoReflect.Descriptor instead.
 func (*RestoreCheckpointRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{92}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{112}
 }
 
 func (x *RestoreCheckpointRequest) GetId() string {
@@ -4706,7 +6106,7 @@ type RestoreCheckpointResponse struct {
 
 func (x *RestoreCheckpointResponse) Reset() {
 	*x = RestoreCheckpointResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[93]
+	mi := &file_aos_v1_services_proto_msgTypes[113]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4718,7 +6118,7 @@ func (x *RestoreCheckpointResponse) String() string {
 func (*RestoreCheckpointResponse) ProtoMessage() {}
 
 func (x *RestoreCheckpointResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[93]
+	mi := &file_aos_v1_services_proto_msgTypes[113]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4731,7 +6131,7 @@ func (x *RestoreCheckpointResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreCheckpointResponse.ProtoReflect.Descriptor instead.
 func (*RestoreCheckpointResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{93}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{113}
 }
 
 func (x *RestoreCheckpointResponse) GetOp() *LedgerOp {
@@ -4763,7 +6163,7 @@ type ListServicesRequest struct {
 
 func (x *ListServicesRequest) Reset() {
 	*x = ListServicesRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[94]
+	mi := &file_aos_v1_services_proto_msgTypes[114]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4775,7 +6175,7 @@ func (x *ListServicesRequest) String() string {
 func (*ListServicesRequest) ProtoMessage() {}
 
 func (x *ListServicesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[94]
+	mi := &file_aos_v1_services_proto_msgTypes[114]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4788,7 +6188,7 @@ func (x *ListServicesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListServicesRequest.ProtoReflect.Descriptor instead.
 func (*ListServicesRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{94}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{114}
 }
 
 type ListServicesResponse struct {
@@ -4802,7 +6202,7 @@ type ListServicesResponse struct {
 
 func (x *ListServicesResponse) Reset() {
 	*x = ListServicesResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[95]
+	mi := &file_aos_v1_services_proto_msgTypes[115]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4814,7 +6214,7 @@ func (x *ListServicesResponse) String() string {
 func (*ListServicesResponse) ProtoMessage() {}
 
 func (x *ListServicesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[95]
+	mi := &file_aos_v1_services_proto_msgTypes[115]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4827,7 +6227,7 @@ func (x *ListServicesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListServicesResponse.ProtoReflect.Descriptor instead.
 func (*ListServicesResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{95}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{115}
 }
 
 func (x *ListServicesResponse) GetServices() []*ServiceInfo {
@@ -4853,7 +6253,7 @@ type StartServiceRequest struct {
 
 func (x *StartServiceRequest) Reset() {
 	*x = StartServiceRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[96]
+	mi := &file_aos_v1_services_proto_msgTypes[116]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4865,7 +6265,7 @@ func (x *StartServiceRequest) String() string {
 func (*StartServiceRequest) ProtoMessage() {}
 
 func (x *StartServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[96]
+	mi := &file_aos_v1_services_proto_msgTypes[116]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4878,7 +6278,7 @@ func (x *StartServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartServiceRequest.ProtoReflect.Descriptor instead.
 func (*StartServiceRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{96}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{116}
 }
 
 func (x *StartServiceRequest) GetName() string {
@@ -4897,7 +6297,7 @@ type StartServiceResponse struct {
 
 func (x *StartServiceResponse) Reset() {
 	*x = StartServiceResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[97]
+	mi := &file_aos_v1_services_proto_msgTypes[117]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4909,7 +6309,7 @@ func (x *StartServiceResponse) String() string {
 func (*StartServiceResponse) ProtoMessage() {}
 
 func (x *StartServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[97]
+	mi := &file_aos_v1_services_proto_msgTypes[117]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4922,7 +6322,7 @@ func (x *StartServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StartServiceResponse.ProtoReflect.Descriptor instead.
 func (*StartServiceResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{97}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{117}
 }
 
 func (x *StartServiceResponse) GetService() *ServiceInfo {
@@ -4941,7 +6341,7 @@ type StopServiceRequest struct {
 
 func (x *StopServiceRequest) Reset() {
 	*x = StopServiceRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[98]
+	mi := &file_aos_v1_services_proto_msgTypes[118]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4953,7 +6353,7 @@ func (x *StopServiceRequest) String() string {
 func (*StopServiceRequest) ProtoMessage() {}
 
 func (x *StopServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[98]
+	mi := &file_aos_v1_services_proto_msgTypes[118]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4966,7 +6366,7 @@ func (x *StopServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServiceRequest.ProtoReflect.Descriptor instead.
 func (*StopServiceRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{98}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{118}
 }
 
 func (x *StopServiceRequest) GetName() string {
@@ -4985,7 +6385,7 @@ type StopServiceResponse struct {
 
 func (x *StopServiceResponse) Reset() {
 	*x = StopServiceResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[99]
+	mi := &file_aos_v1_services_proto_msgTypes[119]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -4997,7 +6397,7 @@ func (x *StopServiceResponse) String() string {
 func (*StopServiceResponse) ProtoMessage() {}
 
 func (x *StopServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[99]
+	mi := &file_aos_v1_services_proto_msgTypes[119]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5010,7 +6410,7 @@ func (x *StopServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StopServiceResponse.ProtoReflect.Descriptor instead.
 func (*StopServiceResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{99}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{119}
 }
 
 func (x *StopServiceResponse) GetService() *ServiceInfo {
@@ -5029,7 +6429,7 @@ type RestartServiceRequest struct {
 
 func (x *RestartServiceRequest) Reset() {
 	*x = RestartServiceRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[100]
+	mi := &file_aos_v1_services_proto_msgTypes[120]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5041,7 +6441,7 @@ func (x *RestartServiceRequest) String() string {
 func (*RestartServiceRequest) ProtoMessage() {}
 
 func (x *RestartServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[100]
+	mi := &file_aos_v1_services_proto_msgTypes[120]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5054,7 +6454,7 @@ func (x *RestartServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartServiceRequest.ProtoReflect.Descriptor instead.
 func (*RestartServiceRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{100}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{120}
 }
 
 func (x *RestartServiceRequest) GetName() string {
@@ -5073,7 +6473,7 @@ type RestartServiceResponse struct {
 
 func (x *RestartServiceResponse) Reset() {
 	*x = RestartServiceResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[101]
+	mi := &file_aos_v1_services_proto_msgTypes[121]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5085,7 +6485,7 @@ func (x *RestartServiceResponse) String() string {
 func (*RestartServiceResponse) ProtoMessage() {}
 
 func (x *RestartServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[101]
+	mi := &file_aos_v1_services_proto_msgTypes[121]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5098,7 +6498,7 @@ func (x *RestartServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartServiceResponse.ProtoReflect.Descriptor instead.
 func (*RestartServiceResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{101}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{121}
 }
 
 func (x *RestartServiceResponse) GetService() *ServiceInfo {
@@ -5117,7 +6517,7 @@ type RemoveServiceRequest struct {
 
 func (x *RemoveServiceRequest) Reset() {
 	*x = RemoveServiceRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[102]
+	mi := &file_aos_v1_services_proto_msgTypes[122]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5129,7 +6529,7 @@ func (x *RemoveServiceRequest) String() string {
 func (*RemoveServiceRequest) ProtoMessage() {}
 
 func (x *RemoveServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[102]
+	mi := &file_aos_v1_services_proto_msgTypes[122]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5142,7 +6542,7 @@ func (x *RemoveServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveServiceRequest.ProtoReflect.Descriptor instead.
 func (*RemoveServiceRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{102}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{122}
 }
 
 func (x *RemoveServiceRequest) GetName() string {
@@ -5160,7 +6560,7 @@ type RemoveServiceResponse struct {
 
 func (x *RemoveServiceResponse) Reset() {
 	*x = RemoveServiceResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[103]
+	mi := &file_aos_v1_services_proto_msgTypes[123]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5172,7 +6572,7 @@ func (x *RemoveServiceResponse) String() string {
 func (*RemoveServiceResponse) ProtoMessage() {}
 
 func (x *RemoveServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[103]
+	mi := &file_aos_v1_services_proto_msgTypes[123]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5185,7 +6585,7 @@ func (x *RemoveServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveServiceResponse.ProtoReflect.Descriptor instead.
 func (*RemoveServiceResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{103}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{123}
 }
 
 type StreamLogsRequest struct {
@@ -5200,7 +6600,7 @@ type StreamLogsRequest struct {
 
 func (x *StreamLogsRequest) Reset() {
 	*x = StreamLogsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[104]
+	mi := &file_aos_v1_services_proto_msgTypes[124]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5212,7 +6612,7 @@ func (x *StreamLogsRequest) String() string {
 func (*StreamLogsRequest) ProtoMessage() {}
 
 func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[104]
+	mi := &file_aos_v1_services_proto_msgTypes[124]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5225,7 +6625,7 @@ func (x *StreamLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsRequest.ProtoReflect.Descriptor instead.
 func (*StreamLogsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{104}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{124}
 }
 
 func (x *StreamLogsRequest) GetName() string {
@@ -5258,7 +6658,7 @@ type StreamLogsResponse struct {
 
 func (x *StreamLogsResponse) Reset() {
 	*x = StreamLogsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[105]
+	mi := &file_aos_v1_services_proto_msgTypes[125]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5270,7 +6670,7 @@ func (x *StreamLogsResponse) String() string {
 func (*StreamLogsResponse) ProtoMessage() {}
 
 func (x *StreamLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[105]
+	mi := &file_aos_v1_services_proto_msgTypes[125]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5283,7 +6683,7 @@ func (x *StreamLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamLogsResponse.ProtoReflect.Descriptor instead.
 func (*StreamLogsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{105}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{125}
 }
 
 func (x *StreamLogsResponse) GetData() []byte {
@@ -5302,7 +6702,7 @@ type SetApiKeyRequest struct {
 
 func (x *SetApiKeyRequest) Reset() {
 	*x = SetApiKeyRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[106]
+	mi := &file_aos_v1_services_proto_msgTypes[126]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5314,7 +6714,7 @@ func (x *SetApiKeyRequest) String() string {
 func (*SetApiKeyRequest) ProtoMessage() {}
 
 func (x *SetApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[106]
+	mi := &file_aos_v1_services_proto_msgTypes[126]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5327,7 +6727,7 @@ func (x *SetApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*SetApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{106}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{126}
 }
 
 func (x *SetApiKeyRequest) GetKey() string {
@@ -5346,7 +6746,7 @@ type SetApiKeyResponse struct {
 
 func (x *SetApiKeyResponse) Reset() {
 	*x = SetApiKeyResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[107]
+	mi := &file_aos_v1_services_proto_msgTypes[127]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5358,7 +6758,7 @@ func (x *SetApiKeyResponse) String() string {
 func (*SetApiKeyResponse) ProtoMessage() {}
 
 func (x *SetApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[107]
+	mi := &file_aos_v1_services_proto_msgTypes[127]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5371,7 +6771,7 @@ func (x *SetApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*SetApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{107}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{127}
 }
 
 func (x *SetApiKeyResponse) GetHint() string {
@@ -5389,7 +6789,7 @@ type ClearApiKeyRequest struct {
 
 func (x *ClearApiKeyRequest) Reset() {
 	*x = ClearApiKeyRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[108]
+	mi := &file_aos_v1_services_proto_msgTypes[128]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5401,7 +6801,7 @@ func (x *ClearApiKeyRequest) String() string {
 func (*ClearApiKeyRequest) ProtoMessage() {}
 
 func (x *ClearApiKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[108]
+	mi := &file_aos_v1_services_proto_msgTypes[128]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5414,7 +6814,7 @@ func (x *ClearApiKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearApiKeyRequest.ProtoReflect.Descriptor instead.
 func (*ClearApiKeyRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{108}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{128}
 }
 
 type ClearApiKeyResponse struct {
@@ -5427,7 +6827,7 @@ type ClearApiKeyResponse struct {
 
 func (x *ClearApiKeyResponse) Reset() {
 	*x = ClearApiKeyResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[109]
+	mi := &file_aos_v1_services_proto_msgTypes[129]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5439,7 +6839,7 @@ func (x *ClearApiKeyResponse) String() string {
 func (*ClearApiKeyResponse) ProtoMessage() {}
 
 func (x *ClearApiKeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[109]
+	mi := &file_aos_v1_services_proto_msgTypes[129]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5452,7 +6852,7 @@ func (x *ClearApiKeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearApiKeyResponse.ProtoReflect.Descriptor instead.
 func (*ClearApiKeyResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{109}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{129}
 }
 
 func (x *ClearApiKeyResponse) GetHint() string {
@@ -5485,7 +6885,7 @@ type Setting struct {
 
 func (x *Setting) Reset() {
 	*x = Setting{}
-	mi := &file_aos_v1_services_proto_msgTypes[110]
+	mi := &file_aos_v1_services_proto_msgTypes[130]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5497,7 +6897,7 @@ func (x *Setting) String() string {
 func (*Setting) ProtoMessage() {}
 
 func (x *Setting) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[110]
+	mi := &file_aos_v1_services_proto_msgTypes[130]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5510,7 +6910,7 @@ func (x *Setting) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Setting.ProtoReflect.Descriptor instead.
 func (*Setting) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{110}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{130}
 }
 
 func (x *Setting) GetKey() string {
@@ -5563,7 +6963,7 @@ type GetSettingsRequest struct {
 
 func (x *GetSettingsRequest) Reset() {
 	*x = GetSettingsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[111]
+	mi := &file_aos_v1_services_proto_msgTypes[131]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5575,7 +6975,7 @@ func (x *GetSettingsRequest) String() string {
 func (*GetSettingsRequest) ProtoMessage() {}
 
 func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[111]
+	mi := &file_aos_v1_services_proto_msgTypes[131]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5588,7 +6988,7 @@ func (x *GetSettingsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSettingsRequest.ProtoReflect.Descriptor instead.
 func (*GetSettingsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{111}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{131}
 }
 
 type GetSettingsResponse struct {
@@ -5605,7 +7005,7 @@ type GetSettingsResponse struct {
 
 func (x *GetSettingsResponse) Reset() {
 	*x = GetSettingsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[112]
+	mi := &file_aos_v1_services_proto_msgTypes[132]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5617,7 +7017,7 @@ func (x *GetSettingsResponse) String() string {
 func (*GetSettingsResponse) ProtoMessage() {}
 
 func (x *GetSettingsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[112]
+	mi := &file_aos_v1_services_proto_msgTypes[132]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5630,7 +7030,7 @@ func (x *GetSettingsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSettingsResponse.ProtoReflect.Descriptor instead.
 func (*GetSettingsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{112}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{132}
 }
 
 func (x *GetSettingsResponse) GetSettings() []*Setting {
@@ -5664,7 +7064,7 @@ type ModelChoice struct {
 
 func (x *ModelChoice) Reset() {
 	*x = ModelChoice{}
-	mi := &file_aos_v1_services_proto_msgTypes[113]
+	mi := &file_aos_v1_services_proto_msgTypes[133]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5676,7 +7076,7 @@ func (x *ModelChoice) String() string {
 func (*ModelChoice) ProtoMessage() {}
 
 func (x *ModelChoice) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[113]
+	mi := &file_aos_v1_services_proto_msgTypes[133]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5689,7 +7089,7 @@ func (x *ModelChoice) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelChoice.ProtoReflect.Descriptor instead.
 func (*ModelChoice) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{113}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{133}
 }
 
 func (x *ModelChoice) GetId() string {
@@ -5737,7 +7137,7 @@ type UpdateSettingRequest struct {
 
 func (x *UpdateSettingRequest) Reset() {
 	*x = UpdateSettingRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[114]
+	mi := &file_aos_v1_services_proto_msgTypes[134]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5749,7 +7149,7 @@ func (x *UpdateSettingRequest) String() string {
 func (*UpdateSettingRequest) ProtoMessage() {}
 
 func (x *UpdateSettingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[114]
+	mi := &file_aos_v1_services_proto_msgTypes[134]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5762,7 +7162,7 @@ func (x *UpdateSettingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSettingRequest.ProtoReflect.Descriptor instead.
 func (*UpdateSettingRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{114}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{134}
 }
 
 func (x *UpdateSettingRequest) GetKey() string {
@@ -5788,7 +7188,7 @@ type UpdateSettingResponse struct {
 
 func (x *UpdateSettingResponse) Reset() {
 	*x = UpdateSettingResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[115]
+	mi := &file_aos_v1_services_proto_msgTypes[135]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5800,7 +7200,7 @@ func (x *UpdateSettingResponse) String() string {
 func (*UpdateSettingResponse) ProtoMessage() {}
 
 func (x *UpdateSettingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[115]
+	mi := &file_aos_v1_services_proto_msgTypes[135]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5813,7 +7213,7 @@ func (x *UpdateSettingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateSettingResponse.ProtoReflect.Descriptor instead.
 func (*UpdateSettingResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{115}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{135}
 }
 
 func (x *UpdateSettingResponse) GetSetting() *Setting {
@@ -5831,7 +7231,7 @@ type ListMemoryRequest struct {
 
 func (x *ListMemoryRequest) Reset() {
 	*x = ListMemoryRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[116]
+	mi := &file_aos_v1_services_proto_msgTypes[136]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5843,7 +7243,7 @@ func (x *ListMemoryRequest) String() string {
 func (*ListMemoryRequest) ProtoMessage() {}
 
 func (x *ListMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[116]
+	mi := &file_aos_v1_services_proto_msgTypes[136]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5856,7 +7256,7 @@ func (x *ListMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryRequest.ProtoReflect.Descriptor instead.
 func (*ListMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{116}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{136}
 }
 
 type ListMemoryResponse struct {
@@ -5868,7 +7268,7 @@ type ListMemoryResponse struct {
 
 func (x *ListMemoryResponse) Reset() {
 	*x = ListMemoryResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[117]
+	mi := &file_aos_v1_services_proto_msgTypes[137]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5880,7 +7280,7 @@ func (x *ListMemoryResponse) String() string {
 func (*ListMemoryResponse) ProtoMessage() {}
 
 func (x *ListMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[117]
+	mi := &file_aos_v1_services_proto_msgTypes[137]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5893,7 +7293,7 @@ func (x *ListMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListMemoryResponse.ProtoReflect.Descriptor instead.
 func (*ListMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{117}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{137}
 }
 
 func (x *ListMemoryResponse) GetMemories() []*Memory {
@@ -5912,7 +7312,7 @@ type AddMemoryRequest struct {
 
 func (x *AddMemoryRequest) Reset() {
 	*x = AddMemoryRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[118]
+	mi := &file_aos_v1_services_proto_msgTypes[138]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5924,7 +7324,7 @@ func (x *AddMemoryRequest) String() string {
 func (*AddMemoryRequest) ProtoMessage() {}
 
 func (x *AddMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[118]
+	mi := &file_aos_v1_services_proto_msgTypes[138]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5937,7 +7337,7 @@ func (x *AddMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddMemoryRequest.ProtoReflect.Descriptor instead.
 func (*AddMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{118}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{138}
 }
 
 func (x *AddMemoryRequest) GetText() string {
@@ -5956,7 +7356,7 @@ type AddMemoryResponse struct {
 
 func (x *AddMemoryResponse) Reset() {
 	*x = AddMemoryResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[119]
+	mi := &file_aos_v1_services_proto_msgTypes[139]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -5968,7 +7368,7 @@ func (x *AddMemoryResponse) String() string {
 func (*AddMemoryResponse) ProtoMessage() {}
 
 func (x *AddMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[119]
+	mi := &file_aos_v1_services_proto_msgTypes[139]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5981,7 +7381,7 @@ func (x *AddMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddMemoryResponse.ProtoReflect.Descriptor instead.
 func (*AddMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{119}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{139}
 }
 
 func (x *AddMemoryResponse) GetMemory() *Memory {
@@ -6000,7 +7400,7 @@ type AcceptMemoryRequest struct {
 
 func (x *AcceptMemoryRequest) Reset() {
 	*x = AcceptMemoryRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[120]
+	mi := &file_aos_v1_services_proto_msgTypes[140]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6012,7 +7412,7 @@ func (x *AcceptMemoryRequest) String() string {
 func (*AcceptMemoryRequest) ProtoMessage() {}
 
 func (x *AcceptMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[120]
+	mi := &file_aos_v1_services_proto_msgTypes[140]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6025,7 +7425,7 @@ func (x *AcceptMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptMemoryRequest.ProtoReflect.Descriptor instead.
 func (*AcceptMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{120}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{140}
 }
 
 func (x *AcceptMemoryRequest) GetId() string {
@@ -6044,7 +7444,7 @@ type AcceptMemoryResponse struct {
 
 func (x *AcceptMemoryResponse) Reset() {
 	*x = AcceptMemoryResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[121]
+	mi := &file_aos_v1_services_proto_msgTypes[141]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6056,7 +7456,7 @@ func (x *AcceptMemoryResponse) String() string {
 func (*AcceptMemoryResponse) ProtoMessage() {}
 
 func (x *AcceptMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[121]
+	mi := &file_aos_v1_services_proto_msgTypes[141]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6069,7 +7469,7 @@ func (x *AcceptMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AcceptMemoryResponse.ProtoReflect.Descriptor instead.
 func (*AcceptMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{121}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{141}
 }
 
 func (x *AcceptMemoryResponse) GetMemory() *Memory {
@@ -6088,7 +7488,7 @@ type ForgetMemoryRequest struct {
 
 func (x *ForgetMemoryRequest) Reset() {
 	*x = ForgetMemoryRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[122]
+	mi := &file_aos_v1_services_proto_msgTypes[142]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6100,7 +7500,7 @@ func (x *ForgetMemoryRequest) String() string {
 func (*ForgetMemoryRequest) ProtoMessage() {}
 
 func (x *ForgetMemoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[122]
+	mi := &file_aos_v1_services_proto_msgTypes[142]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6113,7 +7513,7 @@ func (x *ForgetMemoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForgetMemoryRequest.ProtoReflect.Descriptor instead.
 func (*ForgetMemoryRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{122}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{142}
 }
 
 func (x *ForgetMemoryRequest) GetId() string {
@@ -6131,7 +7531,7 @@ type ForgetMemoryResponse struct {
 
 func (x *ForgetMemoryResponse) Reset() {
 	*x = ForgetMemoryResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[123]
+	mi := &file_aos_v1_services_proto_msgTypes[143]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6143,7 +7543,7 @@ func (x *ForgetMemoryResponse) String() string {
 func (*ForgetMemoryResponse) ProtoMessage() {}
 
 func (x *ForgetMemoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[123]
+	mi := &file_aos_v1_services_proto_msgTypes[143]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6156,7 +7556,7 @@ func (x *ForgetMemoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ForgetMemoryResponse.ProtoReflect.Descriptor instead.
 func (*ForgetMemoryResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{123}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{143}
 }
 
 type GetDesktopStateRequest struct {
@@ -6167,7 +7567,7 @@ type GetDesktopStateRequest struct {
 
 func (x *GetDesktopStateRequest) Reset() {
 	*x = GetDesktopStateRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[124]
+	mi := &file_aos_v1_services_proto_msgTypes[144]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6179,7 +7579,7 @@ func (x *GetDesktopStateRequest) String() string {
 func (*GetDesktopStateRequest) ProtoMessage() {}
 
 func (x *GetDesktopStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[124]
+	mi := &file_aos_v1_services_proto_msgTypes[144]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6192,7 +7592,7 @@ func (x *GetDesktopStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDesktopStateRequest.ProtoReflect.Descriptor instead.
 func (*GetDesktopStateRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{124}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{144}
 }
 
 type GetDesktopStateResponse struct {
@@ -6205,7 +7605,7 @@ type GetDesktopStateResponse struct {
 
 func (x *GetDesktopStateResponse) Reset() {
 	*x = GetDesktopStateResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[125]
+	mi := &file_aos_v1_services_proto_msgTypes[145]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6217,7 +7617,7 @@ func (x *GetDesktopStateResponse) String() string {
 func (*GetDesktopStateResponse) ProtoMessage() {}
 
 func (x *GetDesktopStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[125]
+	mi := &file_aos_v1_services_proto_msgTypes[145]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6230,7 +7630,7 @@ func (x *GetDesktopStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDesktopStateResponse.ProtoReflect.Descriptor instead.
 func (*GetDesktopStateResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{125}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{145}
 }
 
 func (x *GetDesktopStateResponse) GetState() string {
@@ -6252,7 +7652,7 @@ type SaveDesktopStateRequest struct {
 
 func (x *SaveDesktopStateRequest) Reset() {
 	*x = SaveDesktopStateRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[126]
+	mi := &file_aos_v1_services_proto_msgTypes[146]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6264,7 +7664,7 @@ func (x *SaveDesktopStateRequest) String() string {
 func (*SaveDesktopStateRequest) ProtoMessage() {}
 
 func (x *SaveDesktopStateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[126]
+	mi := &file_aos_v1_services_proto_msgTypes[146]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6277,7 +7677,7 @@ func (x *SaveDesktopStateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveDesktopStateRequest.ProtoReflect.Descriptor instead.
 func (*SaveDesktopStateRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{126}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{146}
 }
 
 func (x *SaveDesktopStateRequest) GetState() string {
@@ -6302,7 +7702,7 @@ type SaveDesktopStateResponse struct {
 
 func (x *SaveDesktopStateResponse) Reset() {
 	*x = SaveDesktopStateResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[127]
+	mi := &file_aos_v1_services_proto_msgTypes[147]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6314,7 +7714,7 @@ func (x *SaveDesktopStateResponse) String() string {
 func (*SaveDesktopStateResponse) ProtoMessage() {}
 
 func (x *SaveDesktopStateResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[127]
+	mi := &file_aos_v1_services_proto_msgTypes[147]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6327,7 +7727,7 @@ func (x *SaveDesktopStateResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SaveDesktopStateResponse.ProtoReflect.Descriptor instead.
 func (*SaveDesktopStateResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{127}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{147}
 }
 
 type RestartRequest struct {
@@ -6338,7 +7738,7 @@ type RestartRequest struct {
 
 func (x *RestartRequest) Reset() {
 	*x = RestartRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[128]
+	mi := &file_aos_v1_services_proto_msgTypes[148]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6350,7 +7750,7 @@ func (x *RestartRequest) String() string {
 func (*RestartRequest) ProtoMessage() {}
 
 func (x *RestartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[128]
+	mi := &file_aos_v1_services_proto_msgTypes[148]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6363,7 +7763,7 @@ func (x *RestartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartRequest.ProtoReflect.Descriptor instead.
 func (*RestartRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{128}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{148}
 }
 
 type RestartResponse struct {
@@ -6374,7 +7774,7 @@ type RestartResponse struct {
 
 func (x *RestartResponse) Reset() {
 	*x = RestartResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[129]
+	mi := &file_aos_v1_services_proto_msgTypes[149]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6386,7 +7786,7 @@ func (x *RestartResponse) String() string {
 func (*RestartResponse) ProtoMessage() {}
 
 func (x *RestartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[129]
+	mi := &file_aos_v1_services_proto_msgTypes[149]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6399,7 +7799,7 @@ func (x *RestartResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestartResponse.ProtoReflect.Descriptor instead.
 func (*RestartResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{129}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{149}
 }
 
 type ClearRootHistoryRequest struct {
@@ -6410,7 +7810,7 @@ type ClearRootHistoryRequest struct {
 
 func (x *ClearRootHistoryRequest) Reset() {
 	*x = ClearRootHistoryRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[130]
+	mi := &file_aos_v1_services_proto_msgTypes[150]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6422,7 +7822,7 @@ func (x *ClearRootHistoryRequest) String() string {
 func (*ClearRootHistoryRequest) ProtoMessage() {}
 
 func (x *ClearRootHistoryRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[130]
+	mi := &file_aos_v1_services_proto_msgTypes[150]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6435,7 +7835,7 @@ func (x *ClearRootHistoryRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearRootHistoryRequest.ProtoReflect.Descriptor instead.
 func (*ClearRootHistoryRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{130}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{150}
 }
 
 type ClearRootHistoryResponse struct {
@@ -6446,7 +7846,7 @@ type ClearRootHistoryResponse struct {
 
 func (x *ClearRootHistoryResponse) Reset() {
 	*x = ClearRootHistoryResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[131]
+	mi := &file_aos_v1_services_proto_msgTypes[151]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6458,7 +7858,7 @@ func (x *ClearRootHistoryResponse) String() string {
 func (*ClearRootHistoryResponse) ProtoMessage() {}
 
 func (x *ClearRootHistoryResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[131]
+	mi := &file_aos_v1_services_proto_msgTypes[151]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6471,7 +7871,7 @@ func (x *ClearRootHistoryResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ClearRootHistoryResponse.ProtoReflect.Descriptor instead.
 func (*ClearRootHistoryResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{131}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{151}
 }
 
 type SetRootModeRequest struct {
@@ -6487,7 +7887,7 @@ type SetRootModeRequest struct {
 
 func (x *SetRootModeRequest) Reset() {
 	*x = SetRootModeRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[132]
+	mi := &file_aos_v1_services_proto_msgTypes[152]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6499,7 +7899,7 @@ func (x *SetRootModeRequest) String() string {
 func (*SetRootModeRequest) ProtoMessage() {}
 
 func (x *SetRootModeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[132]
+	mi := &file_aos_v1_services_proto_msgTypes[152]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6512,7 +7912,7 @@ func (x *SetRootModeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRootModeRequest.ProtoReflect.Descriptor instead.
 func (*SetRootModeRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{132}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{152}
 }
 
 func (x *SetRootModeRequest) GetEnabled() bool {
@@ -6537,7 +7937,7 @@ type SetRootModeResponse struct {
 
 func (x *SetRootModeResponse) Reset() {
 	*x = SetRootModeResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[133]
+	mi := &file_aos_v1_services_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6549,7 +7949,7 @@ func (x *SetRootModeResponse) String() string {
 func (*SetRootModeResponse) ProtoMessage() {}
 
 func (x *SetRootModeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[133]
+	mi := &file_aos_v1_services_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6562,21 +7962,24 @@ func (x *SetRootModeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetRootModeResponse.ProtoReflect.Descriptor instead.
 func (*SetRootModeResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{133}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{153}
 }
 
 // RootModeBlocked is the FailedPrecondition detail on SetRootMode: the Tasks that
-// must finish or be cancelled before the Realm can be switched.
+// must finish or be cancelled, and the Code Workspaces that must be closed
+// (M8.13), before the Realm can be switched. ClearRootHistory is refused for
+// Tasks only, so it lists no Workspaces.
 type RootModeBlocked struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tasks         []*BlockingTask        `protobuf:"bytes,1,rep,name=tasks,proto3" json:"tasks,omitempty"`
+	Workspaces    []*BlockingWorkspace   `protobuf:"bytes,2,rep,name=workspaces,proto3" json:"workspaces,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RootModeBlocked) Reset() {
 	*x = RootModeBlocked{}
-	mi := &file_aos_v1_services_proto_msgTypes[134]
+	mi := &file_aos_v1_services_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6588,7 +7991,7 @@ func (x *RootModeBlocked) String() string {
 func (*RootModeBlocked) ProtoMessage() {}
 
 func (x *RootModeBlocked) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[134]
+	mi := &file_aos_v1_services_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6601,12 +8004,83 @@ func (x *RootModeBlocked) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RootModeBlocked.ProtoReflect.Descriptor instead.
 func (*RootModeBlocked) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{134}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *RootModeBlocked) GetTasks() []*BlockingTask {
 	if x != nil {
 		return x.Tasks
+	}
+	return nil
+}
+
+func (x *RootModeBlocked) GetWorkspaces() []*BlockingWorkspace {
+	if x != nil {
+		return x.Workspaces
+	}
+	return nil
+}
+
+// BlockingWorkspace names one open Code Workspace, in any of the Desktop's tabs,
+// that blocks a Realm switch (M8.13), with its window's unsaved files.
+type BlockingWorkspace struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The Workspace's folder.
+	Path string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	// Absolute paths of the window's files with unsaved edits, sorted.
+	Unsaved       []string `protobuf:"bytes,3,rep,name=unsaved,proto3" json:"unsaved,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockingWorkspace) Reset() {
+	*x = BlockingWorkspace{}
+	mi := &file_aos_v1_services_proto_msgTypes[155]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockingWorkspace) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockingWorkspace) ProtoMessage() {}
+
+func (x *BlockingWorkspace) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[155]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockingWorkspace.ProtoReflect.Descriptor instead.
+func (*BlockingWorkspace) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{155}
+}
+
+func (x *BlockingWorkspace) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *BlockingWorkspace) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *BlockingWorkspace) GetUnsaved() []string {
+	if x != nil {
+		return x.Unsaved
 	}
 	return nil
 }
@@ -6624,7 +8098,7 @@ type BlockingTask struct {
 
 func (x *BlockingTask) Reset() {
 	*x = BlockingTask{}
-	mi := &file_aos_v1_services_proto_msgTypes[135]
+	mi := &file_aos_v1_services_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6636,7 +8110,7 @@ func (x *BlockingTask) String() string {
 func (*BlockingTask) ProtoMessage() {}
 
 func (x *BlockingTask) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[135]
+	mi := &file_aos_v1_services_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6649,7 +8123,7 @@ func (x *BlockingTask) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlockingTask.ProtoReflect.Descriptor instead.
 func (*BlockingTask) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{135}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *BlockingTask) GetId() string {
@@ -6683,7 +8157,7 @@ type RootModeAttempt struct {
 
 func (x *RootModeAttempt) Reset() {
 	*x = RootModeAttempt{}
-	mi := &file_aos_v1_services_proto_msgTypes[136]
+	mi := &file_aos_v1_services_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6695,7 +8169,7 @@ func (x *RootModeAttempt) String() string {
 func (*RootModeAttempt) ProtoMessage() {}
 
 func (x *RootModeAttempt) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[136]
+	mi := &file_aos_v1_services_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6708,7 +8182,7 @@ func (x *RootModeAttempt) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RootModeAttempt.ProtoReflect.Descriptor instead.
 func (*RootModeAttempt) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{136}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *RootModeAttempt) GetAttemptsLeft() int32 {
@@ -6729,7 +8203,7 @@ type RootModeLockout struct {
 
 func (x *RootModeLockout) Reset() {
 	*x = RootModeLockout{}
-	mi := &file_aos_v1_services_proto_msgTypes[137]
+	mi := &file_aos_v1_services_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6741,7 +8215,7 @@ func (x *RootModeLockout) String() string {
 func (*RootModeLockout) ProtoMessage() {}
 
 func (x *RootModeLockout) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[137]
+	mi := &file_aos_v1_services_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6754,7 +8228,7 @@ func (x *RootModeLockout) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RootModeLockout.ProtoReflect.Descriptor instead.
 func (*RootModeLockout) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{137}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *RootModeLockout) GetUntil() *timestamppb.Timestamp {
@@ -6772,7 +8246,7 @@ type ListNotificationsRequest struct {
 
 func (x *ListNotificationsRequest) Reset() {
 	*x = ListNotificationsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[138]
+	mi := &file_aos_v1_services_proto_msgTypes[159]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6784,7 +8258,7 @@ func (x *ListNotificationsRequest) String() string {
 func (*ListNotificationsRequest) ProtoMessage() {}
 
 func (x *ListNotificationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[138]
+	mi := &file_aos_v1_services_proto_msgTypes[159]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6797,7 +8271,7 @@ func (x *ListNotificationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNotificationsRequest.ProtoReflect.Descriptor instead.
 func (*ListNotificationsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{138}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{159}
 }
 
 type ListNotificationsResponse struct {
@@ -6809,7 +8283,7 @@ type ListNotificationsResponse struct {
 
 func (x *ListNotificationsResponse) Reset() {
 	*x = ListNotificationsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[139]
+	mi := &file_aos_v1_services_proto_msgTypes[160]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6821,7 +8295,7 @@ func (x *ListNotificationsResponse) String() string {
 func (*ListNotificationsResponse) ProtoMessage() {}
 
 func (x *ListNotificationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[139]
+	mi := &file_aos_v1_services_proto_msgTypes[160]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6834,7 +8308,7 @@ func (x *ListNotificationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNotificationsResponse.ProtoReflect.Descriptor instead.
 func (*ListNotificationsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{139}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{160}
 }
 
 func (x *ListNotificationsResponse) GetNotifications() []*Notification {
@@ -6855,7 +8329,7 @@ type DismissNotificationRequest struct {
 
 func (x *DismissNotificationRequest) Reset() {
 	*x = DismissNotificationRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[140]
+	mi := &file_aos_v1_services_proto_msgTypes[161]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6867,7 +8341,7 @@ func (x *DismissNotificationRequest) String() string {
 func (*DismissNotificationRequest) ProtoMessage() {}
 
 func (x *DismissNotificationRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[140]
+	mi := &file_aos_v1_services_proto_msgTypes[161]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6880,7 +8354,7 @@ func (x *DismissNotificationRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DismissNotificationRequest.ProtoReflect.Descriptor instead.
 func (*DismissNotificationRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{140}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{161}
 }
 
 func (x *DismissNotificationRequest) GetId() string {
@@ -6905,7 +8379,7 @@ type DismissNotificationResponse struct {
 
 func (x *DismissNotificationResponse) Reset() {
 	*x = DismissNotificationResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[141]
+	mi := &file_aos_v1_services_proto_msgTypes[162]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6917,7 +8391,7 @@ func (x *DismissNotificationResponse) String() string {
 func (*DismissNotificationResponse) ProtoMessage() {}
 
 func (x *DismissNotificationResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[141]
+	mi := &file_aos_v1_services_proto_msgTypes[162]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6930,7 +8404,7 @@ func (x *DismissNotificationResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DismissNotificationResponse.ProtoReflect.Descriptor instead.
 func (*DismissNotificationResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{141}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{162}
 }
 
 type ProcessesRequest struct {
@@ -6941,7 +8415,7 @@ type ProcessesRequest struct {
 
 func (x *ProcessesRequest) Reset() {
 	*x = ProcessesRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[142]
+	mi := &file_aos_v1_services_proto_msgTypes[163]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6953,7 +8427,7 @@ func (x *ProcessesRequest) String() string {
 func (*ProcessesRequest) ProtoMessage() {}
 
 func (x *ProcessesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[142]
+	mi := &file_aos_v1_services_proto_msgTypes[163]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6966,7 +8440,7 @@ func (x *ProcessesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessesRequest.ProtoReflect.Descriptor instead.
 func (*ProcessesRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{142}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{163}
 }
 
 type ProcessesResponse struct {
@@ -6978,7 +8452,7 @@ type ProcessesResponse struct {
 
 func (x *ProcessesResponse) Reset() {
 	*x = ProcessesResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[143]
+	mi := &file_aos_v1_services_proto_msgTypes[164]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -6990,7 +8464,7 @@ func (x *ProcessesResponse) String() string {
 func (*ProcessesResponse) ProtoMessage() {}
 
 func (x *ProcessesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[143]
+	mi := &file_aos_v1_services_proto_msgTypes[164]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7003,7 +8477,7 @@ func (x *ProcessesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessesResponse.ProtoReflect.Descriptor instead.
 func (*ProcessesResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{143}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{164}
 }
 
 func (x *ProcessesResponse) GetProcesses() []*ProcessInfo {
@@ -7039,7 +8513,7 @@ type ProcessInfo struct {
 
 func (x *ProcessInfo) Reset() {
 	*x = ProcessInfo{}
-	mi := &file_aos_v1_services_proto_msgTypes[144]
+	mi := &file_aos_v1_services_proto_msgTypes[165]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7051,7 +8525,7 @@ func (x *ProcessInfo) String() string {
 func (*ProcessInfo) ProtoMessage() {}
 
 func (x *ProcessInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[144]
+	mi := &file_aos_v1_services_proto_msgTypes[165]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7064,7 +8538,7 @@ func (x *ProcessInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProcessInfo.ProtoReflect.Descriptor instead.
 func (*ProcessInfo) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{144}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{165}
 }
 
 func (x *ProcessInfo) GetPid() int32 {
@@ -7152,7 +8626,7 @@ type MetricsRequest struct {
 
 func (x *MetricsRequest) Reset() {
 	*x = MetricsRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[145]
+	mi := &file_aos_v1_services_proto_msgTypes[166]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7164,7 +8638,7 @@ func (x *MetricsRequest) String() string {
 func (*MetricsRequest) ProtoMessage() {}
 
 func (x *MetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[145]
+	mi := &file_aos_v1_services_proto_msgTypes[166]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7177,7 +8651,7 @@ func (x *MetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsRequest.ProtoReflect.Descriptor instead.
 func (*MetricsRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{145}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{166}
 }
 
 type MetricsResponse struct {
@@ -7202,7 +8676,7 @@ type MetricsResponse struct {
 
 func (x *MetricsResponse) Reset() {
 	*x = MetricsResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[146]
+	mi := &file_aos_v1_services_proto_msgTypes[167]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7214,7 +8688,7 @@ func (x *MetricsResponse) String() string {
 func (*MetricsResponse) ProtoMessage() {}
 
 func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[146]
+	mi := &file_aos_v1_services_proto_msgTypes[167]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7227,7 +8701,7 @@ func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsResponse.ProtoReflect.Descriptor instead.
 func (*MetricsResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{146}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{167}
 }
 
 func (x *MetricsResponse) GetCpuPercent() float64 {
@@ -7299,7 +8773,7 @@ type DiskUsage struct {
 
 func (x *DiskUsage) Reset() {
 	*x = DiskUsage{}
-	mi := &file_aos_v1_services_proto_msgTypes[147]
+	mi := &file_aos_v1_services_proto_msgTypes[168]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7311,7 +8785,7 @@ func (x *DiskUsage) String() string {
 func (*DiskUsage) ProtoMessage() {}
 
 func (x *DiskUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[147]
+	mi := &file_aos_v1_services_proto_msgTypes[168]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7324,7 +8798,7 @@ func (x *DiskUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiskUsage.ProtoReflect.Descriptor instead.
 func (*DiskUsage) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{147}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{168}
 }
 
 func (x *DiskUsage) GetPath() string {
@@ -7365,7 +8839,7 @@ type UsageRequest struct {
 
 func (x *UsageRequest) Reset() {
 	*x = UsageRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[148]
+	mi := &file_aos_v1_services_proto_msgTypes[169]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7377,7 +8851,7 @@ func (x *UsageRequest) String() string {
 func (*UsageRequest) ProtoMessage() {}
 
 func (x *UsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[148]
+	mi := &file_aos_v1_services_proto_msgTypes[169]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7390,7 +8864,7 @@ func (x *UsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageRequest.ProtoReflect.Descriptor instead.
 func (*UsageRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{148}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{169}
 }
 
 func (x *UsageRequest) GetDays() int32 {
@@ -7410,7 +8884,7 @@ type UsageResponse struct {
 
 func (x *UsageResponse) Reset() {
 	*x = UsageResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[149]
+	mi := &file_aos_v1_services_proto_msgTypes[170]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7422,7 +8896,7 @@ func (x *UsageResponse) String() string {
 func (*UsageResponse) ProtoMessage() {}
 
 func (x *UsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[149]
+	mi := &file_aos_v1_services_proto_msgTypes[170]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7435,7 +8909,7 @@ func (x *UsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UsageResponse.ProtoReflect.Descriptor instead.
 func (*UsageResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{149}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{170}
 }
 
 func (x *UsageResponse) GetDays() []*DailyUsage {
@@ -7456,7 +8930,7 @@ type DailyUsage struct {
 
 func (x *DailyUsage) Reset() {
 	*x = DailyUsage{}
-	mi := &file_aos_v1_services_proto_msgTypes[150]
+	mi := &file_aos_v1_services_proto_msgTypes[171]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7468,7 +8942,7 @@ func (x *DailyUsage) String() string {
 func (*DailyUsage) ProtoMessage() {}
 
 func (x *DailyUsage) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[150]
+	mi := &file_aos_v1_services_proto_msgTypes[171]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7481,7 +8955,7 @@ func (x *DailyUsage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DailyUsage.ProtoReflect.Descriptor instead.
 func (*DailyUsage) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{150}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{171}
 }
 
 func (x *DailyUsage) GetDay() string {
@@ -7506,7 +8980,7 @@ type InfoRequest struct {
 
 func (x *InfoRequest) Reset() {
 	*x = InfoRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[151]
+	mi := &file_aos_v1_services_proto_msgTypes[172]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7518,7 +8992,7 @@ func (x *InfoRequest) String() string {
 func (*InfoRequest) ProtoMessage() {}
 
 func (x *InfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[151]
+	mi := &file_aos_v1_services_proto_msgTypes[172]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7531,7 +9005,7 @@ func (x *InfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InfoRequest.ProtoReflect.Descriptor instead.
 func (*InfoRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{151}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{172}
 }
 
 type InfoResponse struct {
@@ -7575,7 +9049,7 @@ type InfoResponse struct {
 
 func (x *InfoResponse) Reset() {
 	*x = InfoResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[152]
+	mi := &file_aos_v1_services_proto_msgTypes[173]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7587,7 +9061,7 @@ func (x *InfoResponse) String() string {
 func (*InfoResponse) ProtoMessage() {}
 
 func (x *InfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[152]
+	mi := &file_aos_v1_services_proto_msgTypes[173]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7600,7 +9074,7 @@ func (x *InfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InfoResponse.ProtoReflect.Descriptor instead.
 func (*InfoResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{152}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{173}
 }
 
 func (x *InfoResponse) GetMode() string {
@@ -7748,7 +9222,7 @@ type AuditRequest struct {
 
 func (x *AuditRequest) Reset() {
 	*x = AuditRequest{}
-	mi := &file_aos_v1_services_proto_msgTypes[153]
+	mi := &file_aos_v1_services_proto_msgTypes[174]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7760,7 +9234,7 @@ func (x *AuditRequest) String() string {
 func (*AuditRequest) ProtoMessage() {}
 
 func (x *AuditRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[153]
+	mi := &file_aos_v1_services_proto_msgTypes[174]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7773,7 +9247,7 @@ func (x *AuditRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditRequest.ProtoReflect.Descriptor instead.
 func (*AuditRequest) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{153}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{174}
 }
 
 func (x *AuditRequest) GetTaskId() string {
@@ -7806,7 +9280,7 @@ type AuditResponse struct {
 
 func (x *AuditResponse) Reset() {
 	*x = AuditResponse{}
-	mi := &file_aos_v1_services_proto_msgTypes[154]
+	mi := &file_aos_v1_services_proto_msgTypes[175]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7818,7 +9292,7 @@ func (x *AuditResponse) String() string {
 func (*AuditResponse) ProtoMessage() {}
 
 func (x *AuditResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[154]
+	mi := &file_aos_v1_services_proto_msgTypes[175]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7831,7 +9305,7 @@ func (x *AuditResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AuditResponse.ProtoReflect.Descriptor instead.
 func (*AuditResponse) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{154}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{175}
 }
 
 func (x *AuditResponse) GetEntries() []*AuditEntry {
@@ -7839,6 +9313,1651 @@ func (x *AuditResponse) GetEntries() []*AuditEntry {
 		return x.Entries
 	}
 	return nil
+}
+
+type Symbol struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// ctags' kind, such as "func", "method", "class", "struct", "const".
+	Kind string `protobuf:"bytes,2,opt,name=kind,proto3" json:"kind,omitempty"`
+	// Absolute.
+	Path string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	// From 1; end_line is 0 when ctags does not know it.
+	Line    uint32 `protobuf:"varint,4,opt,name=line,proto3" json:"line,omitempty"`
+	EndLine uint32 `protobuf:"varint,5,opt,name=end_line,json=endLine,proto3" json:"end_line,omitempty"`
+	// What it is inside, such as "main.Server" for a Go method.
+	Scope         string `protobuf:"bytes,6,opt,name=scope,proto3" json:"scope,omitempty"`
+	Signature     string `protobuf:"bytes,7,opt,name=signature,proto3" json:"signature,omitempty"`
+	Language      string `protobuf:"bytes,8,opt,name=language,proto3" json:"language,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Symbol) Reset() {
+	*x = Symbol{}
+	mi := &file_aos_v1_services_proto_msgTypes[176]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Symbol) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Symbol) ProtoMessage() {}
+
+func (x *Symbol) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[176]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Symbol.ProtoReflect.Descriptor instead.
+func (*Symbol) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{176}
+}
+
+func (x *Symbol) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *Symbol) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *Symbol) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *Symbol) GetLine() uint32 {
+	if x != nil {
+		return x.Line
+	}
+	return 0
+}
+
+func (x *Symbol) GetEndLine() uint32 {
+	if x != nil {
+		return x.EndLine
+	}
+	return 0
+}
+
+func (x *Symbol) GetScope() string {
+	if x != nil {
+		return x.Scope
+	}
+	return ""
+}
+
+func (x *Symbol) GetSignature() string {
+	if x != nil {
+		return x.Signature
+	}
+	return ""
+}
+
+func (x *Symbol) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+// IndexState is how much of the Workspace the symbol index covers.
+type IndexState struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Files with symbols, and files in the Workspace.
+	Files uint32 `protobuf:"varint,1,opt,name=files,proto3" json:"files,omitempty"`
+	Total uint32 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	// The Workspace has more than 20 000 files: only the folders of files
+	// asked from are indexed.
+	Partial       bool `protobuf:"varint,3,opt,name=partial,proto3" json:"partial,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndexState) Reset() {
+	*x = IndexState{}
+	mi := &file_aos_v1_services_proto_msgTypes[177]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndexState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndexState) ProtoMessage() {}
+
+func (x *IndexState) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[177]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndexState.ProtoReflect.Descriptor instead.
+func (*IndexState) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{177}
+}
+
+func (x *IndexState) GetFiles() uint32 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *IndexState) GetTotal() uint32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *IndexState) GetPartial() bool {
+	if x != nil {
+		return x.Partial
+	}
+	return false
+}
+
+type DefinitionRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The file asked from, absolute: nearer definitions come first, and one
+	// in its language is preferred.
+	Path          string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DefinitionRequest) Reset() {
+	*x = DefinitionRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[178]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DefinitionRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DefinitionRequest) ProtoMessage() {}
+
+func (x *DefinitionRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[178]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DefinitionRequest.ProtoReflect.Descriptor instead.
+func (*DefinitionRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{178}
+}
+
+func (x *DefinitionRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *DefinitionRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *DefinitionRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type DefinitionResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbols       []*Symbol              `protobuf:"bytes,1,rep,name=symbols,proto3" json:"symbols,omitempty"`
+	Index         *IndexState            `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DefinitionResponse) Reset() {
+	*x = DefinitionResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[179]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DefinitionResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DefinitionResponse) ProtoMessage() {}
+
+func (x *DefinitionResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[179]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DefinitionResponse.ProtoReflect.Descriptor instead.
+func (*DefinitionResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{179}
+}
+
+func (x *DefinitionResponse) GetSymbols() []*Symbol {
+	if x != nil {
+		return x.Symbols
+	}
+	return nil
+}
+
+func (x *DefinitionResponse) GetIndex() *IndexState {
+	if x != nil {
+		return x.Index
+	}
+	return nil
+}
+
+type ReferencesRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Name        string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// The file asked from, absolute; its language picks the files searched.
+	Path          string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReferencesRequest) Reset() {
+	*x = ReferencesRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[180]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReferencesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReferencesRequest) ProtoMessage() {}
+
+func (x *ReferencesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[180]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReferencesRequest.ProtoReflect.Descriptor instead.
+func (*ReferencesRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{180}
+}
+
+func (x *ReferencesRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *ReferencesRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ReferencesRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type ReferencesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Files []*TextFileMatches     `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	// It stopped at 1000 lines.
+	Truncated     bool `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReferencesResponse) Reset() {
+	*x = ReferencesResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[181]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReferencesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReferencesResponse) ProtoMessage() {}
+
+func (x *ReferencesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[181]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReferencesResponse.ProtoReflect.Descriptor instead.
+func (*ReferencesResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{181}
+}
+
+func (x *ReferencesResponse) GetFiles() []*TextFileMatches {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *ReferencesResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+type DocumentSymbolsRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// Absolute.
+	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentSymbolsRequest) Reset() {
+	*x = DocumentSymbolsRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[182]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentSymbolsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentSymbolsRequest) ProtoMessage() {}
+
+func (x *DocumentSymbolsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[182]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentSymbolsRequest.ProtoReflect.Descriptor instead.
+func (*DocumentSymbolsRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{182}
+}
+
+func (x *DocumentSymbolsRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *DocumentSymbolsRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type DocumentSymbolsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbols       []*Symbol              `protobuf:"bytes,1,rep,name=symbols,proto3" json:"symbols,omitempty"`
+	Index         *IndexState            `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DocumentSymbolsResponse) Reset() {
+	*x = DocumentSymbolsResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[183]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DocumentSymbolsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DocumentSymbolsResponse) ProtoMessage() {}
+
+func (x *DocumentSymbolsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[183]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DocumentSymbolsResponse.ProtoReflect.Descriptor instead.
+func (*DocumentSymbolsResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{183}
+}
+
+func (x *DocumentSymbolsResponse) GetSymbols() []*Symbol {
+	if x != nil {
+		return x.Symbols
+	}
+	return nil
+}
+
+func (x *DocumentSymbolsResponse) GetIndex() *IndexState {
+	if x != nil {
+		return x.Index
+	}
+	return nil
+}
+
+type WorkspaceSymbolsRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Query       string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	// 0 means 100; more than 500 is 500.
+	Limit uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	// The file asked from, absolute, if any: past 20 000 files its folder is
+	// indexed first.
+	Path          string `protobuf:"bytes,4,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkspaceSymbolsRequest) Reset() {
+	*x = WorkspaceSymbolsRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[184]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceSymbolsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceSymbolsRequest) ProtoMessage() {}
+
+func (x *WorkspaceSymbolsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[184]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkspaceSymbolsRequest.ProtoReflect.Descriptor instead.
+func (*WorkspaceSymbolsRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{184}
+}
+
+func (x *WorkspaceSymbolsRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *WorkspaceSymbolsRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *WorkspaceSymbolsRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+func (x *WorkspaceSymbolsRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type WorkspaceSymbolsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Symbols       []*Symbol              `protobuf:"bytes,1,rep,name=symbols,proto3" json:"symbols,omitempty"`
+	Index         *IndexState            `protobuf:"bytes,2,opt,name=index,proto3" json:"index,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkspaceSymbolsResponse) Reset() {
+	*x = WorkspaceSymbolsResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[185]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceSymbolsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceSymbolsResponse) ProtoMessage() {}
+
+func (x *WorkspaceSymbolsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[185]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkspaceSymbolsResponse.ProtoReflect.Descriptor instead.
+func (*WorkspaceSymbolsResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{185}
+}
+
+func (x *WorkspaceSymbolsResponse) GetSymbols() []*Symbol {
+	if x != nil {
+		return x.Symbols
+	}
+	return nil
+}
+
+func (x *WorkspaceSymbolsResponse) GetIndex() *IndexState {
+	if x != nil {
+		return x.Index
+	}
+	return nil
+}
+
+type FindFilesRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// Characters to find in order in a file's path; case and spaces are
+	// ignored. Empty lists the first files by path.
+	Query string `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	// At most this many; 0 means 50, and more than 500 is 500.
+	Limit         uint32 `protobuf:"varint,3,opt,name=limit,proto3" json:"limit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FindFilesRequest) Reset() {
+	*x = FindFilesRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[186]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FindFilesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FindFilesRequest) ProtoMessage() {}
+
+func (x *FindFilesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[186]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FindFilesRequest.ProtoReflect.Descriptor instead.
+func (*FindFilesRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{186}
+}
+
+func (x *FindFilesRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *FindFilesRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *FindFilesRequest) GetLimit() uint32 {
+	if x != nil {
+		return x.Limit
+	}
+	return 0
+}
+
+type FindFilesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Files []*FoundFile           `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	// How many files the Workspace has, and whether there were more than Code
+	// lists (100 000).
+	Total         uint32 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	Truncated     bool   `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FindFilesResponse) Reset() {
+	*x = FindFilesResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[187]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FindFilesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FindFilesResponse) ProtoMessage() {}
+
+func (x *FindFilesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[187]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FindFilesResponse.ProtoReflect.Descriptor instead.
+func (*FindFilesResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{187}
+}
+
+func (x *FindFilesResponse) GetFiles() []*FoundFile {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *FindFilesResponse) GetTotal() uint32 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *FindFilesResponse) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+type FoundFile struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Absolute.
+	Path string `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	// Which characters matched, as UTF-16 offsets into the path relative to
+	// the Workspace's root.
+	Positions     []uint32 `protobuf:"varint,2,rep,packed,name=positions,proto3" json:"positions,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FoundFile) Reset() {
+	*x = FoundFile{}
+	mi := &file_aos_v1_services_proto_msgTypes[188]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FoundFile) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FoundFile) ProtoMessage() {}
+
+func (x *FoundFile) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[188]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FoundFile.ProtoReflect.Descriptor instead.
+func (*FoundFile) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{188}
+}
+
+func (x *FoundFile) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FoundFile) GetPositions() []uint32 {
+	if x != nil {
+		return x.Positions
+	}
+	return nil
+}
+
+type SearchTextRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	Query         string                 `protobuf:"bytes,2,opt,name=query,proto3" json:"query,omitempty"`
+	Regex         bool                   `protobuf:"varint,3,opt,name=regex,proto3" json:"regex,omitempty"`
+	CaseSensitive bool                   `protobuf:"varint,4,opt,name=case_sensitive,json=caseSensitive,proto3" json:"case_sensitive,omitempty"`
+	// gitignore-style globs relative to the root, such as *.go or src/**: only
+	// files matching one of include, and none of exclude.
+	Include       []string `protobuf:"bytes,5,rep,name=include,proto3" json:"include,omitempty"`
+	Exclude       []string `protobuf:"bytes,6,rep,name=exclude,proto3" json:"exclude,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchTextRequest) Reset() {
+	*x = SearchTextRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[189]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchTextRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchTextRequest) ProtoMessage() {}
+
+func (x *SearchTextRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[189]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchTextRequest.ProtoReflect.Descriptor instead.
+func (*SearchTextRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{189}
+}
+
+func (x *SearchTextRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *SearchTextRequest) GetQuery() string {
+	if x != nil {
+		return x.Query
+	}
+	return ""
+}
+
+func (x *SearchTextRequest) GetRegex() bool {
+	if x != nil {
+		return x.Regex
+	}
+	return false
+}
+
+func (x *SearchTextRequest) GetCaseSensitive() bool {
+	if x != nil {
+		return x.CaseSensitive
+	}
+	return false
+}
+
+func (x *SearchTextRequest) GetInclude() []string {
+	if x != nil {
+		return x.Include
+	}
+	return nil
+}
+
+func (x *SearchTextRequest) GetExclude() []string {
+	if x != nil {
+		return x.Exclude
+	}
+	return nil
+}
+
+type SearchTextResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Files []*TextFileMatches     `protobuf:"bytes,1,rep,name=files,proto3" json:"files,omitempty"`
+	// Set on the last message only.
+	Summary       *SearchTextSummary `protobuf:"bytes,2,opt,name=summary,proto3" json:"summary,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchTextResponse) Reset() {
+	*x = SearchTextResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[190]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchTextResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchTextResponse) ProtoMessage() {}
+
+func (x *SearchTextResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[190]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchTextResponse.ProtoReflect.Descriptor instead.
+func (*SearchTextResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{190}
+}
+
+func (x *SearchTextResponse) GetFiles() []*TextFileMatches {
+	if x != nil {
+		return x.Files
+	}
+	return nil
+}
+
+func (x *SearchTextResponse) GetSummary() *SearchTextSummary {
+	if x != nil {
+		return x.Summary
+	}
+	return nil
+}
+
+type TextFileMatches struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Absolute.
+	Path          string       `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Matches       []*TextMatch `protobuf:"bytes,2,rep,name=matches,proto3" json:"matches,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TextFileMatches) Reset() {
+	*x = TextFileMatches{}
+	mi := &file_aos_v1_services_proto_msgTypes[191]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TextFileMatches) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TextFileMatches) ProtoMessage() {}
+
+func (x *TextFileMatches) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[191]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TextFileMatches.ProtoReflect.Descriptor instead.
+func (*TextFileMatches) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{191}
+}
+
+func (x *TextFileMatches) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *TextFileMatches) GetMatches() []*TextMatch {
+	if x != nil {
+		return x.Matches
+	}
+	return nil
+}
+
+type TextMatch struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// From 1.
+	Line uint32 `protobuf:"varint,1,opt,name=line,proto3" json:"line,omitempty"`
+	// The line, trimmed, and cut to 400 characters around the first match
+	// with "…" where it was cut.
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// Where the query matched in text, as UTF-16 offsets.
+	Ranges        []*TextRange `protobuf:"bytes,3,rep,name=ranges,proto3" json:"ranges,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TextMatch) Reset() {
+	*x = TextMatch{}
+	mi := &file_aos_v1_services_proto_msgTypes[192]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TextMatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TextMatch) ProtoMessage() {}
+
+func (x *TextMatch) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[192]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TextMatch.ProtoReflect.Descriptor instead.
+func (*TextMatch) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{192}
+}
+
+func (x *TextMatch) GetLine() uint32 {
+	if x != nil {
+		return x.Line
+	}
+	return 0
+}
+
+func (x *TextMatch) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *TextMatch) GetRanges() []*TextRange {
+	if x != nil {
+		return x.Ranges
+	}
+	return nil
+}
+
+type TextRange struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Start         uint32                 `protobuf:"varint,1,opt,name=start,proto3" json:"start,omitempty"`
+	End           uint32                 `protobuf:"varint,2,opt,name=end,proto3" json:"end,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TextRange) Reset() {
+	*x = TextRange{}
+	mi := &file_aos_v1_services_proto_msgTypes[193]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TextRange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TextRange) ProtoMessage() {}
+
+func (x *TextRange) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[193]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TextRange.ProtoReflect.Descriptor instead.
+func (*TextRange) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{193}
+}
+
+func (x *TextRange) GetStart() uint32 {
+	if x != nil {
+		return x.Start
+	}
+	return 0
+}
+
+func (x *TextRange) GetEnd() uint32 {
+	if x != nil {
+		return x.End
+	}
+	return 0
+}
+
+type SearchTextSummary struct {
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Files   uint32                 `protobuf:"varint,1,opt,name=files,proto3" json:"files,omitempty"`
+	Matches uint32                 `protobuf:"varint,2,opt,name=matches,proto3" json:"matches,omitempty"`
+	// The search stopped at 2000 matching lines.
+	Truncated bool `protobuf:"varint,3,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// "ripgrep", or "built-in" on a Machine without it.
+	Engine        string `protobuf:"bytes,4,opt,name=engine,proto3" json:"engine,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SearchTextSummary) Reset() {
+	*x = SearchTextSummary{}
+	mi := &file_aos_v1_services_proto_msgTypes[194]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SearchTextSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SearchTextSummary) ProtoMessage() {}
+
+func (x *SearchTextSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[194]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SearchTextSummary.ProtoReflect.Descriptor instead.
+func (*SearchTextSummary) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{194}
+}
+
+func (x *SearchTextSummary) GetFiles() uint32 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
+func (x *SearchTextSummary) GetMatches() uint32 {
+	if x != nil {
+		return x.Matches
+	}
+	return 0
+}
+
+func (x *SearchTextSummary) GetTruncated() bool {
+	if x != nil {
+		return x.Truncated
+	}
+	return false
+}
+
+func (x *SearchTextSummary) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+type OpenWorkspaceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The tab's EventService subscription (SubscribeResponse.subscription_id).
+	SubscriptionId string `protobuf:"bytes,1,opt,name=subscription_id,json=subscriptionId,proto3" json:"subscription_id,omitempty"`
+	// A folder; ~ and relative paths start at the Realm's home, as in FileService.
+	Path          string `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenWorkspaceRequest) Reset() {
+	*x = OpenWorkspaceRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[195]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenWorkspaceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenWorkspaceRequest) ProtoMessage() {}
+
+func (x *OpenWorkspaceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[195]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenWorkspaceRequest.ProtoReflect.Descriptor instead.
+func (*OpenWorkspaceRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{195}
+}
+
+func (x *OpenWorkspaceRequest) GetSubscriptionId() string {
+	if x != nil {
+		return x.SubscriptionId
+	}
+	return ""
+}
+
+func (x *OpenWorkspaceRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type OpenWorkspaceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// The folder, absolute and clean.
+	Root string `protobuf:"bytes,2,opt,name=root,proto3" json:"root,omitempty"`
+	// The Realm it was opened in.
+	RootMode      bool `protobuf:"varint,3,opt,name=root_mode,json=rootMode,proto3" json:"root_mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *OpenWorkspaceResponse) Reset() {
+	*x = OpenWorkspaceResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[196]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OpenWorkspaceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OpenWorkspaceResponse) ProtoMessage() {}
+
+func (x *OpenWorkspaceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[196]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OpenWorkspaceResponse.ProtoReflect.Descriptor instead.
+func (*OpenWorkspaceResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{196}
+}
+
+func (x *OpenWorkspaceResponse) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *OpenWorkspaceResponse) GetRoot() string {
+	if x != nil {
+		return x.Root
+	}
+	return ""
+}
+
+func (x *OpenWorkspaceResponse) GetRootMode() bool {
+	if x != nil {
+		return x.RootMode
+	}
+	return false
+}
+
+type CloseWorkspaceRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId   string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseWorkspaceRequest) Reset() {
+	*x = CloseWorkspaceRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[197]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseWorkspaceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseWorkspaceRequest) ProtoMessage() {}
+
+func (x *CloseWorkspaceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[197]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseWorkspaceRequest.ProtoReflect.Descriptor instead.
+func (*CloseWorkspaceRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{197}
+}
+
+func (x *CloseWorkspaceRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+type CloseWorkspaceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloseWorkspaceResponse) Reset() {
+	*x = CloseWorkspaceResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[198]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloseWorkspaceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloseWorkspaceResponse) ProtoMessage() {}
+
+func (x *CloseWorkspaceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[198]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloseWorkspaceResponse.ProtoReflect.Descriptor instead.
+func (*CloseWorkspaceResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{198}
+}
+
+type ReportDirtyRequest struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// Absolute paths of every file with unsaved edits in the window; empty when
+	// all are saved.
+	Paths         []string `protobuf:"bytes,2,rep,name=paths,proto3" json:"paths,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportDirtyRequest) Reset() {
+	*x = ReportDirtyRequest{}
+	mi := &file_aos_v1_services_proto_msgTypes[199]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportDirtyRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportDirtyRequest) ProtoMessage() {}
+
+func (x *ReportDirtyRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[199]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportDirtyRequest.ProtoReflect.Descriptor instead.
+func (*ReportDirtyRequest) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{199}
+}
+
+func (x *ReportDirtyRequest) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *ReportDirtyRequest) GetPaths() []string {
+	if x != nil {
+		return x.Paths
+	}
+	return nil
+}
+
+type ReportDirtyResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReportDirtyResponse) Reset() {
+	*x = ReportDirtyResponse{}
+	mi := &file_aos_v1_services_proto_msgTypes[200]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReportDirtyResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReportDirtyResponse) ProtoMessage() {}
+
+func (x *ReportDirtyResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[200]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReportDirtyResponse.ProtoReflect.Descriptor instead.
+func (*ReportDirtyResponse) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{200}
+}
+
+// WorkspaceChanged is sent only to the subscription that opened the Workspace.
+type WorkspaceChanged struct {
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	WorkspaceId string                 `protobuf:"bytes,1,opt,name=workspace_id,json=workspaceId,proto3" json:"workspace_id,omitempty"`
+	// What appeared, changed or went under the root, in one burst. A path
+	// replaced by a rename (an editor's atomic save) comes as CREATED even when
+	// the client already has it: treat that as CHANGED.
+	Changes []*FileChange `protobuf:"bytes,2,rep,name=changes,proto3" json:"changes,omitempty"`
+	// Set when how the Workspace is watched changes, the first time included.
+	Watch         *WorkspaceWatch `protobuf:"bytes,3,opt,name=watch,proto3" json:"watch,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkspaceChanged) Reset() {
+	*x = WorkspaceChanged{}
+	mi := &file_aos_v1_services_proto_msgTypes[201]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceChanged) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceChanged) ProtoMessage() {}
+
+func (x *WorkspaceChanged) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[201]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkspaceChanged.ProtoReflect.Descriptor instead.
+func (*WorkspaceChanged) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{201}
+}
+
+func (x *WorkspaceChanged) GetWorkspaceId() string {
+	if x != nil {
+		return x.WorkspaceId
+	}
+	return ""
+}
+
+func (x *WorkspaceChanged) GetChanges() []*FileChange {
+	if x != nil {
+		return x.Changes
+	}
+	return nil
+}
+
+func (x *WorkspaceChanged) GetWatch() *WorkspaceWatch {
+	if x != nil {
+		return x.Watch
+	}
+	return nil
+}
+
+type FileChange struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          FileChange_Kind        `protobuf:"varint,1,opt,name=kind,proto3,enum=aos.v1.FileChange_Kind" json:"kind,omitempty"`
+	Path          string                 `protobuf:"bytes,2,opt,name=path,proto3" json:"path,omitempty"`
+	Dir           bool                   `protobuf:"varint,3,opt,name=dir,proto3" json:"dir,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *FileChange) Reset() {
+	*x = FileChange{}
+	mi := &file_aos_v1_services_proto_msgTypes[202]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *FileChange) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*FileChange) ProtoMessage() {}
+
+func (x *FileChange) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[202]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use FileChange.ProtoReflect.Descriptor instead.
+func (*FileChange) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{202}
+}
+
+func (x *FileChange) GetKind() FileChange_Kind {
+	if x != nil {
+		return x.Kind
+	}
+	return FileChange_KIND_UNSPECIFIED
+}
+
+func (x *FileChange) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *FileChange) GetDir() bool {
+	if x != nil {
+		return x.Dir
+	}
+	return false
+}
+
+type WorkspaceWatch struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	State         WorkspaceWatch_State   `protobuf:"varint,1,opt,name=state,proto3,enum=aos.v1.WorkspaceWatch_State" json:"state,omitempty"`
+	Reason        string                 `protobuf:"bytes,2,opt,name=reason,proto3" json:"reason,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkspaceWatch) Reset() {
+	*x = WorkspaceWatch{}
+	mi := &file_aos_v1_services_proto_msgTypes[203]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkspaceWatch) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkspaceWatch) ProtoMessage() {}
+
+func (x *WorkspaceWatch) ProtoReflect() protoreflect.Message {
+	mi := &file_aos_v1_services_proto_msgTypes[203]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkspaceWatch.ProtoReflect.Descriptor instead.
+func (*WorkspaceWatch) Descriptor() ([]byte, []int) {
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{203}
+}
+
+func (x *WorkspaceWatch) GetState() WorkspaceWatch_State {
+	if x != nil {
+		return x.State
+	}
+	return WorkspaceWatch_STATE_UNSPECIFIED
+}
+
+func (x *WorkspaceWatch) GetReason() string {
+	if x != nil {
+		return x.Reason
+	}
+	return ""
 }
 
 type ListProtectedResponse_Entry struct {
@@ -7854,7 +10973,7 @@ type ListProtectedResponse_Entry struct {
 
 func (x *ListProtectedResponse_Entry) Reset() {
 	*x = ListProtectedResponse_Entry{}
-	mi := &file_aos_v1_services_proto_msgTypes[155]
+	mi := &file_aos_v1_services_proto_msgTypes[204]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -7866,7 +10985,7 @@ func (x *ListProtectedResponse_Entry) String() string {
 func (*ListProtectedResponse_Entry) ProtoMessage() {}
 
 func (x *ListProtectedResponse_Entry) ProtoReflect() protoreflect.Message {
-	mi := &file_aos_v1_services_proto_msgTypes[155]
+	mi := &file_aos_v1_services_proto_msgTypes[204]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7879,7 +10998,7 @@ func (x *ListProtectedResponse_Entry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListProtectedResponse_Entry.ProtoReflect.Descriptor instead.
 func (*ListProtectedResponse_Entry) Descriptor() ([]byte, []int) {
-	return file_aos_v1_services_proto_rawDescGZIP(), []int{69, 0}
+	return file_aos_v1_services_proto_rawDescGZIP(), []int{89, 0}
 }
 
 func (x *ListProtectedResponse_Entry) GetPath() string {
@@ -7935,15 +11054,26 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x18CreateInitialUserRequest\x12\x1a\n" +
 	"\busername\x18\x01 \x01(\tR\busername\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x1b\n" +
-	"\x19CreateInitialUserResponse\"{\n" +
+	"\x19CreateInitialUserResponse\"\xaa\x01\n" +
 	"\x11CreateTaskRequest\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12,\n" +
 	"\bautonomy\x18\x02 \x01(\x0e2\x10.aos.v1.AutonomyR\bautonomy\x12 \n" +
-	"\vinteractive\x18\x03 \x01(\bR\vinteractive\"6\n" +
+	"\vinteractive\x18\x03 \x01(\bR\vinteractive\x12-\n" +
+	"\x06editor\x18\x04 \x01(\v2\x15.aos.v1.EditorContextR\x06editor\"\xeb\x01\n" +
+	"\rEditorContext\x12\x1c\n" +
+	"\tworkspace\x18\x01 \x01(\tR\tworkspace\x12\x1f\n" +
+	"\vactive_file\x18\x02 \x01(\tR\n" +
+	"activeFile\x12\x1c\n" +
+	"\tselection\x18\x03 \x01(\tR\tselection\x120\n" +
+	"\x14selection_start_line\x18\x04 \x01(\x05R\x12selectionStartLine\x12,\n" +
+	"\x12selection_end_line\x18\x05 \x01(\x05R\x10selectionEndLine\x12\x1d\n" +
+	"\n" +
+	"open_files\x18\x06 \x03(\tR\topenFiles\"6\n" +
 	"\x12CreateTaskResponse\x12 \n" +
-	"\x04task\x18\x01 \x01(\v2\f.aos.v1.TaskR\x04task\"(\n" +
+	"\x04task\x18\x01 \x01(\v2\f.aos.v1.TaskR\x04task\"F\n" +
 	"\x10ListTasksRequest\x12\x14\n" +
-	"\x05limit\x18\x01 \x01(\x05R\x05limit\"7\n" +
+	"\x05limit\x18\x01 \x01(\x05R\x05limit\x12\x1c\n" +
+	"\tworkspace\x18\x02 \x01(\tR\tworkspace\"7\n" +
 	"\x11ListTasksResponse\x12\"\n" +
 	"\x05tasks\x18\x01 \x03(\v2\f.aos.v1.TaskR\x05tasks\" \n" +
 	"\x0eGetTaskRequest\x12\x0e\n" +
@@ -7951,11 +11081,12 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x0fGetTaskResponse\x12 \n" +
 	"\x04task\x18\x01 \x01(\v2\f.aos.v1.TaskR\x04task\x12&\n" +
 	"\x05steps\x18\x02 \x03(\v2\x10.aos.v1.TaskStepR\x05steps\x12.\n" +
-	"\tapprovals\x18\x03 \x03(\v2\x10.aos.v1.ApprovalR\tapprovals\"[\n" +
+	"\tapprovals\x18\x03 \x03(\v2\x10.aos.v1.ApprovalR\tapprovals\"\x8a\x01\n" +
 	"\x13SendFollowUpRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12 \n" +
-	"\vinteractive\x18\x03 \x01(\bR\vinteractive\"8\n" +
+	"\vinteractive\x18\x03 \x01(\bR\vinteractive\x12-\n" +
+	"\x06editor\x18\x04 \x01(\v2\x15.aos.v1.EditorContextR\x06editor\"8\n" +
 	"\x14SendFollowUpResponse\x12 \n" +
 	"\x04task\x18\x01 \x01(\v2\f.aos.v1.TaskR\x04task\";\n" +
 	"\x15AnswerQuestionRequest\x12\x0e\n" +
@@ -7975,7 +11106,46 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\tcancelled\x18\x01 \x01(\x05R\tcancelled\"#\n" +
 	"\x11DeleteTaskRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"\x14\n" +
-	"\x12DeleteTaskResponse\"-\n" +
+	"\x12DeleteTaskResponse\"\xba\x02\n" +
+	"\x0eTaskFileChange\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04tool\x18\x02 \x01(\tR\x04tool\x12\x18\n" +
+	"\aexisted\x18\x03 \x01(\bR\aexisted\x12\x16\n" +
+	"\x06folder\x18\x04 \x01(\bR\x06folder\x12\x12\n" +
+	"\x04size\x18\x05 \x01(\x03R\x04size\x12\x12\n" +
+	"\x04kept\x18\x06 \x01(\bR\x04kept\x12\x14\n" +
+	"\x05whole\x18\a \x01(\bR\x05whole\x129\n" +
+	"\n" +
+	"changed_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tchangedAt\x12\x18\n" +
+	"\apending\x18\t \x01(\bR\apending\x12\x1a\n" +
+	"\breviewed\x18\n" +
+	" \x01(\bR\breviewed\x12\x1f\n" +
+	"\vbase_exists\x18\v \x01(\bR\n" +
+	"baseExists\"-\n" +
+	"\x12ListChangesRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"G\n" +
+	"\x13ListChangesResponse\x120\n" +
+	"\achanges\x18\x01 \x03(\v2\x16.aos.v1.TaskFileChangeR\achanges\"?\n" +
+	"\x10GetBeforeRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"]\n" +
+	"\x11GetBeforeResponse\x12.\n" +
+	"\x06change\x18\x01 \x01(\v2\x16.aos.v1.TaskFileChangeR\x06change\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\fR\acontent\"\x85\x01\n" +
+	"\x13ReviewChangeRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x12\n" +
+	"\x04base\x18\x03 \x01(\fR\x04base\x12\x12\n" +
+	"\x04gone\x18\x04 \x01(\bR\x04gone\x12\x19\n" +
+	"\bkeep_all\x18\x05 \x01(\bR\akeepAll\"F\n" +
+	"\x14ReviewChangeResponse\x12.\n" +
+	"\x06change\x18\x01 \x01(\v2\x16.aos.v1.TaskFileChangeR\x06change\"p\n" +
+	"\x14DiscardChangeRequest\x12\x17\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12+\n" +
+	"\x11confirm_sensitive\x18\x03 \x01(\bR\x10confirmSensitive\"G\n" +
+	"\x15DiscardChangeResponse\x12.\n" +
+	"\x06change\x18\x01 \x01(\v2\x16.aos.v1.TaskFileChangeR\x06change\"-\n" +
 	"\x12ListPendingRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\"E\n" +
 	"\x13ListPendingResponse\x12.\n" +
@@ -7987,9 +11157,10 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x0eDecideResponse\x12,\n" +
 	"\bapproval\x18\x01 \x01(\v2\x10.aos.v1.ApprovalR\bapproval\"+\n" +
 	"\x10SubscribeRequest\x12\x17\n" +
-	"\atask_id\x18\x01 \x01(\tR\x06taskId\"8\n" +
+	"\atask_id\x18\x01 \x01(\tR\x06taskId\"a\n" +
 	"\x11SubscribeResponse\x12#\n" +
-	"\x05event\x18\x01 \x01(\v2\r.aos.v1.EventR\x05event\"\xac\x05\n" +
+	"\x05event\x18\x01 \x01(\v2\r.aos.v1.EventR\x05event\x12'\n" +
+	"\x0fsubscription_id\x18\x02 \x01(\tR\x0esubscriptionId\"\xe6\x05\n" +
 	"\x05Event\x12.\n" +
 	"\x04time\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x128\n" +
 	"\ftask_changed\x18\x02 \x01(\v2\x13.aos.v1.TaskChangedH\x00R\vtaskChanged\x126\n" +
@@ -8003,7 +11174,8 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x0freplay_progress\x18\t \x01(\v2\x16.aos.v1.ReplayProgressH\x00R\x0ereplayProgress\x12?\n" +
 	"\x0fopen_in_desktop\x18\n" +
 	" \x01(\v2\x15.aos.v1.OpenInDesktopH\x00R\ropenInDesktop\x12B\n" +
-	"\rdesktop_state\x18\v \x01(\v2\x1b.aos.v1.DesktopStateChangedH\x00R\fdesktopStateB\x06\n" +
+	"\rdesktop_state\x18\v \x01(\v2\x1b.aos.v1.DesktopStateChangedH\x00R\fdesktopState\x128\n" +
+	"\tworkspace\x18\f \x01(\v2\x18.aos.v1.WorkspaceChangedH\x00R\tworkspaceB\x06\n" +
 	"\x04kind\"C\n" +
 	"\x13DesktopStateChanged\x12\x14\n" +
 	"\x05state\x18\x01 \x01(\tR\x05state\x12\x16\n" +
@@ -8045,11 +11217,34 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1c\n" +
 	"\tdismissed\x18\a \x01(\bR\tdismissed\x12\x12\n" +
-	"\x04port\x18\b \x01(\x05R\x04port\"\"\n" +
+	"\x04port\x18\b \x01(\x05R\x04port\";\n" +
+	"\rSensitivePath\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"E\n" +
+	"\x15CheckSensitiveRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
+	"\acontent\x18\x02 \x01(\fR\acontent\"\x84\x01\n" +
+	"\x16CheckSensitiveResponse\x12\x18\n" +
+	"\achecker\x18\x01 \x01(\tR\achecker\x12\x16\n" +
+	"\x06passed\x18\x02 \x01(\bR\x06passed\x12\x16\n" +
+	"\x06output\x18\x03 \x01(\tR\x06output\x12 \n" +
+	"\vunavailable\x18\x04 \x01(\bR\vunavailable\"l\n" +
+	"\x0fSensitiveBackup\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x125\n" +
+	"\bsaved_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\asavedAt\x12\x12\n" +
+	"\x04size\x18\x03 \x01(\x03R\x04size\"1\n" +
+	"\x1bListSensitiveBackupsRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"Q\n" +
+	"\x1cListSensitiveBackupsResponse\x121\n" +
+	"\abackups\x18\x01 \x03(\v2\x17.aos.v1.SensitiveBackupR\abackups\"C\n" +
+	"\x1dRestoreSensitiveBackupRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x0e\n" +
+	"\x02id\x18\x02 \x01(\tR\x02id\" \n" +
+	"\x1eRestoreSensitiveBackupResponse\"\"\n" +
 	"\fWatchRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\";\n" +
 	"\rWatchResponse\x12*\n" +
-	"\aentries\x18\x01 \x03(\v2\x10.aos.v1.FileInfoR\aentries\"\xa9\x02\n" +
+	"\aentries\x18\x01 \x03(\v2\x10.aos.v1.FileInfoR\aentries\"\xf0\x02\n" +
 	"\bFileInfo\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x10\n" +
@@ -8063,7 +11258,9 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"modifiedAt\x12\x1c\n" +
 	"\tprotected\x18\t \x01(\bR\tprotected\x12%\n" +
 	"\x0eprotect_source\x18\n" +
-	" \x01(\tR\rprotectSource\"!\n" +
+	" \x01(\tR\rprotectSource\x12\x1a\n" +
+	"\bwritable\x18\v \x01(\bR\bwritable\x12)\n" +
+	"\x10sensitive_reason\x18\f \x01(\tR\x0fsensitiveReason\"!\n" +
 	"\vListRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\":\n" +
 	"\fListResponse\x12*\n" +
@@ -8078,24 +11275,32 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x05limit\x18\x03 \x01(\x03R\x05limit\":\n" +
 	"\fReadResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\fR\acontent\x12\x10\n" +
-	"\x03eof\x18\x02 \x01(\bR\x03eof\"Z\n" +
+	"\x03eof\x18\x02 \x01(\bR\x03eof\"\x87\x01\n" +
 	"\fWriteRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\fR\acontent\x12\x1c\n" +
-	"\toverwrite\x18\x03 \x01(\bR\toverwrite\"\x0f\n" +
-	"\rWriteResponse\"e\n" +
+	"\toverwrite\x18\x03 \x01(\bR\toverwrite\x12+\n" +
+	"\x11confirm_sensitive\x18\x04 \x01(\bR\x10confirmSensitive\"\x0f\n" +
+	"\rWriteResponse\"T\n" +
+	"\x11MakeFolderRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12+\n" +
+	"\x11confirm_sensitive\x18\x02 \x01(\bR\x10confirmSensitive\"\x14\n" +
+	"\x12MakeFolderResponse\"\x92\x01\n" +
 	"\vMoveRequest\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x1c\n" +
-	"\toverwrite\x18\x03 \x01(\bR\toverwrite\"\x0e\n" +
-	"\fMoveResponse\"e\n" +
+	"\toverwrite\x18\x03 \x01(\bR\toverwrite\x12+\n" +
+	"\x11confirm_sensitive\x18\x04 \x01(\bR\x10confirmSensitive\"\x0e\n" +
+	"\fMoveResponse\"\x92\x01\n" +
 	"\vCopyRequest\x12\x16\n" +
 	"\x06source\x18\x01 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x02 \x01(\tR\vdestination\x12\x1c\n" +
-	"\toverwrite\x18\x03 \x01(\bR\toverwrite\"\x0e\n" +
-	"\fCopyResponse\"#\n" +
+	"\toverwrite\x18\x03 \x01(\bR\toverwrite\x12+\n" +
+	"\x11confirm_sensitive\x18\x04 \x01(\bR\x10confirmSensitive\"\x0e\n" +
+	"\fCopyResponse\"P\n" +
 	"\rDeleteRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"7\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12+\n" +
+	"\x11confirm_sensitive\x18\x02 \x01(\bR\x10confirmSensitive\"7\n" +
 	"\x0eDeleteResponse\x12%\n" +
 	"\x04item\x18\x01 \x01(\v2\x11.aos.v1.TrashItemR\x04item\"$\n" +
 	"\x0eProtectRequest\x12\x12\n" +
@@ -8127,7 +11332,7 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"\x0e\n" +
 	"\fEmptyRequest\")\n" +
 	"\rEmptyResponse\x12\x18\n" +
-	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\xaf\x01\n" +
+	"\aremoved\x18\x01 \x01(\x05R\aremoved\"\xc1\x01\n" +
 	"\vSessionInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\atask_id\x18\x02 \x01(\tR\x06taskId\x12\x14\n" +
@@ -8135,10 +11340,12 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x03pid\x18\x04 \x01(\x05R\x03pid\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x14\n" +
-	"\x05ended\x18\x06 \x01(\bR\x05ended\">\n" +
+	"\x05ended\x18\x06 \x01(\bR\x05ended\x12\x10\n" +
+	"\x03cwd\x18\a \x01(\tR\x03cwd\"P\n" +
 	"\x14CreateSessionRequest\x12\x12\n" +
 	"\x04cols\x18\x01 \x01(\rR\x04cols\x12\x12\n" +
-	"\x04rows\x18\x02 \x01(\rR\x04rows\"F\n" +
+	"\x04rows\x18\x02 \x01(\rR\x04rows\x12\x10\n" +
+	"\x03cwd\x18\x03 \x01(\tR\x03cwd\"F\n" +
 	"\x15CreateSessionResponse\x12-\n" +
 	"\asession\x18\x01 \x01(\v2\x13.aos.v1.SessionInfoR\asession\"\x15\n" +
 	"\x13ListSessionsRequest\"G\n" +
@@ -8254,9 +11461,16 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x12SetRootModeRequest\x12\x18\n" +
 	"\aenabled\x18\x01 \x01(\bR\aenabled\x12\x1a\n" +
 	"\bpassword\x18\x02 \x01(\tR\bpassword\"\x15\n" +
-	"\x13SetRootModeResponse\"=\n" +
+	"\x13SetRootModeResponse\"x\n" +
 	"\x0fRootModeBlocked\x12*\n" +
-	"\x05tasks\x18\x01 \x03(\v2\x14.aos.v1.BlockingTaskR\x05tasks\"]\n" +
+	"\x05tasks\x18\x01 \x03(\v2\x14.aos.v1.BlockingTaskR\x05tasks\x129\n" +
+	"\n" +
+	"workspaces\x18\x02 \x03(\v2\x19.aos.v1.BlockingWorkspaceR\n" +
+	"workspaces\"Q\n" +
+	"\x11BlockingWorkspace\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x18\n" +
+	"\aunsaved\x18\x03 \x03(\tR\aunsaved\"]\n" +
 	"\fBlockingTask\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12'\n" +
@@ -8347,14 +11561,130 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x1b\n" +
 	"\tbefore_id\x18\x03 \x01(\x03R\bbeforeId\"=\n" +
 	"\rAuditResponse\x12,\n" +
-	"\aentries\x18\x01 \x03(\v2\x12.aos.v1.AuditEntryR\aentries2\xb4\x03\n" +
+	"\aentries\x18\x01 \x03(\v2\x12.aos.v1.AuditEntryR\aentries\"\xc3\x01\n" +
+	"\x06Symbol\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
+	"\x04kind\x18\x02 \x01(\tR\x04kind\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12\x12\n" +
+	"\x04line\x18\x04 \x01(\rR\x04line\x12\x19\n" +
+	"\bend_line\x18\x05 \x01(\rR\aendLine\x12\x14\n" +
+	"\x05scope\x18\x06 \x01(\tR\x05scope\x12\x1c\n" +
+	"\tsignature\x18\a \x01(\tR\tsignature\x12\x1a\n" +
+	"\blanguage\x18\b \x01(\tR\blanguage\"R\n" +
+	"\n" +
+	"IndexState\x12\x14\n" +
+	"\x05files\x18\x01 \x01(\rR\x05files\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\rR\x05total\x12\x18\n" +
+	"\apartial\x18\x03 \x01(\bR\apartial\"^\n" +
+	"\x11DefinitionRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\"h\n" +
+	"\x12DefinitionResponse\x12(\n" +
+	"\asymbols\x18\x01 \x03(\v2\x0e.aos.v1.SymbolR\asymbols\x12(\n" +
+	"\x05index\x18\x02 \x01(\v2\x12.aos.v1.IndexStateR\x05index\"^\n" +
+	"\x11ReferencesRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\"a\n" +
+	"\x12ReferencesResponse\x12-\n" +
+	"\x05files\x18\x01 \x03(\v2\x17.aos.v1.TextFileMatchesR\x05files\x12\x1c\n" +
+	"\ttruncated\x18\x02 \x01(\bR\ttruncated\"O\n" +
+	"\x16DocumentSymbolsRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"m\n" +
+	"\x17DocumentSymbolsResponse\x12(\n" +
+	"\asymbols\x18\x01 \x03(\v2\x0e.aos.v1.SymbolR\asymbols\x12(\n" +
+	"\x05index\x18\x02 \x01(\v2\x12.aos.v1.IndexStateR\x05index\"|\n" +
+	"\x17WorkspaceSymbolsRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05query\x18\x02 \x01(\tR\x05query\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\x12\x12\n" +
+	"\x04path\x18\x04 \x01(\tR\x04path\"n\n" +
+	"\x18WorkspaceSymbolsResponse\x12(\n" +
+	"\asymbols\x18\x01 \x03(\v2\x0e.aos.v1.SymbolR\asymbols\x12(\n" +
+	"\x05index\x18\x02 \x01(\v2\x12.aos.v1.IndexStateR\x05index\"a\n" +
+	"\x10FindFilesRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05query\x18\x02 \x01(\tR\x05query\x12\x14\n" +
+	"\x05limit\x18\x03 \x01(\rR\x05limit\"p\n" +
+	"\x11FindFilesResponse\x12'\n" +
+	"\x05files\x18\x01 \x03(\v2\x11.aos.v1.FoundFileR\x05files\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\rR\x05total\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\"=\n" +
+	"\tFoundFile\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1c\n" +
+	"\tpositions\x18\x02 \x03(\rR\tpositions\"\xbd\x01\n" +
+	"\x11SearchTextRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05query\x18\x02 \x01(\tR\x05query\x12\x14\n" +
+	"\x05regex\x18\x03 \x01(\bR\x05regex\x12%\n" +
+	"\x0ecase_sensitive\x18\x04 \x01(\bR\rcaseSensitive\x12\x18\n" +
+	"\ainclude\x18\x05 \x03(\tR\ainclude\x12\x18\n" +
+	"\aexclude\x18\x06 \x03(\tR\aexclude\"x\n" +
+	"\x12SearchTextResponse\x12-\n" +
+	"\x05files\x18\x01 \x03(\v2\x17.aos.v1.TextFileMatchesR\x05files\x123\n" +
+	"\asummary\x18\x02 \x01(\v2\x19.aos.v1.SearchTextSummaryR\asummary\"R\n" +
+	"\x0fTextFileMatches\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12+\n" +
+	"\amatches\x18\x02 \x03(\v2\x11.aos.v1.TextMatchR\amatches\"^\n" +
+	"\tTextMatch\x12\x12\n" +
+	"\x04line\x18\x01 \x01(\rR\x04line\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12)\n" +
+	"\x06ranges\x18\x03 \x03(\v2\x11.aos.v1.TextRangeR\x06ranges\"3\n" +
+	"\tTextRange\x12\x14\n" +
+	"\x05start\x18\x01 \x01(\rR\x05start\x12\x10\n" +
+	"\x03end\x18\x02 \x01(\rR\x03end\"y\n" +
+	"\x11SearchTextSummary\x12\x14\n" +
+	"\x05files\x18\x01 \x01(\rR\x05files\x12\x18\n" +
+	"\amatches\x18\x02 \x01(\rR\amatches\x12\x1c\n" +
+	"\ttruncated\x18\x03 \x01(\bR\ttruncated\x12\x16\n" +
+	"\x06engine\x18\x04 \x01(\tR\x06engine\"S\n" +
+	"\x14OpenWorkspaceRequest\x12'\n" +
+	"\x0fsubscription_id\x18\x01 \x01(\tR\x0esubscriptionId\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\"X\n" +
+	"\x15OpenWorkspaceResponse\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04root\x18\x02 \x01(\tR\x04root\x12\x1b\n" +
+	"\troot_mode\x18\x03 \x01(\bR\brootMode\":\n" +
+	"\x15CloseWorkspaceRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\"\x18\n" +
+	"\x16CloseWorkspaceResponse\"M\n" +
+	"\x12ReportDirtyRequest\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12\x14\n" +
+	"\x05paths\x18\x02 \x03(\tR\x05paths\"\x15\n" +
+	"\x13ReportDirtyResponse\"\x91\x01\n" +
+	"\x10WorkspaceChanged\x12!\n" +
+	"\fworkspace_id\x18\x01 \x01(\tR\vworkspaceId\x12,\n" +
+	"\achanges\x18\x02 \x03(\v2\x12.aos.v1.FileChangeR\achanges\x12,\n" +
+	"\x05watch\x18\x03 \x01(\v2\x16.aos.v1.WorkspaceWatchR\x05watch\"\xc4\x01\n" +
+	"\n" +
+	"FileChange\x12+\n" +
+	"\x04kind\x18\x01 \x01(\x0e2\x17.aos.v1.FileChange.KindR\x04kind\x12\x12\n" +
+	"\x04path\x18\x02 \x01(\tR\x04path\x12\x10\n" +
+	"\x03dir\x18\x03 \x01(\bR\x03dir\"c\n" +
+	"\x04Kind\x12\x14\n" +
+	"\x10KIND_UNSPECIFIED\x10\x00\x12\x10\n" +
+	"\fKIND_CREATED\x10\x01\x12\x10\n" +
+	"\fKIND_CHANGED\x10\x02\x12\x10\n" +
+	"\fKIND_DELETED\x10\x03\x12\x0f\n" +
+	"\vKIND_RESCAN\x10\x04\"\xb2\x01\n" +
+	"\x0eWorkspaceWatch\x122\n" +
+	"\x05state\x18\x01 \x01(\x0e2\x1c.aos.v1.WorkspaceWatch.StateR\x05state\x12\x16\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"T\n" +
+	"\x05State\x12\x15\n" +
+	"\x11STATE_UNSPECIFIED\x10\x00\x12\x0e\n" +
+	"\n" +
+	"STATE_LIVE\x10\x01\x12\x11\n" +
+	"\rSTATE_POLLING\x10\x02\x12\x11\n" +
+	"\rSTATE_STOPPED\x10\x032\xb4\x03\n" +
 	"\vAuthService\x127\n" +
 	"\x06SignIn\x12\x15.aos.v1.SignInRequest\x1a\x16.aos.v1.SignInResponse\x12:\n" +
 	"\aRefresh\x12\x16.aos.v1.RefreshRequest\x1a\x17.aos.v1.RefreshResponse\x12I\n" +
 	"\fCreateTicket\x12\x1b.aos.v1.CreateTicketRequest\x1a\x1c.aos.v1.CreateTicketResponse\x12O\n" +
 	"\x0eChangePassword\x12\x1d.aos.v1.ChangePasswordRequest\x1a\x1e.aos.v1.ChangePasswordResponse\x12:\n" +
 	"\aSignOut\x12\x16.aos.v1.SignOutRequest\x1a\x17.aos.v1.SignOutResponse\x12X\n" +
-	"\x11CreateInitialUser\x12 .aos.v1.CreateInitialUserRequest\x1a!.aos.v1.CreateInitialUserResponse2\xf7\x04\n" +
+	"\x11CreateInitialUser\x12 .aos.v1.CreateInitialUserRequest\x1a!.aos.v1.CreateInitialUserResponse2\x9a\a\n" +
 	"\vTaskService\x12C\n" +
 	"\n" +
 	"CreateTask\x12\x19.aos.v1.CreateTaskRequest\x1a\x1a.aos.v1.CreateTaskResponse\x12@\n" +
@@ -8368,24 +11698,33 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"ResumeTask\x12\x19.aos.v1.ResumeTaskRequest\x1a\x1a.aos.v1.ResumeTaskResponse\x12:\n" +
 	"\aStopAll\x12\x16.aos.v1.StopAllRequest\x1a\x17.aos.v1.StopAllResponse\x12C\n" +
 	"\n" +
-	"DeleteTask\x12\x19.aos.v1.DeleteTaskRequest\x1a\x1a.aos.v1.DeleteTaskResponse2\x92\x01\n" +
+	"DeleteTask\x12\x19.aos.v1.DeleteTaskRequest\x1a\x1a.aos.v1.DeleteTaskResponse\x12F\n" +
+	"\vListChanges\x12\x1a.aos.v1.ListChangesRequest\x1a\x1b.aos.v1.ListChangesResponse\x12@\n" +
+	"\tGetBefore\x12\x18.aos.v1.GetBeforeRequest\x1a\x19.aos.v1.GetBeforeResponse\x12I\n" +
+	"\fReviewChange\x12\x1b.aos.v1.ReviewChangeRequest\x1a\x1c.aos.v1.ReviewChangeResponse\x12L\n" +
+	"\rDiscardChange\x12\x1c.aos.v1.DiscardChangeRequest\x1a\x1d.aos.v1.DiscardChangeResponse2\x92\x01\n" +
 	"\x0fApprovalService\x12F\n" +
 	"\vListPending\x12\x1a.aos.v1.ListPendingRequest\x1a\x1b.aos.v1.ListPendingResponse\x127\n" +
 	"\x06Decide\x12\x15.aos.v1.DecideRequest\x1a\x16.aos.v1.DecideResponse2R\n" +
 	"\fEventService\x12B\n" +
-	"\tSubscribe\x12\x18.aos.v1.SubscribeRequest\x1a\x19.aos.v1.SubscribeResponse0\x012\xff\x04\n" +
+	"\tSubscribe\x12\x18.aos.v1.SubscribeRequest\x1a\x19.aos.v1.SubscribeResponse0\x012\xe1\a\n" +
 	"\vFileService\x121\n" +
 	"\x04List\x12\x13.aos.v1.ListRequest\x1a\x14.aos.v1.ListResponse\x121\n" +
 	"\x04Stat\x12\x13.aos.v1.StatRequest\x1a\x14.aos.v1.StatResponse\x121\n" +
 	"\x04Read\x12\x13.aos.v1.ReadRequest\x1a\x14.aos.v1.ReadResponse\x124\n" +
-	"\x05Write\x12\x14.aos.v1.WriteRequest\x1a\x15.aos.v1.WriteResponse\x121\n" +
+	"\x05Write\x12\x14.aos.v1.WriteRequest\x1a\x15.aos.v1.WriteResponse\x12C\n" +
+	"\n" +
+	"MakeFolder\x12\x19.aos.v1.MakeFolderRequest\x1a\x1a.aos.v1.MakeFolderResponse\x121\n" +
 	"\x04Move\x12\x13.aos.v1.MoveRequest\x1a\x14.aos.v1.MoveResponse\x121\n" +
 	"\x04Copy\x12\x13.aos.v1.CopyRequest\x1a\x14.aos.v1.CopyResponse\x127\n" +
 	"\x06Delete\x12\x15.aos.v1.DeleteRequest\x1a\x16.aos.v1.DeleteResponse\x12:\n" +
 	"\aProtect\x12\x16.aos.v1.ProtectRequest\x1a\x17.aos.v1.ProtectResponse\x12@\n" +
 	"\tUnprotect\x12\x18.aos.v1.UnprotectRequest\x1a\x19.aos.v1.UnprotectResponse\x12L\n" +
 	"\rListProtected\x12\x1c.aos.v1.ListProtectedRequest\x1a\x1d.aos.v1.ListProtectedResponse\x126\n" +
-	"\x05Watch\x12\x14.aos.v1.WatchRequest\x1a\x15.aos.v1.WatchResponse0\x012\xc2\x01\n" +
+	"\x05Watch\x12\x14.aos.v1.WatchRequest\x1a\x15.aos.v1.WatchResponse0\x01\x12O\n" +
+	"\x0eCheckSensitive\x12\x1d.aos.v1.CheckSensitiveRequest\x1a\x1e.aos.v1.CheckSensitiveResponse\x12a\n" +
+	"\x14ListSensitiveBackups\x12#.aos.v1.ListSensitiveBackupsRequest\x1a$.aos.v1.ListSensitiveBackupsResponse\x12g\n" +
+	"\x16RestoreSensitiveBackup\x12%.aos.v1.RestoreSensitiveBackupRequest\x1a&.aos.v1.RestoreSensitiveBackupResponse2\xc2\x01\n" +
 	"\fTrashService\x12@\n" +
 	"\tListTrash\x12\x18.aos.v1.ListTrashRequest\x1a\x19.aos.v1.ListTrashResponse\x12:\n" +
 	"\aRestore\x12\x16.aos.v1.RestoreRequest\x1a\x17.aos.v1.RestoreResponse\x124\n" +
@@ -8431,7 +11770,20 @@ const file_aos_v1_services_proto_rawDesc = "" +
 	"\x13DismissNotification\x12\".aos.v1.DismissNotificationRequest\x1a#.aos.v1.DismissNotificationResponse\x12:\n" +
 	"\aRestart\x12\x16.aos.v1.RestartRequest\x1a\x17.aos.v1.RestartResponse\x12F\n" +
 	"\vSetRootMode\x12\x1a.aos.v1.SetRootModeRequest\x1a\x1b.aos.v1.SetRootModeResponse\x12U\n" +
-	"\x10ClearRootHistory\x12\x1f.aos.v1.ClearRootHistoryRequest\x1a .aos.v1.ClearRootHistoryResponseB5Z3github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
+	"\x10ClearRootHistory\x12\x1f.aos.v1.ClearRootHistoryRequest\x1a .aos.v1.ClearRootHistoryResponse2\xb2\x05\n" +
+	"\vCodeService\x12L\n" +
+	"\rOpenWorkspace\x12\x1c.aos.v1.OpenWorkspaceRequest\x1a\x1d.aos.v1.OpenWorkspaceResponse\x12O\n" +
+	"\x0eCloseWorkspace\x12\x1d.aos.v1.CloseWorkspaceRequest\x1a\x1e.aos.v1.CloseWorkspaceResponse\x12F\n" +
+	"\vReportDirty\x12\x1a.aos.v1.ReportDirtyRequest\x1a\x1b.aos.v1.ReportDirtyResponse\x12@\n" +
+	"\tFindFiles\x12\x18.aos.v1.FindFilesRequest\x1a\x19.aos.v1.FindFilesResponse\x12E\n" +
+	"\n" +
+	"SearchText\x12\x19.aos.v1.SearchTextRequest\x1a\x1a.aos.v1.SearchTextResponse0\x01\x12C\n" +
+	"\n" +
+	"Definition\x12\x19.aos.v1.DefinitionRequest\x1a\x1a.aos.v1.DefinitionResponse\x12C\n" +
+	"\n" +
+	"References\x12\x19.aos.v1.ReferencesRequest\x1a\x1a.aos.v1.ReferencesResponse\x12R\n" +
+	"\x0fDocumentSymbols\x12\x1e.aos.v1.DocumentSymbolsRequest\x1a\x1f.aos.v1.DocumentSymbolsResponse\x12U\n" +
+	"\x10WorkspaceSymbols\x12\x1f.aos.v1.WorkspaceSymbolsRequest\x1a .aos.v1.WorkspaceSymbolsResponseB5Z3github.com/Aman123at/agentic-os/gen/go/aos/v1;aosv1b\x06proto3"
 
 var (
 	file_aos_v1_services_proto_rawDescOnce sync.Once
@@ -8445,389 +11797,502 @@ func file_aos_v1_services_proto_rawDescGZIP() []byte {
 	return file_aos_v1_services_proto_rawDescData
 }
 
-var file_aos_v1_services_proto_msgTypes = make([]protoimpl.MessageInfo, 156)
+var file_aos_v1_services_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_aos_v1_services_proto_msgTypes = make([]protoimpl.MessageInfo, 205)
 var file_aos_v1_services_proto_goTypes = []any{
-	(*SignInRequest)(nil),               // 0: aos.v1.SignInRequest
-	(*SignInResponse)(nil),              // 1: aos.v1.SignInResponse
-	(*RefreshRequest)(nil),              // 2: aos.v1.RefreshRequest
-	(*RefreshResponse)(nil),             // 3: aos.v1.RefreshResponse
-	(*CreateTicketRequest)(nil),         // 4: aos.v1.CreateTicketRequest
-	(*CreateTicketResponse)(nil),        // 5: aos.v1.CreateTicketResponse
-	(*ChangePasswordRequest)(nil),       // 6: aos.v1.ChangePasswordRequest
-	(*ChangePasswordResponse)(nil),      // 7: aos.v1.ChangePasswordResponse
-	(*SignOutRequest)(nil),              // 8: aos.v1.SignOutRequest
-	(*SignOutResponse)(nil),             // 9: aos.v1.SignOutResponse
-	(*CreateInitialUserRequest)(nil),    // 10: aos.v1.CreateInitialUserRequest
-	(*CreateInitialUserResponse)(nil),   // 11: aos.v1.CreateInitialUserResponse
-	(*CreateTaskRequest)(nil),           // 12: aos.v1.CreateTaskRequest
-	(*CreateTaskResponse)(nil),          // 13: aos.v1.CreateTaskResponse
-	(*ListTasksRequest)(nil),            // 14: aos.v1.ListTasksRequest
-	(*ListTasksResponse)(nil),           // 15: aos.v1.ListTasksResponse
-	(*GetTaskRequest)(nil),              // 16: aos.v1.GetTaskRequest
-	(*GetTaskResponse)(nil),             // 17: aos.v1.GetTaskResponse
-	(*SendFollowUpRequest)(nil),         // 18: aos.v1.SendFollowUpRequest
-	(*SendFollowUpResponse)(nil),        // 19: aos.v1.SendFollowUpResponse
-	(*AnswerQuestionRequest)(nil),       // 20: aos.v1.AnswerQuestionRequest
-	(*AnswerQuestionResponse)(nil),      // 21: aos.v1.AnswerQuestionResponse
-	(*CancelTaskRequest)(nil),           // 22: aos.v1.CancelTaskRequest
-	(*CancelTaskResponse)(nil),          // 23: aos.v1.CancelTaskResponse
-	(*ResumeTaskRequest)(nil),           // 24: aos.v1.ResumeTaskRequest
-	(*ResumeTaskResponse)(nil),          // 25: aos.v1.ResumeTaskResponse
-	(*StopAllRequest)(nil),              // 26: aos.v1.StopAllRequest
-	(*StopAllResponse)(nil),             // 27: aos.v1.StopAllResponse
-	(*DeleteTaskRequest)(nil),           // 28: aos.v1.DeleteTaskRequest
-	(*DeleteTaskResponse)(nil),          // 29: aos.v1.DeleteTaskResponse
-	(*ListPendingRequest)(nil),          // 30: aos.v1.ListPendingRequest
-	(*ListPendingResponse)(nil),         // 31: aos.v1.ListPendingResponse
-	(*DecideRequest)(nil),               // 32: aos.v1.DecideRequest
-	(*DecideResponse)(nil),              // 33: aos.v1.DecideResponse
-	(*SubscribeRequest)(nil),            // 34: aos.v1.SubscribeRequest
-	(*SubscribeResponse)(nil),           // 35: aos.v1.SubscribeResponse
-	(*Event)(nil),                       // 36: aos.v1.Event
-	(*DesktopStateChanged)(nil),         // 37: aos.v1.DesktopStateChanged
-	(*OpenInDesktop)(nil),               // 38: aos.v1.OpenInDesktop
-	(*ServiceChanged)(nil),              // 39: aos.v1.ServiceChanged
-	(*ReplayProgress)(nil),              // 40: aos.v1.ReplayProgress
-	(*TaskChanged)(nil),                 // 41: aos.v1.TaskChanged
-	(*TaskStepChanged)(nil),             // 42: aos.v1.TaskStepChanged
-	(*TextDelta)(nil),                   // 43: aos.v1.TextDelta
-	(*ApprovalChanged)(nil),             // 44: aos.v1.ApprovalChanged
-	(*DownloadProgress)(nil),            // 45: aos.v1.DownloadProgress
-	(*Notification)(nil),                // 46: aos.v1.Notification
-	(*WatchRequest)(nil),                // 47: aos.v1.WatchRequest
-	(*WatchResponse)(nil),               // 48: aos.v1.WatchResponse
-	(*FileInfo)(nil),                    // 49: aos.v1.FileInfo
-	(*ListRequest)(nil),                 // 50: aos.v1.ListRequest
-	(*ListResponse)(nil),                // 51: aos.v1.ListResponse
-	(*StatRequest)(nil),                 // 52: aos.v1.StatRequest
-	(*StatResponse)(nil),                // 53: aos.v1.StatResponse
-	(*ReadRequest)(nil),                 // 54: aos.v1.ReadRequest
-	(*ReadResponse)(nil),                // 55: aos.v1.ReadResponse
-	(*WriteRequest)(nil),                // 56: aos.v1.WriteRequest
-	(*WriteResponse)(nil),               // 57: aos.v1.WriteResponse
-	(*MoveRequest)(nil),                 // 58: aos.v1.MoveRequest
-	(*MoveResponse)(nil),                // 59: aos.v1.MoveResponse
-	(*CopyRequest)(nil),                 // 60: aos.v1.CopyRequest
-	(*CopyResponse)(nil),                // 61: aos.v1.CopyResponse
-	(*DeleteRequest)(nil),               // 62: aos.v1.DeleteRequest
-	(*DeleteResponse)(nil),              // 63: aos.v1.DeleteResponse
-	(*ProtectRequest)(nil),              // 64: aos.v1.ProtectRequest
-	(*ProtectResponse)(nil),             // 65: aos.v1.ProtectResponse
-	(*UnprotectRequest)(nil),            // 66: aos.v1.UnprotectRequest
-	(*UnprotectResponse)(nil),           // 67: aos.v1.UnprotectResponse
-	(*ListProtectedRequest)(nil),        // 68: aos.v1.ListProtectedRequest
-	(*ListProtectedResponse)(nil),       // 69: aos.v1.ListProtectedResponse
-	(*TrashItem)(nil),                   // 70: aos.v1.TrashItem
-	(*ListTrashRequest)(nil),            // 71: aos.v1.ListTrashRequest
-	(*ListTrashResponse)(nil),           // 72: aos.v1.ListTrashResponse
-	(*RestoreRequest)(nil),              // 73: aos.v1.RestoreRequest
-	(*RestoreResponse)(nil),             // 74: aos.v1.RestoreResponse
-	(*EmptyRequest)(nil),                // 75: aos.v1.EmptyRequest
-	(*EmptyResponse)(nil),               // 76: aos.v1.EmptyResponse
-	(*SessionInfo)(nil),                 // 77: aos.v1.SessionInfo
-	(*CreateSessionRequest)(nil),        // 78: aos.v1.CreateSessionRequest
-	(*CreateSessionResponse)(nil),       // 79: aos.v1.CreateSessionResponse
-	(*ListSessionsRequest)(nil),         // 80: aos.v1.ListSessionsRequest
-	(*ListSessionsResponse)(nil),        // 81: aos.v1.ListSessionsResponse
-	(*CloseSessionRequest)(nil),         // 82: aos.v1.CloseSessionRequest
-	(*CloseSessionResponse)(nil),        // 83: aos.v1.CloseSessionResponse
-	(*ListPackagesRequest)(nil),         // 84: aos.v1.ListPackagesRequest
-	(*ListPackagesResponse)(nil),        // 85: aos.v1.ListPackagesResponse
-	(*ListLedgerRequest)(nil),           // 86: aos.v1.ListLedgerRequest
-	(*ListLedgerResponse)(nil),          // 87: aos.v1.ListLedgerResponse
-	(*ListCheckpointsRequest)(nil),      // 88: aos.v1.ListCheckpointsRequest
-	(*ListCheckpointsResponse)(nil),     // 89: aos.v1.ListCheckpointsResponse
-	(*CreateCheckpointRequest)(nil),     // 90: aos.v1.CreateCheckpointRequest
-	(*CreateCheckpointResponse)(nil),    // 91: aos.v1.CreateCheckpointResponse
-	(*RestoreCheckpointRequest)(nil),    // 92: aos.v1.RestoreCheckpointRequest
-	(*RestoreCheckpointResponse)(nil),   // 93: aos.v1.RestoreCheckpointResponse
-	(*ListServicesRequest)(nil),         // 94: aos.v1.ListServicesRequest
-	(*ListServicesResponse)(nil),        // 95: aos.v1.ListServicesResponse
-	(*StartServiceRequest)(nil),         // 96: aos.v1.StartServiceRequest
-	(*StartServiceResponse)(nil),        // 97: aos.v1.StartServiceResponse
-	(*StopServiceRequest)(nil),          // 98: aos.v1.StopServiceRequest
-	(*StopServiceResponse)(nil),         // 99: aos.v1.StopServiceResponse
-	(*RestartServiceRequest)(nil),       // 100: aos.v1.RestartServiceRequest
-	(*RestartServiceResponse)(nil),      // 101: aos.v1.RestartServiceResponse
-	(*RemoveServiceRequest)(nil),        // 102: aos.v1.RemoveServiceRequest
-	(*RemoveServiceResponse)(nil),       // 103: aos.v1.RemoveServiceResponse
-	(*StreamLogsRequest)(nil),           // 104: aos.v1.StreamLogsRequest
-	(*StreamLogsResponse)(nil),          // 105: aos.v1.StreamLogsResponse
-	(*SetApiKeyRequest)(nil),            // 106: aos.v1.SetApiKeyRequest
-	(*SetApiKeyResponse)(nil),           // 107: aos.v1.SetApiKeyResponse
-	(*ClearApiKeyRequest)(nil),          // 108: aos.v1.ClearApiKeyRequest
-	(*ClearApiKeyResponse)(nil),         // 109: aos.v1.ClearApiKeyResponse
-	(*Setting)(nil),                     // 110: aos.v1.Setting
-	(*GetSettingsRequest)(nil),          // 111: aos.v1.GetSettingsRequest
-	(*GetSettingsResponse)(nil),         // 112: aos.v1.GetSettingsResponse
-	(*ModelChoice)(nil),                 // 113: aos.v1.ModelChoice
-	(*UpdateSettingRequest)(nil),        // 114: aos.v1.UpdateSettingRequest
-	(*UpdateSettingResponse)(nil),       // 115: aos.v1.UpdateSettingResponse
-	(*ListMemoryRequest)(nil),           // 116: aos.v1.ListMemoryRequest
-	(*ListMemoryResponse)(nil),          // 117: aos.v1.ListMemoryResponse
-	(*AddMemoryRequest)(nil),            // 118: aos.v1.AddMemoryRequest
-	(*AddMemoryResponse)(nil),           // 119: aos.v1.AddMemoryResponse
-	(*AcceptMemoryRequest)(nil),         // 120: aos.v1.AcceptMemoryRequest
-	(*AcceptMemoryResponse)(nil),        // 121: aos.v1.AcceptMemoryResponse
-	(*ForgetMemoryRequest)(nil),         // 122: aos.v1.ForgetMemoryRequest
-	(*ForgetMemoryResponse)(nil),        // 123: aos.v1.ForgetMemoryResponse
-	(*GetDesktopStateRequest)(nil),      // 124: aos.v1.GetDesktopStateRequest
-	(*GetDesktopStateResponse)(nil),     // 125: aos.v1.GetDesktopStateResponse
-	(*SaveDesktopStateRequest)(nil),     // 126: aos.v1.SaveDesktopStateRequest
-	(*SaveDesktopStateResponse)(nil),    // 127: aos.v1.SaveDesktopStateResponse
-	(*RestartRequest)(nil),              // 128: aos.v1.RestartRequest
-	(*RestartResponse)(nil),             // 129: aos.v1.RestartResponse
-	(*ClearRootHistoryRequest)(nil),     // 130: aos.v1.ClearRootHistoryRequest
-	(*ClearRootHistoryResponse)(nil),    // 131: aos.v1.ClearRootHistoryResponse
-	(*SetRootModeRequest)(nil),          // 132: aos.v1.SetRootModeRequest
-	(*SetRootModeResponse)(nil),         // 133: aos.v1.SetRootModeResponse
-	(*RootModeBlocked)(nil),             // 134: aos.v1.RootModeBlocked
-	(*BlockingTask)(nil),                // 135: aos.v1.BlockingTask
-	(*RootModeAttempt)(nil),             // 136: aos.v1.RootModeAttempt
-	(*RootModeLockout)(nil),             // 137: aos.v1.RootModeLockout
-	(*ListNotificationsRequest)(nil),    // 138: aos.v1.ListNotificationsRequest
-	(*ListNotificationsResponse)(nil),   // 139: aos.v1.ListNotificationsResponse
-	(*DismissNotificationRequest)(nil),  // 140: aos.v1.DismissNotificationRequest
-	(*DismissNotificationResponse)(nil), // 141: aos.v1.DismissNotificationResponse
-	(*ProcessesRequest)(nil),            // 142: aos.v1.ProcessesRequest
-	(*ProcessesResponse)(nil),           // 143: aos.v1.ProcessesResponse
-	(*ProcessInfo)(nil),                 // 144: aos.v1.ProcessInfo
-	(*MetricsRequest)(nil),              // 145: aos.v1.MetricsRequest
-	(*MetricsResponse)(nil),             // 146: aos.v1.MetricsResponse
-	(*DiskUsage)(nil),                   // 147: aos.v1.DiskUsage
-	(*UsageRequest)(nil),                // 148: aos.v1.UsageRequest
-	(*UsageResponse)(nil),               // 149: aos.v1.UsageResponse
-	(*DailyUsage)(nil),                  // 150: aos.v1.DailyUsage
-	(*InfoRequest)(nil),                 // 151: aos.v1.InfoRequest
-	(*InfoResponse)(nil),                // 152: aos.v1.InfoResponse
-	(*AuditRequest)(nil),                // 153: aos.v1.AuditRequest
-	(*AuditResponse)(nil),               // 154: aos.v1.AuditResponse
-	(*ListProtectedResponse_Entry)(nil), // 155: aos.v1.ListProtectedResponse.Entry
-	(Autonomy)(0),                       // 156: aos.v1.Autonomy
-	(*Task)(nil),                        // 157: aos.v1.Task
-	(*TaskStep)(nil),                    // 158: aos.v1.TaskStep
-	(*Approval)(nil),                    // 159: aos.v1.Approval
-	(ApprovalDecision)(0),               // 160: aos.v1.ApprovalDecision
-	(*timestamppb.Timestamp)(nil),       // 161: google.protobuf.Timestamp
-	(*ServiceInfo)(nil),                 // 162: aos.v1.ServiceInfo
-	(*ReplayStatus)(nil),                // 163: aos.v1.ReplayStatus
-	(*Package)(nil),                     // 164: aos.v1.Package
-	(*LedgerOp)(nil),                    // 165: aos.v1.LedgerOp
-	(*Checkpoint)(nil),                  // 166: aos.v1.Checkpoint
-	(*Listener)(nil),                    // 167: aos.v1.Listener
-	(*Memory)(nil),                      // 168: aos.v1.Memory
-	(TaskState)(0),                      // 169: aos.v1.TaskState
-	(*Usage)(nil),                       // 170: aos.v1.Usage
-	(*AuditEntry)(nil),                  // 171: aos.v1.AuditEntry
+	(FileChange_Kind)(0),                   // 0: aos.v1.FileChange.Kind
+	(WorkspaceWatch_State)(0),              // 1: aos.v1.WorkspaceWatch.State
+	(*SignInRequest)(nil),                  // 2: aos.v1.SignInRequest
+	(*SignInResponse)(nil),                 // 3: aos.v1.SignInResponse
+	(*RefreshRequest)(nil),                 // 4: aos.v1.RefreshRequest
+	(*RefreshResponse)(nil),                // 5: aos.v1.RefreshResponse
+	(*CreateTicketRequest)(nil),            // 6: aos.v1.CreateTicketRequest
+	(*CreateTicketResponse)(nil),           // 7: aos.v1.CreateTicketResponse
+	(*ChangePasswordRequest)(nil),          // 8: aos.v1.ChangePasswordRequest
+	(*ChangePasswordResponse)(nil),         // 9: aos.v1.ChangePasswordResponse
+	(*SignOutRequest)(nil),                 // 10: aos.v1.SignOutRequest
+	(*SignOutResponse)(nil),                // 11: aos.v1.SignOutResponse
+	(*CreateInitialUserRequest)(nil),       // 12: aos.v1.CreateInitialUserRequest
+	(*CreateInitialUserResponse)(nil),      // 13: aos.v1.CreateInitialUserResponse
+	(*CreateTaskRequest)(nil),              // 14: aos.v1.CreateTaskRequest
+	(*EditorContext)(nil),                  // 15: aos.v1.EditorContext
+	(*CreateTaskResponse)(nil),             // 16: aos.v1.CreateTaskResponse
+	(*ListTasksRequest)(nil),               // 17: aos.v1.ListTasksRequest
+	(*ListTasksResponse)(nil),              // 18: aos.v1.ListTasksResponse
+	(*GetTaskRequest)(nil),                 // 19: aos.v1.GetTaskRequest
+	(*GetTaskResponse)(nil),                // 20: aos.v1.GetTaskResponse
+	(*SendFollowUpRequest)(nil),            // 21: aos.v1.SendFollowUpRequest
+	(*SendFollowUpResponse)(nil),           // 22: aos.v1.SendFollowUpResponse
+	(*AnswerQuestionRequest)(nil),          // 23: aos.v1.AnswerQuestionRequest
+	(*AnswerQuestionResponse)(nil),         // 24: aos.v1.AnswerQuestionResponse
+	(*CancelTaskRequest)(nil),              // 25: aos.v1.CancelTaskRequest
+	(*CancelTaskResponse)(nil),             // 26: aos.v1.CancelTaskResponse
+	(*ResumeTaskRequest)(nil),              // 27: aos.v1.ResumeTaskRequest
+	(*ResumeTaskResponse)(nil),             // 28: aos.v1.ResumeTaskResponse
+	(*StopAllRequest)(nil),                 // 29: aos.v1.StopAllRequest
+	(*StopAllResponse)(nil),                // 30: aos.v1.StopAllResponse
+	(*DeleteTaskRequest)(nil),              // 31: aos.v1.DeleteTaskRequest
+	(*DeleteTaskResponse)(nil),             // 32: aos.v1.DeleteTaskResponse
+	(*TaskFileChange)(nil),                 // 33: aos.v1.TaskFileChange
+	(*ListChangesRequest)(nil),             // 34: aos.v1.ListChangesRequest
+	(*ListChangesResponse)(nil),            // 35: aos.v1.ListChangesResponse
+	(*GetBeforeRequest)(nil),               // 36: aos.v1.GetBeforeRequest
+	(*GetBeforeResponse)(nil),              // 37: aos.v1.GetBeforeResponse
+	(*ReviewChangeRequest)(nil),            // 38: aos.v1.ReviewChangeRequest
+	(*ReviewChangeResponse)(nil),           // 39: aos.v1.ReviewChangeResponse
+	(*DiscardChangeRequest)(nil),           // 40: aos.v1.DiscardChangeRequest
+	(*DiscardChangeResponse)(nil),          // 41: aos.v1.DiscardChangeResponse
+	(*ListPendingRequest)(nil),             // 42: aos.v1.ListPendingRequest
+	(*ListPendingResponse)(nil),            // 43: aos.v1.ListPendingResponse
+	(*DecideRequest)(nil),                  // 44: aos.v1.DecideRequest
+	(*DecideResponse)(nil),                 // 45: aos.v1.DecideResponse
+	(*SubscribeRequest)(nil),               // 46: aos.v1.SubscribeRequest
+	(*SubscribeResponse)(nil),              // 47: aos.v1.SubscribeResponse
+	(*Event)(nil),                          // 48: aos.v1.Event
+	(*DesktopStateChanged)(nil),            // 49: aos.v1.DesktopStateChanged
+	(*OpenInDesktop)(nil),                  // 50: aos.v1.OpenInDesktop
+	(*ServiceChanged)(nil),                 // 51: aos.v1.ServiceChanged
+	(*ReplayProgress)(nil),                 // 52: aos.v1.ReplayProgress
+	(*TaskChanged)(nil),                    // 53: aos.v1.TaskChanged
+	(*TaskStepChanged)(nil),                // 54: aos.v1.TaskStepChanged
+	(*TextDelta)(nil),                      // 55: aos.v1.TextDelta
+	(*ApprovalChanged)(nil),                // 56: aos.v1.ApprovalChanged
+	(*DownloadProgress)(nil),               // 57: aos.v1.DownloadProgress
+	(*Notification)(nil),                   // 58: aos.v1.Notification
+	(*SensitivePath)(nil),                  // 59: aos.v1.SensitivePath
+	(*CheckSensitiveRequest)(nil),          // 60: aos.v1.CheckSensitiveRequest
+	(*CheckSensitiveResponse)(nil),         // 61: aos.v1.CheckSensitiveResponse
+	(*SensitiveBackup)(nil),                // 62: aos.v1.SensitiveBackup
+	(*ListSensitiveBackupsRequest)(nil),    // 63: aos.v1.ListSensitiveBackupsRequest
+	(*ListSensitiveBackupsResponse)(nil),   // 64: aos.v1.ListSensitiveBackupsResponse
+	(*RestoreSensitiveBackupRequest)(nil),  // 65: aos.v1.RestoreSensitiveBackupRequest
+	(*RestoreSensitiveBackupResponse)(nil), // 66: aos.v1.RestoreSensitiveBackupResponse
+	(*WatchRequest)(nil),                   // 67: aos.v1.WatchRequest
+	(*WatchResponse)(nil),                  // 68: aos.v1.WatchResponse
+	(*FileInfo)(nil),                       // 69: aos.v1.FileInfo
+	(*ListRequest)(nil),                    // 70: aos.v1.ListRequest
+	(*ListResponse)(nil),                   // 71: aos.v1.ListResponse
+	(*StatRequest)(nil),                    // 72: aos.v1.StatRequest
+	(*StatResponse)(nil),                   // 73: aos.v1.StatResponse
+	(*ReadRequest)(nil),                    // 74: aos.v1.ReadRequest
+	(*ReadResponse)(nil),                   // 75: aos.v1.ReadResponse
+	(*WriteRequest)(nil),                   // 76: aos.v1.WriteRequest
+	(*WriteResponse)(nil),                  // 77: aos.v1.WriteResponse
+	(*MakeFolderRequest)(nil),              // 78: aos.v1.MakeFolderRequest
+	(*MakeFolderResponse)(nil),             // 79: aos.v1.MakeFolderResponse
+	(*MoveRequest)(nil),                    // 80: aos.v1.MoveRequest
+	(*MoveResponse)(nil),                   // 81: aos.v1.MoveResponse
+	(*CopyRequest)(nil),                    // 82: aos.v1.CopyRequest
+	(*CopyResponse)(nil),                   // 83: aos.v1.CopyResponse
+	(*DeleteRequest)(nil),                  // 84: aos.v1.DeleteRequest
+	(*DeleteResponse)(nil),                 // 85: aos.v1.DeleteResponse
+	(*ProtectRequest)(nil),                 // 86: aos.v1.ProtectRequest
+	(*ProtectResponse)(nil),                // 87: aos.v1.ProtectResponse
+	(*UnprotectRequest)(nil),               // 88: aos.v1.UnprotectRequest
+	(*UnprotectResponse)(nil),              // 89: aos.v1.UnprotectResponse
+	(*ListProtectedRequest)(nil),           // 90: aos.v1.ListProtectedRequest
+	(*ListProtectedResponse)(nil),          // 91: aos.v1.ListProtectedResponse
+	(*TrashItem)(nil),                      // 92: aos.v1.TrashItem
+	(*ListTrashRequest)(nil),               // 93: aos.v1.ListTrashRequest
+	(*ListTrashResponse)(nil),              // 94: aos.v1.ListTrashResponse
+	(*RestoreRequest)(nil),                 // 95: aos.v1.RestoreRequest
+	(*RestoreResponse)(nil),                // 96: aos.v1.RestoreResponse
+	(*EmptyRequest)(nil),                   // 97: aos.v1.EmptyRequest
+	(*EmptyResponse)(nil),                  // 98: aos.v1.EmptyResponse
+	(*SessionInfo)(nil),                    // 99: aos.v1.SessionInfo
+	(*CreateSessionRequest)(nil),           // 100: aos.v1.CreateSessionRequest
+	(*CreateSessionResponse)(nil),          // 101: aos.v1.CreateSessionResponse
+	(*ListSessionsRequest)(nil),            // 102: aos.v1.ListSessionsRequest
+	(*ListSessionsResponse)(nil),           // 103: aos.v1.ListSessionsResponse
+	(*CloseSessionRequest)(nil),            // 104: aos.v1.CloseSessionRequest
+	(*CloseSessionResponse)(nil),           // 105: aos.v1.CloseSessionResponse
+	(*ListPackagesRequest)(nil),            // 106: aos.v1.ListPackagesRequest
+	(*ListPackagesResponse)(nil),           // 107: aos.v1.ListPackagesResponse
+	(*ListLedgerRequest)(nil),              // 108: aos.v1.ListLedgerRequest
+	(*ListLedgerResponse)(nil),             // 109: aos.v1.ListLedgerResponse
+	(*ListCheckpointsRequest)(nil),         // 110: aos.v1.ListCheckpointsRequest
+	(*ListCheckpointsResponse)(nil),        // 111: aos.v1.ListCheckpointsResponse
+	(*CreateCheckpointRequest)(nil),        // 112: aos.v1.CreateCheckpointRequest
+	(*CreateCheckpointResponse)(nil),       // 113: aos.v1.CreateCheckpointResponse
+	(*RestoreCheckpointRequest)(nil),       // 114: aos.v1.RestoreCheckpointRequest
+	(*RestoreCheckpointResponse)(nil),      // 115: aos.v1.RestoreCheckpointResponse
+	(*ListServicesRequest)(nil),            // 116: aos.v1.ListServicesRequest
+	(*ListServicesResponse)(nil),           // 117: aos.v1.ListServicesResponse
+	(*StartServiceRequest)(nil),            // 118: aos.v1.StartServiceRequest
+	(*StartServiceResponse)(nil),           // 119: aos.v1.StartServiceResponse
+	(*StopServiceRequest)(nil),             // 120: aos.v1.StopServiceRequest
+	(*StopServiceResponse)(nil),            // 121: aos.v1.StopServiceResponse
+	(*RestartServiceRequest)(nil),          // 122: aos.v1.RestartServiceRequest
+	(*RestartServiceResponse)(nil),         // 123: aos.v1.RestartServiceResponse
+	(*RemoveServiceRequest)(nil),           // 124: aos.v1.RemoveServiceRequest
+	(*RemoveServiceResponse)(nil),          // 125: aos.v1.RemoveServiceResponse
+	(*StreamLogsRequest)(nil),              // 126: aos.v1.StreamLogsRequest
+	(*StreamLogsResponse)(nil),             // 127: aos.v1.StreamLogsResponse
+	(*SetApiKeyRequest)(nil),               // 128: aos.v1.SetApiKeyRequest
+	(*SetApiKeyResponse)(nil),              // 129: aos.v1.SetApiKeyResponse
+	(*ClearApiKeyRequest)(nil),             // 130: aos.v1.ClearApiKeyRequest
+	(*ClearApiKeyResponse)(nil),            // 131: aos.v1.ClearApiKeyResponse
+	(*Setting)(nil),                        // 132: aos.v1.Setting
+	(*GetSettingsRequest)(nil),             // 133: aos.v1.GetSettingsRequest
+	(*GetSettingsResponse)(nil),            // 134: aos.v1.GetSettingsResponse
+	(*ModelChoice)(nil),                    // 135: aos.v1.ModelChoice
+	(*UpdateSettingRequest)(nil),           // 136: aos.v1.UpdateSettingRequest
+	(*UpdateSettingResponse)(nil),          // 137: aos.v1.UpdateSettingResponse
+	(*ListMemoryRequest)(nil),              // 138: aos.v1.ListMemoryRequest
+	(*ListMemoryResponse)(nil),             // 139: aos.v1.ListMemoryResponse
+	(*AddMemoryRequest)(nil),               // 140: aos.v1.AddMemoryRequest
+	(*AddMemoryResponse)(nil),              // 141: aos.v1.AddMemoryResponse
+	(*AcceptMemoryRequest)(nil),            // 142: aos.v1.AcceptMemoryRequest
+	(*AcceptMemoryResponse)(nil),           // 143: aos.v1.AcceptMemoryResponse
+	(*ForgetMemoryRequest)(nil),            // 144: aos.v1.ForgetMemoryRequest
+	(*ForgetMemoryResponse)(nil),           // 145: aos.v1.ForgetMemoryResponse
+	(*GetDesktopStateRequest)(nil),         // 146: aos.v1.GetDesktopStateRequest
+	(*GetDesktopStateResponse)(nil),        // 147: aos.v1.GetDesktopStateResponse
+	(*SaveDesktopStateRequest)(nil),        // 148: aos.v1.SaveDesktopStateRequest
+	(*SaveDesktopStateResponse)(nil),       // 149: aos.v1.SaveDesktopStateResponse
+	(*RestartRequest)(nil),                 // 150: aos.v1.RestartRequest
+	(*RestartResponse)(nil),                // 151: aos.v1.RestartResponse
+	(*ClearRootHistoryRequest)(nil),        // 152: aos.v1.ClearRootHistoryRequest
+	(*ClearRootHistoryResponse)(nil),       // 153: aos.v1.ClearRootHistoryResponse
+	(*SetRootModeRequest)(nil),             // 154: aos.v1.SetRootModeRequest
+	(*SetRootModeResponse)(nil),            // 155: aos.v1.SetRootModeResponse
+	(*RootModeBlocked)(nil),                // 156: aos.v1.RootModeBlocked
+	(*BlockingWorkspace)(nil),              // 157: aos.v1.BlockingWorkspace
+	(*BlockingTask)(nil),                   // 158: aos.v1.BlockingTask
+	(*RootModeAttempt)(nil),                // 159: aos.v1.RootModeAttempt
+	(*RootModeLockout)(nil),                // 160: aos.v1.RootModeLockout
+	(*ListNotificationsRequest)(nil),       // 161: aos.v1.ListNotificationsRequest
+	(*ListNotificationsResponse)(nil),      // 162: aos.v1.ListNotificationsResponse
+	(*DismissNotificationRequest)(nil),     // 163: aos.v1.DismissNotificationRequest
+	(*DismissNotificationResponse)(nil),    // 164: aos.v1.DismissNotificationResponse
+	(*ProcessesRequest)(nil),               // 165: aos.v1.ProcessesRequest
+	(*ProcessesResponse)(nil),              // 166: aos.v1.ProcessesResponse
+	(*ProcessInfo)(nil),                    // 167: aos.v1.ProcessInfo
+	(*MetricsRequest)(nil),                 // 168: aos.v1.MetricsRequest
+	(*MetricsResponse)(nil),                // 169: aos.v1.MetricsResponse
+	(*DiskUsage)(nil),                      // 170: aos.v1.DiskUsage
+	(*UsageRequest)(nil),                   // 171: aos.v1.UsageRequest
+	(*UsageResponse)(nil),                  // 172: aos.v1.UsageResponse
+	(*DailyUsage)(nil),                     // 173: aos.v1.DailyUsage
+	(*InfoRequest)(nil),                    // 174: aos.v1.InfoRequest
+	(*InfoResponse)(nil),                   // 175: aos.v1.InfoResponse
+	(*AuditRequest)(nil),                   // 176: aos.v1.AuditRequest
+	(*AuditResponse)(nil),                  // 177: aos.v1.AuditResponse
+	(*Symbol)(nil),                         // 178: aos.v1.Symbol
+	(*IndexState)(nil),                     // 179: aos.v1.IndexState
+	(*DefinitionRequest)(nil),              // 180: aos.v1.DefinitionRequest
+	(*DefinitionResponse)(nil),             // 181: aos.v1.DefinitionResponse
+	(*ReferencesRequest)(nil),              // 182: aos.v1.ReferencesRequest
+	(*ReferencesResponse)(nil),             // 183: aos.v1.ReferencesResponse
+	(*DocumentSymbolsRequest)(nil),         // 184: aos.v1.DocumentSymbolsRequest
+	(*DocumentSymbolsResponse)(nil),        // 185: aos.v1.DocumentSymbolsResponse
+	(*WorkspaceSymbolsRequest)(nil),        // 186: aos.v1.WorkspaceSymbolsRequest
+	(*WorkspaceSymbolsResponse)(nil),       // 187: aos.v1.WorkspaceSymbolsResponse
+	(*FindFilesRequest)(nil),               // 188: aos.v1.FindFilesRequest
+	(*FindFilesResponse)(nil),              // 189: aos.v1.FindFilesResponse
+	(*FoundFile)(nil),                      // 190: aos.v1.FoundFile
+	(*SearchTextRequest)(nil),              // 191: aos.v1.SearchTextRequest
+	(*SearchTextResponse)(nil),             // 192: aos.v1.SearchTextResponse
+	(*TextFileMatches)(nil),                // 193: aos.v1.TextFileMatches
+	(*TextMatch)(nil),                      // 194: aos.v1.TextMatch
+	(*TextRange)(nil),                      // 195: aos.v1.TextRange
+	(*SearchTextSummary)(nil),              // 196: aos.v1.SearchTextSummary
+	(*OpenWorkspaceRequest)(nil),           // 197: aos.v1.OpenWorkspaceRequest
+	(*OpenWorkspaceResponse)(nil),          // 198: aos.v1.OpenWorkspaceResponse
+	(*CloseWorkspaceRequest)(nil),          // 199: aos.v1.CloseWorkspaceRequest
+	(*CloseWorkspaceResponse)(nil),         // 200: aos.v1.CloseWorkspaceResponse
+	(*ReportDirtyRequest)(nil),             // 201: aos.v1.ReportDirtyRequest
+	(*ReportDirtyResponse)(nil),            // 202: aos.v1.ReportDirtyResponse
+	(*WorkspaceChanged)(nil),               // 203: aos.v1.WorkspaceChanged
+	(*FileChange)(nil),                     // 204: aos.v1.FileChange
+	(*WorkspaceWatch)(nil),                 // 205: aos.v1.WorkspaceWatch
+	(*ListProtectedResponse_Entry)(nil),    // 206: aos.v1.ListProtectedResponse.Entry
+	(Autonomy)(0),                          // 207: aos.v1.Autonomy
+	(*Task)(nil),                           // 208: aos.v1.Task
+	(*TaskStep)(nil),                       // 209: aos.v1.TaskStep
+	(*Approval)(nil),                       // 210: aos.v1.Approval
+	(*timestamppb.Timestamp)(nil),          // 211: google.protobuf.Timestamp
+	(ApprovalDecision)(0),                  // 212: aos.v1.ApprovalDecision
+	(*ServiceInfo)(nil),                    // 213: aos.v1.ServiceInfo
+	(*ReplayStatus)(nil),                   // 214: aos.v1.ReplayStatus
+	(*Package)(nil),                        // 215: aos.v1.Package
+	(*LedgerOp)(nil),                       // 216: aos.v1.LedgerOp
+	(*Checkpoint)(nil),                     // 217: aos.v1.Checkpoint
+	(*Listener)(nil),                       // 218: aos.v1.Listener
+	(*Memory)(nil),                         // 219: aos.v1.Memory
+	(TaskState)(0),                         // 220: aos.v1.TaskState
+	(*Usage)(nil),                          // 221: aos.v1.Usage
+	(*AuditEntry)(nil),                     // 222: aos.v1.AuditEntry
 }
 var file_aos_v1_services_proto_depIdxs = []int32{
-	156, // 0: aos.v1.CreateTaskRequest.autonomy:type_name -> aos.v1.Autonomy
-	157, // 1: aos.v1.CreateTaskResponse.task:type_name -> aos.v1.Task
-	157, // 2: aos.v1.ListTasksResponse.tasks:type_name -> aos.v1.Task
-	157, // 3: aos.v1.GetTaskResponse.task:type_name -> aos.v1.Task
-	158, // 4: aos.v1.GetTaskResponse.steps:type_name -> aos.v1.TaskStep
-	159, // 5: aos.v1.GetTaskResponse.approvals:type_name -> aos.v1.Approval
-	157, // 6: aos.v1.SendFollowUpResponse.task:type_name -> aos.v1.Task
-	157, // 7: aos.v1.ResumeTaskResponse.task:type_name -> aos.v1.Task
-	159, // 8: aos.v1.ListPendingResponse.approvals:type_name -> aos.v1.Approval
-	160, // 9: aos.v1.DecideRequest.decision:type_name -> aos.v1.ApprovalDecision
-	159, // 10: aos.v1.DecideResponse.approval:type_name -> aos.v1.Approval
-	36,  // 11: aos.v1.SubscribeResponse.event:type_name -> aos.v1.Event
-	161, // 12: aos.v1.Event.time:type_name -> google.protobuf.Timestamp
-	41,  // 13: aos.v1.Event.task_changed:type_name -> aos.v1.TaskChanged
-	42,  // 14: aos.v1.Event.task_step:type_name -> aos.v1.TaskStepChanged
-	43,  // 15: aos.v1.Event.text_delta:type_name -> aos.v1.TextDelta
-	44,  // 16: aos.v1.Event.approval:type_name -> aos.v1.ApprovalChanged
-	45,  // 17: aos.v1.Event.download_progress:type_name -> aos.v1.DownloadProgress
-	46,  // 18: aos.v1.Event.notification:type_name -> aos.v1.Notification
-	39,  // 19: aos.v1.Event.service_changed:type_name -> aos.v1.ServiceChanged
-	40,  // 20: aos.v1.Event.replay_progress:type_name -> aos.v1.ReplayProgress
-	38,  // 21: aos.v1.Event.open_in_desktop:type_name -> aos.v1.OpenInDesktop
-	37,  // 22: aos.v1.Event.desktop_state:type_name -> aos.v1.DesktopStateChanged
-	162, // 23: aos.v1.ServiceChanged.service:type_name -> aos.v1.ServiceInfo
-	163, // 24: aos.v1.ReplayProgress.status:type_name -> aos.v1.ReplayStatus
-	157, // 25: aos.v1.TaskChanged.task:type_name -> aos.v1.Task
-	158, // 26: aos.v1.TaskStepChanged.step:type_name -> aos.v1.TaskStep
-	159, // 27: aos.v1.ApprovalChanged.approval:type_name -> aos.v1.Approval
-	161, // 28: aos.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
-	49,  // 29: aos.v1.WatchResponse.entries:type_name -> aos.v1.FileInfo
-	161, // 30: aos.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
-	49,  // 31: aos.v1.ListResponse.entries:type_name -> aos.v1.FileInfo
-	49,  // 32: aos.v1.StatResponse.info:type_name -> aos.v1.FileInfo
-	70,  // 33: aos.v1.DeleteResponse.item:type_name -> aos.v1.TrashItem
-	155, // 34: aos.v1.ListProtectedResponse.entries:type_name -> aos.v1.ListProtectedResponse.Entry
-	161, // 35: aos.v1.TrashItem.deleted_at:type_name -> google.protobuf.Timestamp
-	70,  // 36: aos.v1.ListTrashResponse.items:type_name -> aos.v1.TrashItem
-	161, // 37: aos.v1.SessionInfo.created_at:type_name -> google.protobuf.Timestamp
-	77,  // 38: aos.v1.CreateSessionResponse.session:type_name -> aos.v1.SessionInfo
-	77,  // 39: aos.v1.ListSessionsResponse.sessions:type_name -> aos.v1.SessionInfo
-	164, // 40: aos.v1.ListPackagesResponse.packages:type_name -> aos.v1.Package
-	165, // 41: aos.v1.ListLedgerResponse.ops:type_name -> aos.v1.LedgerOp
-	166, // 42: aos.v1.ListCheckpointsResponse.checkpoints:type_name -> aos.v1.Checkpoint
-	166, // 43: aos.v1.CreateCheckpointResponse.checkpoint:type_name -> aos.v1.Checkpoint
-	165, // 44: aos.v1.RestoreCheckpointResponse.op:type_name -> aos.v1.LedgerOp
-	166, // 45: aos.v1.RestoreCheckpointResponse.before:type_name -> aos.v1.Checkpoint
-	162, // 46: aos.v1.ListServicesResponse.services:type_name -> aos.v1.ServiceInfo
-	167, // 47: aos.v1.ListServicesResponse.listeners:type_name -> aos.v1.Listener
-	162, // 48: aos.v1.StartServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	162, // 49: aos.v1.StopServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	162, // 50: aos.v1.RestartServiceResponse.service:type_name -> aos.v1.ServiceInfo
-	110, // 51: aos.v1.GetSettingsResponse.settings:type_name -> aos.v1.Setting
-	113, // 52: aos.v1.GetSettingsResponse.models:type_name -> aos.v1.ModelChoice
-	110, // 53: aos.v1.UpdateSettingResponse.setting:type_name -> aos.v1.Setting
-	168, // 54: aos.v1.ListMemoryResponse.memories:type_name -> aos.v1.Memory
-	168, // 55: aos.v1.AddMemoryResponse.memory:type_name -> aos.v1.Memory
-	168, // 56: aos.v1.AcceptMemoryResponse.memory:type_name -> aos.v1.Memory
-	135, // 57: aos.v1.RootModeBlocked.tasks:type_name -> aos.v1.BlockingTask
-	169, // 58: aos.v1.BlockingTask.state:type_name -> aos.v1.TaskState
-	161, // 59: aos.v1.RootModeLockout.until:type_name -> google.protobuf.Timestamp
-	46,  // 60: aos.v1.ListNotificationsResponse.notifications:type_name -> aos.v1.Notification
-	144, // 61: aos.v1.ProcessesResponse.processes:type_name -> aos.v1.ProcessInfo
-	161, // 62: aos.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
-	147, // 63: aos.v1.MetricsResponse.disks:type_name -> aos.v1.DiskUsage
-	150, // 64: aos.v1.UsageResponse.days:type_name -> aos.v1.DailyUsage
-	170, // 65: aos.v1.DailyUsage.usage:type_name -> aos.v1.Usage
-	156, // 66: aos.v1.InfoResponse.autonomy:type_name -> aos.v1.Autonomy
-	163, // 67: aos.v1.InfoResponse.replay:type_name -> aos.v1.ReplayStatus
-	170, // 68: aos.v1.InfoResponse.today:type_name -> aos.v1.Usage
-	171, // 69: aos.v1.AuditResponse.entries:type_name -> aos.v1.AuditEntry
-	0,   // 70: aos.v1.AuthService.SignIn:input_type -> aos.v1.SignInRequest
-	2,   // 71: aos.v1.AuthService.Refresh:input_type -> aos.v1.RefreshRequest
-	4,   // 72: aos.v1.AuthService.CreateTicket:input_type -> aos.v1.CreateTicketRequest
-	6,   // 73: aos.v1.AuthService.ChangePassword:input_type -> aos.v1.ChangePasswordRequest
-	8,   // 74: aos.v1.AuthService.SignOut:input_type -> aos.v1.SignOutRequest
-	10,  // 75: aos.v1.AuthService.CreateInitialUser:input_type -> aos.v1.CreateInitialUserRequest
-	12,  // 76: aos.v1.TaskService.CreateTask:input_type -> aos.v1.CreateTaskRequest
-	14,  // 77: aos.v1.TaskService.ListTasks:input_type -> aos.v1.ListTasksRequest
-	16,  // 78: aos.v1.TaskService.GetTask:input_type -> aos.v1.GetTaskRequest
-	18,  // 79: aos.v1.TaskService.SendFollowUp:input_type -> aos.v1.SendFollowUpRequest
-	20,  // 80: aos.v1.TaskService.AnswerQuestion:input_type -> aos.v1.AnswerQuestionRequest
-	22,  // 81: aos.v1.TaskService.CancelTask:input_type -> aos.v1.CancelTaskRequest
-	24,  // 82: aos.v1.TaskService.ResumeTask:input_type -> aos.v1.ResumeTaskRequest
-	26,  // 83: aos.v1.TaskService.StopAll:input_type -> aos.v1.StopAllRequest
-	28,  // 84: aos.v1.TaskService.DeleteTask:input_type -> aos.v1.DeleteTaskRequest
-	30,  // 85: aos.v1.ApprovalService.ListPending:input_type -> aos.v1.ListPendingRequest
-	32,  // 86: aos.v1.ApprovalService.Decide:input_type -> aos.v1.DecideRequest
-	34,  // 87: aos.v1.EventService.Subscribe:input_type -> aos.v1.SubscribeRequest
-	50,  // 88: aos.v1.FileService.List:input_type -> aos.v1.ListRequest
-	52,  // 89: aos.v1.FileService.Stat:input_type -> aos.v1.StatRequest
-	54,  // 90: aos.v1.FileService.Read:input_type -> aos.v1.ReadRequest
-	56,  // 91: aos.v1.FileService.Write:input_type -> aos.v1.WriteRequest
-	58,  // 92: aos.v1.FileService.Move:input_type -> aos.v1.MoveRequest
-	60,  // 93: aos.v1.FileService.Copy:input_type -> aos.v1.CopyRequest
-	62,  // 94: aos.v1.FileService.Delete:input_type -> aos.v1.DeleteRequest
-	64,  // 95: aos.v1.FileService.Protect:input_type -> aos.v1.ProtectRequest
-	66,  // 96: aos.v1.FileService.Unprotect:input_type -> aos.v1.UnprotectRequest
-	68,  // 97: aos.v1.FileService.ListProtected:input_type -> aos.v1.ListProtectedRequest
-	47,  // 98: aos.v1.FileService.Watch:input_type -> aos.v1.WatchRequest
-	71,  // 99: aos.v1.TrashService.ListTrash:input_type -> aos.v1.ListTrashRequest
-	73,  // 100: aos.v1.TrashService.Restore:input_type -> aos.v1.RestoreRequest
-	75,  // 101: aos.v1.TrashService.Empty:input_type -> aos.v1.EmptyRequest
-	78,  // 102: aos.v1.SessionService.CreateSession:input_type -> aos.v1.CreateSessionRequest
-	80,  // 103: aos.v1.SessionService.ListSessions:input_type -> aos.v1.ListSessionsRequest
-	82,  // 104: aos.v1.SessionService.CloseSession:input_type -> aos.v1.CloseSessionRequest
-	84,  // 105: aos.v1.SoftwareService.ListPackages:input_type -> aos.v1.ListPackagesRequest
-	86,  // 106: aos.v1.SoftwareService.ListLedger:input_type -> aos.v1.ListLedgerRequest
-	88,  // 107: aos.v1.SoftwareService.ListCheckpoints:input_type -> aos.v1.ListCheckpointsRequest
-	90,  // 108: aos.v1.SoftwareService.CreateCheckpoint:input_type -> aos.v1.CreateCheckpointRequest
-	92,  // 109: aos.v1.SoftwareService.RestoreCheckpoint:input_type -> aos.v1.RestoreCheckpointRequest
-	94,  // 110: aos.v1.SupervisorService.ListServices:input_type -> aos.v1.ListServicesRequest
-	96,  // 111: aos.v1.SupervisorService.StartService:input_type -> aos.v1.StartServiceRequest
-	98,  // 112: aos.v1.SupervisorService.StopService:input_type -> aos.v1.StopServiceRequest
-	100, // 113: aos.v1.SupervisorService.RestartService:input_type -> aos.v1.RestartServiceRequest
-	102, // 114: aos.v1.SupervisorService.RemoveService:input_type -> aos.v1.RemoveServiceRequest
-	104, // 115: aos.v1.SupervisorService.StreamLogs:input_type -> aos.v1.StreamLogsRequest
-	116, // 116: aos.v1.SettingsService.ListMemory:input_type -> aos.v1.ListMemoryRequest
-	118, // 117: aos.v1.SettingsService.AddMemory:input_type -> aos.v1.AddMemoryRequest
-	120, // 118: aos.v1.SettingsService.AcceptMemory:input_type -> aos.v1.AcceptMemoryRequest
-	122, // 119: aos.v1.SettingsService.ForgetMemory:input_type -> aos.v1.ForgetMemoryRequest
-	124, // 120: aos.v1.SettingsService.GetDesktopState:input_type -> aos.v1.GetDesktopStateRequest
-	126, // 121: aos.v1.SettingsService.SaveDesktopState:input_type -> aos.v1.SaveDesktopStateRequest
-	111, // 122: aos.v1.SettingsService.Get:input_type -> aos.v1.GetSettingsRequest
-	114, // 123: aos.v1.SettingsService.Update:input_type -> aos.v1.UpdateSettingRequest
-	106, // 124: aos.v1.SettingsService.SetApiKey:input_type -> aos.v1.SetApiKeyRequest
-	108, // 125: aos.v1.SettingsService.ClearApiKey:input_type -> aos.v1.ClearApiKeyRequest
-	151, // 126: aos.v1.SystemService.Info:input_type -> aos.v1.InfoRequest
-	153, // 127: aos.v1.SystemService.Audit:input_type -> aos.v1.AuditRequest
-	148, // 128: aos.v1.SystemService.Usage:input_type -> aos.v1.UsageRequest
-	145, // 129: aos.v1.SystemService.Metrics:input_type -> aos.v1.MetricsRequest
-	142, // 130: aos.v1.SystemService.Processes:input_type -> aos.v1.ProcessesRequest
-	138, // 131: aos.v1.SystemService.ListNotifications:input_type -> aos.v1.ListNotificationsRequest
-	140, // 132: aos.v1.SystemService.DismissNotification:input_type -> aos.v1.DismissNotificationRequest
-	128, // 133: aos.v1.SystemService.Restart:input_type -> aos.v1.RestartRequest
-	132, // 134: aos.v1.SystemService.SetRootMode:input_type -> aos.v1.SetRootModeRequest
-	130, // 135: aos.v1.SystemService.ClearRootHistory:input_type -> aos.v1.ClearRootHistoryRequest
-	1,   // 136: aos.v1.AuthService.SignIn:output_type -> aos.v1.SignInResponse
-	3,   // 137: aos.v1.AuthService.Refresh:output_type -> aos.v1.RefreshResponse
-	5,   // 138: aos.v1.AuthService.CreateTicket:output_type -> aos.v1.CreateTicketResponse
-	7,   // 139: aos.v1.AuthService.ChangePassword:output_type -> aos.v1.ChangePasswordResponse
-	9,   // 140: aos.v1.AuthService.SignOut:output_type -> aos.v1.SignOutResponse
-	11,  // 141: aos.v1.AuthService.CreateInitialUser:output_type -> aos.v1.CreateInitialUserResponse
-	13,  // 142: aos.v1.TaskService.CreateTask:output_type -> aos.v1.CreateTaskResponse
-	15,  // 143: aos.v1.TaskService.ListTasks:output_type -> aos.v1.ListTasksResponse
-	17,  // 144: aos.v1.TaskService.GetTask:output_type -> aos.v1.GetTaskResponse
-	19,  // 145: aos.v1.TaskService.SendFollowUp:output_type -> aos.v1.SendFollowUpResponse
-	21,  // 146: aos.v1.TaskService.AnswerQuestion:output_type -> aos.v1.AnswerQuestionResponse
-	23,  // 147: aos.v1.TaskService.CancelTask:output_type -> aos.v1.CancelTaskResponse
-	25,  // 148: aos.v1.TaskService.ResumeTask:output_type -> aos.v1.ResumeTaskResponse
-	27,  // 149: aos.v1.TaskService.StopAll:output_type -> aos.v1.StopAllResponse
-	29,  // 150: aos.v1.TaskService.DeleteTask:output_type -> aos.v1.DeleteTaskResponse
-	31,  // 151: aos.v1.ApprovalService.ListPending:output_type -> aos.v1.ListPendingResponse
-	33,  // 152: aos.v1.ApprovalService.Decide:output_type -> aos.v1.DecideResponse
-	35,  // 153: aos.v1.EventService.Subscribe:output_type -> aos.v1.SubscribeResponse
-	51,  // 154: aos.v1.FileService.List:output_type -> aos.v1.ListResponse
-	53,  // 155: aos.v1.FileService.Stat:output_type -> aos.v1.StatResponse
-	55,  // 156: aos.v1.FileService.Read:output_type -> aos.v1.ReadResponse
-	57,  // 157: aos.v1.FileService.Write:output_type -> aos.v1.WriteResponse
-	59,  // 158: aos.v1.FileService.Move:output_type -> aos.v1.MoveResponse
-	61,  // 159: aos.v1.FileService.Copy:output_type -> aos.v1.CopyResponse
-	63,  // 160: aos.v1.FileService.Delete:output_type -> aos.v1.DeleteResponse
-	65,  // 161: aos.v1.FileService.Protect:output_type -> aos.v1.ProtectResponse
-	67,  // 162: aos.v1.FileService.Unprotect:output_type -> aos.v1.UnprotectResponse
-	69,  // 163: aos.v1.FileService.ListProtected:output_type -> aos.v1.ListProtectedResponse
-	48,  // 164: aos.v1.FileService.Watch:output_type -> aos.v1.WatchResponse
-	72,  // 165: aos.v1.TrashService.ListTrash:output_type -> aos.v1.ListTrashResponse
-	74,  // 166: aos.v1.TrashService.Restore:output_type -> aos.v1.RestoreResponse
-	76,  // 167: aos.v1.TrashService.Empty:output_type -> aos.v1.EmptyResponse
-	79,  // 168: aos.v1.SessionService.CreateSession:output_type -> aos.v1.CreateSessionResponse
-	81,  // 169: aos.v1.SessionService.ListSessions:output_type -> aos.v1.ListSessionsResponse
-	83,  // 170: aos.v1.SessionService.CloseSession:output_type -> aos.v1.CloseSessionResponse
-	85,  // 171: aos.v1.SoftwareService.ListPackages:output_type -> aos.v1.ListPackagesResponse
-	87,  // 172: aos.v1.SoftwareService.ListLedger:output_type -> aos.v1.ListLedgerResponse
-	89,  // 173: aos.v1.SoftwareService.ListCheckpoints:output_type -> aos.v1.ListCheckpointsResponse
-	91,  // 174: aos.v1.SoftwareService.CreateCheckpoint:output_type -> aos.v1.CreateCheckpointResponse
-	93,  // 175: aos.v1.SoftwareService.RestoreCheckpoint:output_type -> aos.v1.RestoreCheckpointResponse
-	95,  // 176: aos.v1.SupervisorService.ListServices:output_type -> aos.v1.ListServicesResponse
-	97,  // 177: aos.v1.SupervisorService.StartService:output_type -> aos.v1.StartServiceResponse
-	99,  // 178: aos.v1.SupervisorService.StopService:output_type -> aos.v1.StopServiceResponse
-	101, // 179: aos.v1.SupervisorService.RestartService:output_type -> aos.v1.RestartServiceResponse
-	103, // 180: aos.v1.SupervisorService.RemoveService:output_type -> aos.v1.RemoveServiceResponse
-	105, // 181: aos.v1.SupervisorService.StreamLogs:output_type -> aos.v1.StreamLogsResponse
-	117, // 182: aos.v1.SettingsService.ListMemory:output_type -> aos.v1.ListMemoryResponse
-	119, // 183: aos.v1.SettingsService.AddMemory:output_type -> aos.v1.AddMemoryResponse
-	121, // 184: aos.v1.SettingsService.AcceptMemory:output_type -> aos.v1.AcceptMemoryResponse
-	123, // 185: aos.v1.SettingsService.ForgetMemory:output_type -> aos.v1.ForgetMemoryResponse
-	125, // 186: aos.v1.SettingsService.GetDesktopState:output_type -> aos.v1.GetDesktopStateResponse
-	127, // 187: aos.v1.SettingsService.SaveDesktopState:output_type -> aos.v1.SaveDesktopStateResponse
-	112, // 188: aos.v1.SettingsService.Get:output_type -> aos.v1.GetSettingsResponse
-	115, // 189: aos.v1.SettingsService.Update:output_type -> aos.v1.UpdateSettingResponse
-	107, // 190: aos.v1.SettingsService.SetApiKey:output_type -> aos.v1.SetApiKeyResponse
-	109, // 191: aos.v1.SettingsService.ClearApiKey:output_type -> aos.v1.ClearApiKeyResponse
-	152, // 192: aos.v1.SystemService.Info:output_type -> aos.v1.InfoResponse
-	154, // 193: aos.v1.SystemService.Audit:output_type -> aos.v1.AuditResponse
-	149, // 194: aos.v1.SystemService.Usage:output_type -> aos.v1.UsageResponse
-	146, // 195: aos.v1.SystemService.Metrics:output_type -> aos.v1.MetricsResponse
-	143, // 196: aos.v1.SystemService.Processes:output_type -> aos.v1.ProcessesResponse
-	139, // 197: aos.v1.SystemService.ListNotifications:output_type -> aos.v1.ListNotificationsResponse
-	141, // 198: aos.v1.SystemService.DismissNotification:output_type -> aos.v1.DismissNotificationResponse
-	129, // 199: aos.v1.SystemService.Restart:output_type -> aos.v1.RestartResponse
-	133, // 200: aos.v1.SystemService.SetRootMode:output_type -> aos.v1.SetRootModeResponse
-	131, // 201: aos.v1.SystemService.ClearRootHistory:output_type -> aos.v1.ClearRootHistoryResponse
-	136, // [136:202] is the sub-list for method output_type
-	70,  // [70:136] is the sub-list for method input_type
-	70,  // [70:70] is the sub-list for extension type_name
-	70,  // [70:70] is the sub-list for extension extendee
-	0,   // [0:70] is the sub-list for field type_name
+	207, // 0: aos.v1.CreateTaskRequest.autonomy:type_name -> aos.v1.Autonomy
+	15,  // 1: aos.v1.CreateTaskRequest.editor:type_name -> aos.v1.EditorContext
+	208, // 2: aos.v1.CreateTaskResponse.task:type_name -> aos.v1.Task
+	208, // 3: aos.v1.ListTasksResponse.tasks:type_name -> aos.v1.Task
+	208, // 4: aos.v1.GetTaskResponse.task:type_name -> aos.v1.Task
+	209, // 5: aos.v1.GetTaskResponse.steps:type_name -> aos.v1.TaskStep
+	210, // 6: aos.v1.GetTaskResponse.approvals:type_name -> aos.v1.Approval
+	15,  // 7: aos.v1.SendFollowUpRequest.editor:type_name -> aos.v1.EditorContext
+	208, // 8: aos.v1.SendFollowUpResponse.task:type_name -> aos.v1.Task
+	208, // 9: aos.v1.ResumeTaskResponse.task:type_name -> aos.v1.Task
+	211, // 10: aos.v1.TaskFileChange.changed_at:type_name -> google.protobuf.Timestamp
+	33,  // 11: aos.v1.ListChangesResponse.changes:type_name -> aos.v1.TaskFileChange
+	33,  // 12: aos.v1.GetBeforeResponse.change:type_name -> aos.v1.TaskFileChange
+	33,  // 13: aos.v1.ReviewChangeResponse.change:type_name -> aos.v1.TaskFileChange
+	33,  // 14: aos.v1.DiscardChangeResponse.change:type_name -> aos.v1.TaskFileChange
+	210, // 15: aos.v1.ListPendingResponse.approvals:type_name -> aos.v1.Approval
+	212, // 16: aos.v1.DecideRequest.decision:type_name -> aos.v1.ApprovalDecision
+	210, // 17: aos.v1.DecideResponse.approval:type_name -> aos.v1.Approval
+	48,  // 18: aos.v1.SubscribeResponse.event:type_name -> aos.v1.Event
+	211, // 19: aos.v1.Event.time:type_name -> google.protobuf.Timestamp
+	53,  // 20: aos.v1.Event.task_changed:type_name -> aos.v1.TaskChanged
+	54,  // 21: aos.v1.Event.task_step:type_name -> aos.v1.TaskStepChanged
+	55,  // 22: aos.v1.Event.text_delta:type_name -> aos.v1.TextDelta
+	56,  // 23: aos.v1.Event.approval:type_name -> aos.v1.ApprovalChanged
+	57,  // 24: aos.v1.Event.download_progress:type_name -> aos.v1.DownloadProgress
+	58,  // 25: aos.v1.Event.notification:type_name -> aos.v1.Notification
+	51,  // 26: aos.v1.Event.service_changed:type_name -> aos.v1.ServiceChanged
+	52,  // 27: aos.v1.Event.replay_progress:type_name -> aos.v1.ReplayProgress
+	50,  // 28: aos.v1.Event.open_in_desktop:type_name -> aos.v1.OpenInDesktop
+	49,  // 29: aos.v1.Event.desktop_state:type_name -> aos.v1.DesktopStateChanged
+	203, // 30: aos.v1.Event.workspace:type_name -> aos.v1.WorkspaceChanged
+	213, // 31: aos.v1.ServiceChanged.service:type_name -> aos.v1.ServiceInfo
+	214, // 32: aos.v1.ReplayProgress.status:type_name -> aos.v1.ReplayStatus
+	208, // 33: aos.v1.TaskChanged.task:type_name -> aos.v1.Task
+	209, // 34: aos.v1.TaskStepChanged.step:type_name -> aos.v1.TaskStep
+	210, // 35: aos.v1.ApprovalChanged.approval:type_name -> aos.v1.Approval
+	211, // 36: aos.v1.Notification.created_at:type_name -> google.protobuf.Timestamp
+	211, // 37: aos.v1.SensitiveBackup.saved_at:type_name -> google.protobuf.Timestamp
+	62,  // 38: aos.v1.ListSensitiveBackupsResponse.backups:type_name -> aos.v1.SensitiveBackup
+	69,  // 39: aos.v1.WatchResponse.entries:type_name -> aos.v1.FileInfo
+	211, // 40: aos.v1.FileInfo.modified_at:type_name -> google.protobuf.Timestamp
+	69,  // 41: aos.v1.ListResponse.entries:type_name -> aos.v1.FileInfo
+	69,  // 42: aos.v1.StatResponse.info:type_name -> aos.v1.FileInfo
+	92,  // 43: aos.v1.DeleteResponse.item:type_name -> aos.v1.TrashItem
+	206, // 44: aos.v1.ListProtectedResponse.entries:type_name -> aos.v1.ListProtectedResponse.Entry
+	211, // 45: aos.v1.TrashItem.deleted_at:type_name -> google.protobuf.Timestamp
+	92,  // 46: aos.v1.ListTrashResponse.items:type_name -> aos.v1.TrashItem
+	211, // 47: aos.v1.SessionInfo.created_at:type_name -> google.protobuf.Timestamp
+	99,  // 48: aos.v1.CreateSessionResponse.session:type_name -> aos.v1.SessionInfo
+	99,  // 49: aos.v1.ListSessionsResponse.sessions:type_name -> aos.v1.SessionInfo
+	215, // 50: aos.v1.ListPackagesResponse.packages:type_name -> aos.v1.Package
+	216, // 51: aos.v1.ListLedgerResponse.ops:type_name -> aos.v1.LedgerOp
+	217, // 52: aos.v1.ListCheckpointsResponse.checkpoints:type_name -> aos.v1.Checkpoint
+	217, // 53: aos.v1.CreateCheckpointResponse.checkpoint:type_name -> aos.v1.Checkpoint
+	216, // 54: aos.v1.RestoreCheckpointResponse.op:type_name -> aos.v1.LedgerOp
+	217, // 55: aos.v1.RestoreCheckpointResponse.before:type_name -> aos.v1.Checkpoint
+	213, // 56: aos.v1.ListServicesResponse.services:type_name -> aos.v1.ServiceInfo
+	218, // 57: aos.v1.ListServicesResponse.listeners:type_name -> aos.v1.Listener
+	213, // 58: aos.v1.StartServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	213, // 59: aos.v1.StopServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	213, // 60: aos.v1.RestartServiceResponse.service:type_name -> aos.v1.ServiceInfo
+	132, // 61: aos.v1.GetSettingsResponse.settings:type_name -> aos.v1.Setting
+	135, // 62: aos.v1.GetSettingsResponse.models:type_name -> aos.v1.ModelChoice
+	132, // 63: aos.v1.UpdateSettingResponse.setting:type_name -> aos.v1.Setting
+	219, // 64: aos.v1.ListMemoryResponse.memories:type_name -> aos.v1.Memory
+	219, // 65: aos.v1.AddMemoryResponse.memory:type_name -> aos.v1.Memory
+	219, // 66: aos.v1.AcceptMemoryResponse.memory:type_name -> aos.v1.Memory
+	158, // 67: aos.v1.RootModeBlocked.tasks:type_name -> aos.v1.BlockingTask
+	157, // 68: aos.v1.RootModeBlocked.workspaces:type_name -> aos.v1.BlockingWorkspace
+	220, // 69: aos.v1.BlockingTask.state:type_name -> aos.v1.TaskState
+	211, // 70: aos.v1.RootModeLockout.until:type_name -> google.protobuf.Timestamp
+	58,  // 71: aos.v1.ListNotificationsResponse.notifications:type_name -> aos.v1.Notification
+	167, // 72: aos.v1.ProcessesResponse.processes:type_name -> aos.v1.ProcessInfo
+	211, // 73: aos.v1.ProcessInfo.started_at:type_name -> google.protobuf.Timestamp
+	170, // 74: aos.v1.MetricsResponse.disks:type_name -> aos.v1.DiskUsage
+	173, // 75: aos.v1.UsageResponse.days:type_name -> aos.v1.DailyUsage
+	221, // 76: aos.v1.DailyUsage.usage:type_name -> aos.v1.Usage
+	207, // 77: aos.v1.InfoResponse.autonomy:type_name -> aos.v1.Autonomy
+	214, // 78: aos.v1.InfoResponse.replay:type_name -> aos.v1.ReplayStatus
+	221, // 79: aos.v1.InfoResponse.today:type_name -> aos.v1.Usage
+	222, // 80: aos.v1.AuditResponse.entries:type_name -> aos.v1.AuditEntry
+	178, // 81: aos.v1.DefinitionResponse.symbols:type_name -> aos.v1.Symbol
+	179, // 82: aos.v1.DefinitionResponse.index:type_name -> aos.v1.IndexState
+	193, // 83: aos.v1.ReferencesResponse.files:type_name -> aos.v1.TextFileMatches
+	178, // 84: aos.v1.DocumentSymbolsResponse.symbols:type_name -> aos.v1.Symbol
+	179, // 85: aos.v1.DocumentSymbolsResponse.index:type_name -> aos.v1.IndexState
+	178, // 86: aos.v1.WorkspaceSymbolsResponse.symbols:type_name -> aos.v1.Symbol
+	179, // 87: aos.v1.WorkspaceSymbolsResponse.index:type_name -> aos.v1.IndexState
+	190, // 88: aos.v1.FindFilesResponse.files:type_name -> aos.v1.FoundFile
+	193, // 89: aos.v1.SearchTextResponse.files:type_name -> aos.v1.TextFileMatches
+	196, // 90: aos.v1.SearchTextResponse.summary:type_name -> aos.v1.SearchTextSummary
+	194, // 91: aos.v1.TextFileMatches.matches:type_name -> aos.v1.TextMatch
+	195, // 92: aos.v1.TextMatch.ranges:type_name -> aos.v1.TextRange
+	204, // 93: aos.v1.WorkspaceChanged.changes:type_name -> aos.v1.FileChange
+	205, // 94: aos.v1.WorkspaceChanged.watch:type_name -> aos.v1.WorkspaceWatch
+	0,   // 95: aos.v1.FileChange.kind:type_name -> aos.v1.FileChange.Kind
+	1,   // 96: aos.v1.WorkspaceWatch.state:type_name -> aos.v1.WorkspaceWatch.State
+	2,   // 97: aos.v1.AuthService.SignIn:input_type -> aos.v1.SignInRequest
+	4,   // 98: aos.v1.AuthService.Refresh:input_type -> aos.v1.RefreshRequest
+	6,   // 99: aos.v1.AuthService.CreateTicket:input_type -> aos.v1.CreateTicketRequest
+	8,   // 100: aos.v1.AuthService.ChangePassword:input_type -> aos.v1.ChangePasswordRequest
+	10,  // 101: aos.v1.AuthService.SignOut:input_type -> aos.v1.SignOutRequest
+	12,  // 102: aos.v1.AuthService.CreateInitialUser:input_type -> aos.v1.CreateInitialUserRequest
+	14,  // 103: aos.v1.TaskService.CreateTask:input_type -> aos.v1.CreateTaskRequest
+	17,  // 104: aos.v1.TaskService.ListTasks:input_type -> aos.v1.ListTasksRequest
+	19,  // 105: aos.v1.TaskService.GetTask:input_type -> aos.v1.GetTaskRequest
+	21,  // 106: aos.v1.TaskService.SendFollowUp:input_type -> aos.v1.SendFollowUpRequest
+	23,  // 107: aos.v1.TaskService.AnswerQuestion:input_type -> aos.v1.AnswerQuestionRequest
+	25,  // 108: aos.v1.TaskService.CancelTask:input_type -> aos.v1.CancelTaskRequest
+	27,  // 109: aos.v1.TaskService.ResumeTask:input_type -> aos.v1.ResumeTaskRequest
+	29,  // 110: aos.v1.TaskService.StopAll:input_type -> aos.v1.StopAllRequest
+	31,  // 111: aos.v1.TaskService.DeleteTask:input_type -> aos.v1.DeleteTaskRequest
+	34,  // 112: aos.v1.TaskService.ListChanges:input_type -> aos.v1.ListChangesRequest
+	36,  // 113: aos.v1.TaskService.GetBefore:input_type -> aos.v1.GetBeforeRequest
+	38,  // 114: aos.v1.TaskService.ReviewChange:input_type -> aos.v1.ReviewChangeRequest
+	40,  // 115: aos.v1.TaskService.DiscardChange:input_type -> aos.v1.DiscardChangeRequest
+	42,  // 116: aos.v1.ApprovalService.ListPending:input_type -> aos.v1.ListPendingRequest
+	44,  // 117: aos.v1.ApprovalService.Decide:input_type -> aos.v1.DecideRequest
+	46,  // 118: aos.v1.EventService.Subscribe:input_type -> aos.v1.SubscribeRequest
+	70,  // 119: aos.v1.FileService.List:input_type -> aos.v1.ListRequest
+	72,  // 120: aos.v1.FileService.Stat:input_type -> aos.v1.StatRequest
+	74,  // 121: aos.v1.FileService.Read:input_type -> aos.v1.ReadRequest
+	76,  // 122: aos.v1.FileService.Write:input_type -> aos.v1.WriteRequest
+	78,  // 123: aos.v1.FileService.MakeFolder:input_type -> aos.v1.MakeFolderRequest
+	80,  // 124: aos.v1.FileService.Move:input_type -> aos.v1.MoveRequest
+	82,  // 125: aos.v1.FileService.Copy:input_type -> aos.v1.CopyRequest
+	84,  // 126: aos.v1.FileService.Delete:input_type -> aos.v1.DeleteRequest
+	86,  // 127: aos.v1.FileService.Protect:input_type -> aos.v1.ProtectRequest
+	88,  // 128: aos.v1.FileService.Unprotect:input_type -> aos.v1.UnprotectRequest
+	90,  // 129: aos.v1.FileService.ListProtected:input_type -> aos.v1.ListProtectedRequest
+	67,  // 130: aos.v1.FileService.Watch:input_type -> aos.v1.WatchRequest
+	60,  // 131: aos.v1.FileService.CheckSensitive:input_type -> aos.v1.CheckSensitiveRequest
+	63,  // 132: aos.v1.FileService.ListSensitiveBackups:input_type -> aos.v1.ListSensitiveBackupsRequest
+	65,  // 133: aos.v1.FileService.RestoreSensitiveBackup:input_type -> aos.v1.RestoreSensitiveBackupRequest
+	93,  // 134: aos.v1.TrashService.ListTrash:input_type -> aos.v1.ListTrashRequest
+	95,  // 135: aos.v1.TrashService.Restore:input_type -> aos.v1.RestoreRequest
+	97,  // 136: aos.v1.TrashService.Empty:input_type -> aos.v1.EmptyRequest
+	100, // 137: aos.v1.SessionService.CreateSession:input_type -> aos.v1.CreateSessionRequest
+	102, // 138: aos.v1.SessionService.ListSessions:input_type -> aos.v1.ListSessionsRequest
+	104, // 139: aos.v1.SessionService.CloseSession:input_type -> aos.v1.CloseSessionRequest
+	106, // 140: aos.v1.SoftwareService.ListPackages:input_type -> aos.v1.ListPackagesRequest
+	108, // 141: aos.v1.SoftwareService.ListLedger:input_type -> aos.v1.ListLedgerRequest
+	110, // 142: aos.v1.SoftwareService.ListCheckpoints:input_type -> aos.v1.ListCheckpointsRequest
+	112, // 143: aos.v1.SoftwareService.CreateCheckpoint:input_type -> aos.v1.CreateCheckpointRequest
+	114, // 144: aos.v1.SoftwareService.RestoreCheckpoint:input_type -> aos.v1.RestoreCheckpointRequest
+	116, // 145: aos.v1.SupervisorService.ListServices:input_type -> aos.v1.ListServicesRequest
+	118, // 146: aos.v1.SupervisorService.StartService:input_type -> aos.v1.StartServiceRequest
+	120, // 147: aos.v1.SupervisorService.StopService:input_type -> aos.v1.StopServiceRequest
+	122, // 148: aos.v1.SupervisorService.RestartService:input_type -> aos.v1.RestartServiceRequest
+	124, // 149: aos.v1.SupervisorService.RemoveService:input_type -> aos.v1.RemoveServiceRequest
+	126, // 150: aos.v1.SupervisorService.StreamLogs:input_type -> aos.v1.StreamLogsRequest
+	138, // 151: aos.v1.SettingsService.ListMemory:input_type -> aos.v1.ListMemoryRequest
+	140, // 152: aos.v1.SettingsService.AddMemory:input_type -> aos.v1.AddMemoryRequest
+	142, // 153: aos.v1.SettingsService.AcceptMemory:input_type -> aos.v1.AcceptMemoryRequest
+	144, // 154: aos.v1.SettingsService.ForgetMemory:input_type -> aos.v1.ForgetMemoryRequest
+	146, // 155: aos.v1.SettingsService.GetDesktopState:input_type -> aos.v1.GetDesktopStateRequest
+	148, // 156: aos.v1.SettingsService.SaveDesktopState:input_type -> aos.v1.SaveDesktopStateRequest
+	133, // 157: aos.v1.SettingsService.Get:input_type -> aos.v1.GetSettingsRequest
+	136, // 158: aos.v1.SettingsService.Update:input_type -> aos.v1.UpdateSettingRequest
+	128, // 159: aos.v1.SettingsService.SetApiKey:input_type -> aos.v1.SetApiKeyRequest
+	130, // 160: aos.v1.SettingsService.ClearApiKey:input_type -> aos.v1.ClearApiKeyRequest
+	174, // 161: aos.v1.SystemService.Info:input_type -> aos.v1.InfoRequest
+	176, // 162: aos.v1.SystemService.Audit:input_type -> aos.v1.AuditRequest
+	171, // 163: aos.v1.SystemService.Usage:input_type -> aos.v1.UsageRequest
+	168, // 164: aos.v1.SystemService.Metrics:input_type -> aos.v1.MetricsRequest
+	165, // 165: aos.v1.SystemService.Processes:input_type -> aos.v1.ProcessesRequest
+	161, // 166: aos.v1.SystemService.ListNotifications:input_type -> aos.v1.ListNotificationsRequest
+	163, // 167: aos.v1.SystemService.DismissNotification:input_type -> aos.v1.DismissNotificationRequest
+	150, // 168: aos.v1.SystemService.Restart:input_type -> aos.v1.RestartRequest
+	154, // 169: aos.v1.SystemService.SetRootMode:input_type -> aos.v1.SetRootModeRequest
+	152, // 170: aos.v1.SystemService.ClearRootHistory:input_type -> aos.v1.ClearRootHistoryRequest
+	197, // 171: aos.v1.CodeService.OpenWorkspace:input_type -> aos.v1.OpenWorkspaceRequest
+	199, // 172: aos.v1.CodeService.CloseWorkspace:input_type -> aos.v1.CloseWorkspaceRequest
+	201, // 173: aos.v1.CodeService.ReportDirty:input_type -> aos.v1.ReportDirtyRequest
+	188, // 174: aos.v1.CodeService.FindFiles:input_type -> aos.v1.FindFilesRequest
+	191, // 175: aos.v1.CodeService.SearchText:input_type -> aos.v1.SearchTextRequest
+	180, // 176: aos.v1.CodeService.Definition:input_type -> aos.v1.DefinitionRequest
+	182, // 177: aos.v1.CodeService.References:input_type -> aos.v1.ReferencesRequest
+	184, // 178: aos.v1.CodeService.DocumentSymbols:input_type -> aos.v1.DocumentSymbolsRequest
+	186, // 179: aos.v1.CodeService.WorkspaceSymbols:input_type -> aos.v1.WorkspaceSymbolsRequest
+	3,   // 180: aos.v1.AuthService.SignIn:output_type -> aos.v1.SignInResponse
+	5,   // 181: aos.v1.AuthService.Refresh:output_type -> aos.v1.RefreshResponse
+	7,   // 182: aos.v1.AuthService.CreateTicket:output_type -> aos.v1.CreateTicketResponse
+	9,   // 183: aos.v1.AuthService.ChangePassword:output_type -> aos.v1.ChangePasswordResponse
+	11,  // 184: aos.v1.AuthService.SignOut:output_type -> aos.v1.SignOutResponse
+	13,  // 185: aos.v1.AuthService.CreateInitialUser:output_type -> aos.v1.CreateInitialUserResponse
+	16,  // 186: aos.v1.TaskService.CreateTask:output_type -> aos.v1.CreateTaskResponse
+	18,  // 187: aos.v1.TaskService.ListTasks:output_type -> aos.v1.ListTasksResponse
+	20,  // 188: aos.v1.TaskService.GetTask:output_type -> aos.v1.GetTaskResponse
+	22,  // 189: aos.v1.TaskService.SendFollowUp:output_type -> aos.v1.SendFollowUpResponse
+	24,  // 190: aos.v1.TaskService.AnswerQuestion:output_type -> aos.v1.AnswerQuestionResponse
+	26,  // 191: aos.v1.TaskService.CancelTask:output_type -> aos.v1.CancelTaskResponse
+	28,  // 192: aos.v1.TaskService.ResumeTask:output_type -> aos.v1.ResumeTaskResponse
+	30,  // 193: aos.v1.TaskService.StopAll:output_type -> aos.v1.StopAllResponse
+	32,  // 194: aos.v1.TaskService.DeleteTask:output_type -> aos.v1.DeleteTaskResponse
+	35,  // 195: aos.v1.TaskService.ListChanges:output_type -> aos.v1.ListChangesResponse
+	37,  // 196: aos.v1.TaskService.GetBefore:output_type -> aos.v1.GetBeforeResponse
+	39,  // 197: aos.v1.TaskService.ReviewChange:output_type -> aos.v1.ReviewChangeResponse
+	41,  // 198: aos.v1.TaskService.DiscardChange:output_type -> aos.v1.DiscardChangeResponse
+	43,  // 199: aos.v1.ApprovalService.ListPending:output_type -> aos.v1.ListPendingResponse
+	45,  // 200: aos.v1.ApprovalService.Decide:output_type -> aos.v1.DecideResponse
+	47,  // 201: aos.v1.EventService.Subscribe:output_type -> aos.v1.SubscribeResponse
+	71,  // 202: aos.v1.FileService.List:output_type -> aos.v1.ListResponse
+	73,  // 203: aos.v1.FileService.Stat:output_type -> aos.v1.StatResponse
+	75,  // 204: aos.v1.FileService.Read:output_type -> aos.v1.ReadResponse
+	77,  // 205: aos.v1.FileService.Write:output_type -> aos.v1.WriteResponse
+	79,  // 206: aos.v1.FileService.MakeFolder:output_type -> aos.v1.MakeFolderResponse
+	81,  // 207: aos.v1.FileService.Move:output_type -> aos.v1.MoveResponse
+	83,  // 208: aos.v1.FileService.Copy:output_type -> aos.v1.CopyResponse
+	85,  // 209: aos.v1.FileService.Delete:output_type -> aos.v1.DeleteResponse
+	87,  // 210: aos.v1.FileService.Protect:output_type -> aos.v1.ProtectResponse
+	89,  // 211: aos.v1.FileService.Unprotect:output_type -> aos.v1.UnprotectResponse
+	91,  // 212: aos.v1.FileService.ListProtected:output_type -> aos.v1.ListProtectedResponse
+	68,  // 213: aos.v1.FileService.Watch:output_type -> aos.v1.WatchResponse
+	61,  // 214: aos.v1.FileService.CheckSensitive:output_type -> aos.v1.CheckSensitiveResponse
+	64,  // 215: aos.v1.FileService.ListSensitiveBackups:output_type -> aos.v1.ListSensitiveBackupsResponse
+	66,  // 216: aos.v1.FileService.RestoreSensitiveBackup:output_type -> aos.v1.RestoreSensitiveBackupResponse
+	94,  // 217: aos.v1.TrashService.ListTrash:output_type -> aos.v1.ListTrashResponse
+	96,  // 218: aos.v1.TrashService.Restore:output_type -> aos.v1.RestoreResponse
+	98,  // 219: aos.v1.TrashService.Empty:output_type -> aos.v1.EmptyResponse
+	101, // 220: aos.v1.SessionService.CreateSession:output_type -> aos.v1.CreateSessionResponse
+	103, // 221: aos.v1.SessionService.ListSessions:output_type -> aos.v1.ListSessionsResponse
+	105, // 222: aos.v1.SessionService.CloseSession:output_type -> aos.v1.CloseSessionResponse
+	107, // 223: aos.v1.SoftwareService.ListPackages:output_type -> aos.v1.ListPackagesResponse
+	109, // 224: aos.v1.SoftwareService.ListLedger:output_type -> aos.v1.ListLedgerResponse
+	111, // 225: aos.v1.SoftwareService.ListCheckpoints:output_type -> aos.v1.ListCheckpointsResponse
+	113, // 226: aos.v1.SoftwareService.CreateCheckpoint:output_type -> aos.v1.CreateCheckpointResponse
+	115, // 227: aos.v1.SoftwareService.RestoreCheckpoint:output_type -> aos.v1.RestoreCheckpointResponse
+	117, // 228: aos.v1.SupervisorService.ListServices:output_type -> aos.v1.ListServicesResponse
+	119, // 229: aos.v1.SupervisorService.StartService:output_type -> aos.v1.StartServiceResponse
+	121, // 230: aos.v1.SupervisorService.StopService:output_type -> aos.v1.StopServiceResponse
+	123, // 231: aos.v1.SupervisorService.RestartService:output_type -> aos.v1.RestartServiceResponse
+	125, // 232: aos.v1.SupervisorService.RemoveService:output_type -> aos.v1.RemoveServiceResponse
+	127, // 233: aos.v1.SupervisorService.StreamLogs:output_type -> aos.v1.StreamLogsResponse
+	139, // 234: aos.v1.SettingsService.ListMemory:output_type -> aos.v1.ListMemoryResponse
+	141, // 235: aos.v1.SettingsService.AddMemory:output_type -> aos.v1.AddMemoryResponse
+	143, // 236: aos.v1.SettingsService.AcceptMemory:output_type -> aos.v1.AcceptMemoryResponse
+	145, // 237: aos.v1.SettingsService.ForgetMemory:output_type -> aos.v1.ForgetMemoryResponse
+	147, // 238: aos.v1.SettingsService.GetDesktopState:output_type -> aos.v1.GetDesktopStateResponse
+	149, // 239: aos.v1.SettingsService.SaveDesktopState:output_type -> aos.v1.SaveDesktopStateResponse
+	134, // 240: aos.v1.SettingsService.Get:output_type -> aos.v1.GetSettingsResponse
+	137, // 241: aos.v1.SettingsService.Update:output_type -> aos.v1.UpdateSettingResponse
+	129, // 242: aos.v1.SettingsService.SetApiKey:output_type -> aos.v1.SetApiKeyResponse
+	131, // 243: aos.v1.SettingsService.ClearApiKey:output_type -> aos.v1.ClearApiKeyResponse
+	175, // 244: aos.v1.SystemService.Info:output_type -> aos.v1.InfoResponse
+	177, // 245: aos.v1.SystemService.Audit:output_type -> aos.v1.AuditResponse
+	172, // 246: aos.v1.SystemService.Usage:output_type -> aos.v1.UsageResponse
+	169, // 247: aos.v1.SystemService.Metrics:output_type -> aos.v1.MetricsResponse
+	166, // 248: aos.v1.SystemService.Processes:output_type -> aos.v1.ProcessesResponse
+	162, // 249: aos.v1.SystemService.ListNotifications:output_type -> aos.v1.ListNotificationsResponse
+	164, // 250: aos.v1.SystemService.DismissNotification:output_type -> aos.v1.DismissNotificationResponse
+	151, // 251: aos.v1.SystemService.Restart:output_type -> aos.v1.RestartResponse
+	155, // 252: aos.v1.SystemService.SetRootMode:output_type -> aos.v1.SetRootModeResponse
+	153, // 253: aos.v1.SystemService.ClearRootHistory:output_type -> aos.v1.ClearRootHistoryResponse
+	198, // 254: aos.v1.CodeService.OpenWorkspace:output_type -> aos.v1.OpenWorkspaceResponse
+	200, // 255: aos.v1.CodeService.CloseWorkspace:output_type -> aos.v1.CloseWorkspaceResponse
+	202, // 256: aos.v1.CodeService.ReportDirty:output_type -> aos.v1.ReportDirtyResponse
+	189, // 257: aos.v1.CodeService.FindFiles:output_type -> aos.v1.FindFilesResponse
+	192, // 258: aos.v1.CodeService.SearchText:output_type -> aos.v1.SearchTextResponse
+	181, // 259: aos.v1.CodeService.Definition:output_type -> aos.v1.DefinitionResponse
+	183, // 260: aos.v1.CodeService.References:output_type -> aos.v1.ReferencesResponse
+	185, // 261: aos.v1.CodeService.DocumentSymbols:output_type -> aos.v1.DocumentSymbolsResponse
+	187, // 262: aos.v1.CodeService.WorkspaceSymbols:output_type -> aos.v1.WorkspaceSymbolsResponse
+	180, // [180:263] is the sub-list for method output_type
+	97,  // [97:180] is the sub-list for method input_type
+	97,  // [97:97] is the sub-list for extension type_name
+	97,  // [97:97] is the sub-list for extension extendee
+	0,   // [0:97] is the sub-list for field type_name
 }
 
 func init() { file_aos_v1_services_proto_init() }
@@ -8836,7 +12301,7 @@ func file_aos_v1_services_proto_init() {
 		return
 	}
 	file_aos_v1_types_proto_init()
-	file_aos_v1_services_proto_msgTypes[36].OneofWrappers = []any{
+	file_aos_v1_services_proto_msgTypes[46].OneofWrappers = []any{
 		(*Event_TaskChanged)(nil),
 		(*Event_TaskStep)(nil),
 		(*Event_TextDelta)(nil),
@@ -8847,19 +12312,21 @@ func file_aos_v1_services_proto_init() {
 		(*Event_ReplayProgress)(nil),
 		(*Event_OpenInDesktop)(nil),
 		(*Event_DesktopState)(nil),
+		(*Event_Workspace)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_aos_v1_services_proto_rawDesc), len(file_aos_v1_services_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   156,
+			NumEnums:      2,
+			NumMessages:   205,
 			NumExtensions: 0,
-			NumServices:   11,
+			NumServices:   12,
 		},
 		GoTypes:           file_aos_v1_services_proto_goTypes,
 		DependencyIndexes: file_aos_v1_services_proto_depIdxs,
+		EnumInfos:         file_aos_v1_services_proto_enumTypes,
 		MessageInfos:      file_aos_v1_services_proto_msgTypes,
 	}.Build()
 	File_aos_v1_services_proto = out.File

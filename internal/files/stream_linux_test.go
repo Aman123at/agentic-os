@@ -73,7 +73,9 @@ func TestAWorkerIsStoppedWhenItsReaderGoesAway(t *testing.T) {
 	}
 }
 
-func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
+// asNobody is a worker that runs as nobody, with a folder for the test's files.
+func asNobody(t *testing.T) (AsUser, string) {
+	t.Helper()
 	if os.Getuid() != 0 {
 		t.Skip("running the worker as another user needs root")
 	}
@@ -93,14 +95,43 @@ func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
 	if err := os.WriteFile(exe, bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	return AsUser{Ops: Ops{Home: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}, dir
+}
+
+func TestAWorkerReadsOnlyWhatItsUserMay(t *testing.T) {
+	u, dir := asNobody(t)
 	secret := filepath.Join(dir, "token")
 	if err := os.WriteFile(secret, []byte("root only"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	u := AsUser{Ops: Ops{Home: dir, UID: 65534}, UID: 65534, GID: 65534, Exe: exe}
-	err = u.ReadStream(context.Background(), StreamArgs{Path: secret}, func(StreamHeader) error { return nil }, io.Discard)
+	err := u.ReadStream(context.Background(), StreamArgs{Path: secret}, func(StreamHeader) error { return nil }, io.Discard)
 	if !errors.Is(err, ErrPermission) {
 		t.Fatalf("reading a root-only file as nobody: %v, want ErrPermission", err)
+	}
+}
+
+// TestAWorkerSaysWhatItsUserMayWrite is M8.4: writable is checked as the
+// worker's user, so a file root owns is not writable to nobody.
+func TestAWorkerSaysWhatItsUserMayWrite(t *testing.T) {
+	u, dir := asNobody(t)
+	for name, mode := range map[string]os.FileMode{"roots.conf": 0o644, "shared.txt": 0o666} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(dir, name), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var infos []Info
+	if err := u.Run(context.Background(), OpList, PathArgs{Path: dir}, &infos, nil); err != nil {
+		t.Fatal(err)
+	}
+	writable := map[string]bool{}
+	for _, i := range infos {
+		writable[i.Name] = i.Writable
+	}
+	if writable["roots.conf"] || !writable["shared.txt"] {
+		t.Errorf("as nobody: %v, want only shared.txt writable", writable)
 	}
 }

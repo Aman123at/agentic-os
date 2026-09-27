@@ -21,6 +21,7 @@ import (
 	"github.com/Aman123at/agentic-os/internal/auth"
 	"github.com/Aman123at/agentic-os/internal/browser"
 	"github.com/Aman123at/agentic-os/internal/catalogue"
+	"github.com/Aman123at/agentic-os/internal/code"
 	"github.com/Aman123at/agentic-os/internal/desktop"
 	"github.com/Aman123at/agentic-os/internal/events"
 	"github.com/Aman123at/agentic-os/internal/files"
@@ -54,7 +55,9 @@ type Terminal interface {
 
 // Sessions manages User Sessions and lists Agent Sessions.
 type Sessions interface {
-	Create(ctx context.Context, cols, rows uint16) (*aosv1.SessionInfo, error)
+	// Create starts a User Session in cwd, an absolute folder or "" for the
+	// home folder; one its user cannot enter starts at home instead.
+	Create(ctx context.Context, cols, rows uint16, cwd string) (*aosv1.SessionInfo, error)
 	List() []*aosv1.SessionInfo
 	Close(id string) error
 	Attach(id string) (Terminal, error)
@@ -79,16 +82,26 @@ type Server struct {
 	UserFiles files.Runner // file operations as the aos user, unconfined
 	FileOps   files.Ops
 	Protected Protected
-	Sessions  Sessions
-	Memories  *profile.Memories
-	Desktop   *desktop.State
+	// OwnState is AOS's own state, which FileInfo reports not writable whatever
+	// the Realm's user may do (M8.4): in Root Mode, where that user is root, the
+	// paths a root Agent's policy hides or keeps read-only (§7.2), so Code opens
+	// them read-only. Files under a path are included.
+	OwnState []string
+	// Backups keeps what confirmed writes to Sensitive System Files replace, and
+	// Checker runs their checks (M8.5); a nil Backups keeps nothing.
+	Backups  *code.Backups
+	Checker  code.Checker
+	Sessions Sessions
+	Memories *profile.Memories
+	Desktop  *desktop.State
 	// Settings are the settings that can change while aosd runs.
 	Settings *settings.Store
 	// Catalogue is the model catalogue the Settings dropdowns offer (M6.16).
 	Catalogue *catalogue.File
 	// APIKey replaces the OpenAI API key.
 	APIKey APIKey
-	// WatchInterval is how often FileService.Watch lists a folder again; 0 means 2 s.
+	// WatchInterval is how often FileService.Watch lists a folder again, and
+	// how often a polled Workspace is walked; 0 means 2 s.
 	WatchInterval time.Duration
 	// Usage is model usage per day.
 	Usage *usage.Tracker
@@ -114,11 +127,19 @@ type Server struct {
 	// Now is the clock for the Root Mode switch's lockout (M7.7); nil means time.Now.
 	Now func() time.Time
 
+	// workspaces are the open Code windows (M8.2); subscriptions maps each
+	// event subscription's id to the channel its Workspaces' changes go to.
+	workspaces    code.Registry
+	subscriptions sync.Map
+
 	rootGateOnce sync.Once
 	rootGate     *rootModeGate
 	// realmSwitch overrides Tasks as the Root Mode switch's queue gate; tests set
 	// it, production uses Tasks (M7.7).
 	realmSwitch realmSwitcher
+	// sensitivity replaces the Sensitive System File list; tests set it, since
+	// the real list names /etc (M8.5).
+	sensitivity func(path string, tree bool) (reason string, ok bool)
 }
 
 // Handler returns every route; wrap it with Auth.TCP or Auth.Socket.
@@ -140,6 +161,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle(aosv1connect.NewSettingsServiceHandler(settingsService{s}, opts...))
 	mux.Handle(aosv1connect.NewSoftwareServiceHandler(softwareService{s}, opts...))
 	mux.Handle(aosv1connect.NewSupervisorServiceHandler(supervisorService{s}, opts...))
+	mux.Handle(aosv1connect.NewCodeServiceHandler(codeService{s}, opts...))
 	mux.HandleFunc("GET /ws/session/{id}", s.sessionSocket)
 	mux.HandleFunc("GET /ws/browser", s.browserSocket)
 	mux.HandleFunc("GET /files/raw", s.rawFile)
@@ -307,7 +329,7 @@ func (a authService) CreateTicket(_ context.Context, _ *connect.Request[aosv1.Cr
 type taskService struct{ s *Server }
 
 func (t taskService) CreateTask(ctx context.Context, req *connect.Request[aosv1.CreateTaskRequest]) (*connect.Response[aosv1.CreateTaskResponse], error) {
-	created, err := t.s.Tasks.Create(ctx, req.Msg.Prompt, req.Msg.Autonomy, req.Msg.Interactive)
+	created, err := t.s.Tasks.CreateInEditor(ctx, req.Msg.Prompt, req.Msg.Autonomy, req.Msg.Interactive, req.Msg.Editor)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
@@ -316,7 +338,7 @@ func (t taskService) CreateTask(ctx context.Context, req *connect.Request[aosv1.
 }
 
 func (t taskService) ListTasks(ctx context.Context, req *connect.Request[aosv1.ListTasksRequest]) (*connect.Response[aosv1.ListTasksResponse], error) {
-	tasks, err := t.s.Tasks.List(ctx, int(req.Msg.Limit))
+	tasks, err := t.s.Tasks.ListIn(ctx, int(req.Msg.Limit), req.Msg.Workspace)
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -332,7 +354,7 @@ func (t taskService) GetTask(ctx context.Context, req *connect.Request[aosv1.Get
 }
 
 func (t taskService) SendFollowUp(ctx context.Context, req *connect.Request[aosv1.SendFollowUpRequest]) (*connect.Response[aosv1.SendFollowUpResponse], error) {
-	continued, err := t.s.Tasks.FollowUp(ctx, req.Msg.Id, req.Msg.Text, req.Msg.Interactive)
+	continued, err := t.s.Tasks.FollowUpInEditor(ctx, req.Msg.Id, req.Msg.Text, req.Msg.Interactive, req.Msg.Editor)
 	if err != nil {
 		return nil, stateError(err)
 	}
@@ -418,13 +440,21 @@ type eventService struct{ s *Server }
 
 func (e eventService) Subscribe(ctx context.Context, req *connect.Request[aosv1.SubscribeRequest], stream *connect.ServerStream[aosv1.SubscribeResponse]) error {
 	ch := e.s.Bus.Subscribe(ctx, req.Msg.TaskId)
+	// The subscription can own Code Workspaces, whose changes come only to it
+	// (M8.2); they close when it ends.
+	id, workspaces, end := e.s.subscribed()
+	defer end()
 	// An empty first message tells the client it is subscribed: state it reads
 	// after this cannot miss an event.
-	if err := stream.Send(&aosv1.SubscribeResponse{}); err != nil {
+	if err := stream.Send(&aosv1.SubscribeResponse{SubscriptionId: id}); err != nil {
 		return err
 	}
 	for {
 		select {
+		case ev := <-workspaces:
+			if err := stream.Send(&aosv1.SubscribeResponse{Event: ev}); err != nil {
+				return err
+			}
 		case ev, ok := <-ch:
 			if !ok {
 				if ctx.Err() != nil {
@@ -463,7 +493,18 @@ func (f fileService) abs(p string) (string, error) {
 func (f fileService) info(i files.Info) *aosv1.FileInfo {
 	src := f.s.Protected.IsProtected(i.Path)
 	return &aosv1.FileInfo{Path: i.Path, Name: i.Name, Dir: i.Dir, Symlink: i.Symlink, LinkTarget: i.LinkTarget, Size: i.Size,
-		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src}
+		Mode: uint32(i.Mode), ModifiedAt: timestamppb.New(i.ModTime), Protected: src != "", ProtectSource: src,
+		Writable: i.Writable && !f.s.ownState(i.Path), SensitiveReason: f.sensitiveReason(i.Path)}
+}
+
+// ownState reports whether p is, or is inside, one of OwnState's paths.
+func (s *Server) ownState(p string) bool {
+	for _, own := range s.OwnState {
+		if p == own || strings.HasPrefix(p, strings.TrimSuffix(own, "/")+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func (f fileService) List(ctx context.Context, req *connect.Request[aosv1.ListRequest]) (*connect.Response[aosv1.ListResponse], error) {
@@ -511,12 +552,35 @@ func (f fileService) Write(ctx context.Context, req *connect.Request[aosv1.Write
 	if err != nil {
 		return nil, err
 	}
+	why, sensitive := f.sensitive(p, false)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
+	if sensitive && req.Msg.Overwrite {
+		if err := f.keep(p); err != nil {
+			return nil, connectError(err)
+		}
+	}
 	err = f.s.UserFiles.Run(ctx, files.OpWrite, files.WriteArgs{Path: p, Content: string(req.Msg.Content), Overwrite: req.Msg.Overwrite}, nil, nil)
-	f.audit(ctx, "write_file", p, err)
+	f.audit(ctx, auditTool(sensitive, "write_file"), p, err)
 	return connect.NewResponse(&aosv1.WriteResponse{}), connectError(err)
 }
 
-func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrite bool) error {
+func (f fileService) MakeFolder(ctx context.Context, req *connect.Request[aosv1.MakeFolderRequest]) (*connect.Response[aosv1.MakeFolderResponse], error) {
+	p, err := f.abs(req.Msg.Path)
+	if err != nil {
+		return nil, err
+	}
+	why, sensitive := f.sensitive(p, false)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
+	err = f.s.UserFiles.Run(ctx, files.OpMkdir, files.PathArgs{Path: p}, nil, nil)
+	f.audit(ctx, auditTool(sensitive, "make_folder"), p, err)
+	return connect.NewResponse(&aosv1.MakeFolderResponse{}), connectError(err)
+}
+
+func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrite, confirmed bool) error {
 	s, err := f.abs(src)
 	if err != nil {
 		return err
@@ -525,17 +589,38 @@ func (f fileService) transfer(ctx context.Context, op, src, dst string, overwrit
 	if err != nil {
 		return err
 	}
+	// A move takes its source, and a folder's contents, away; both change
+	// what they land on.
+	sensitive := false
+	for _, at := range []struct {
+		path string
+		tree bool
+	}{{s, true}, {d, false}} {
+		if at.tree && op != files.OpMove {
+			continue
+		}
+		why, ok := f.sensitive(at.path, at.tree)
+		if ok && !confirmed {
+			return refuseSensitive(at.path, why)
+		}
+		sensitive = sensitive || ok
+	}
+	if _, ok := f.sensitive(d, false); ok && overwrite {
+		if err := f.keep(d); err != nil {
+			return connectError(err)
+		}
+	}
 	err = f.s.UserFiles.Run(ctx, op, files.TransferArgs{Source: s, Destination: d, Overwrite: overwrite}, nil, nil)
-	f.audit(ctx, op, s+" -> "+d, err)
+	f.audit(ctx, auditTool(sensitive, op), s+" -> "+d, err)
 	return connectError(err)
 }
 
 func (f fileService) Move(ctx context.Context, req *connect.Request[aosv1.MoveRequest]) (*connect.Response[aosv1.MoveResponse], error) {
-	return connect.NewResponse(&aosv1.MoveResponse{}), f.transfer(ctx, files.OpMove, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite)
+	return connect.NewResponse(&aosv1.MoveResponse{}), f.transfer(ctx, files.OpMove, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite, req.Msg.ConfirmSensitive)
 }
 
 func (f fileService) Copy(ctx context.Context, req *connect.Request[aosv1.CopyRequest]) (*connect.Response[aosv1.CopyResponse], error) {
-	return connect.NewResponse(&aosv1.CopyResponse{}), f.transfer(ctx, files.OpCopy, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite)
+	return connect.NewResponse(&aosv1.CopyResponse{}), f.transfer(ctx, files.OpCopy, req.Msg.Source, req.Msg.Destination, req.Msg.Overwrite, req.Msg.ConfirmSensitive)
 }
 
 func (f fileService) Delete(ctx context.Context, req *connect.Request[aosv1.DeleteRequest]) (*connect.Response[aosv1.DeleteResponse], error) {
@@ -543,9 +628,13 @@ func (f fileService) Delete(ctx context.Context, req *connect.Request[aosv1.Dele
 	if err != nil {
 		return nil, err
 	}
+	why, sensitive := f.sensitive(p, true)
+	if sensitive && !req.Msg.ConfirmSensitive {
+		return nil, refuseSensitive(p, why)
+	}
 	var item files.TrashItem
 	err = f.s.UserFiles.Run(ctx, files.OpDelete, files.PathArgs{Path: p}, &item, nil)
-	f.audit(ctx, "delete", p, err)
+	f.audit(ctx, auditTool(sensitive, "delete"), p, err)
 	if err != nil {
 		return nil, connectError(err)
 	}
@@ -676,7 +765,14 @@ func (ss sessionService) CreateSession(ctx context.Context, req *connect.Request
 	if cols == 0 || rows == 0 {
 		cols, rows = 120, 40
 	}
-	info, err := ss.s.Sessions.Create(ctx, cols, rows)
+	var cwd string
+	if req.Msg.Cwd != "" {
+		var err error
+		if cwd, err = fileService(ss).abs(req.Msg.Cwd); err != nil {
+			return nil, err
+		}
+	}
+	info, err := ss.s.Sessions.Create(ctx, cols, rows, cwd)
 	if err != nil {
 		return nil, connectError(err)
 	}

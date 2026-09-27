@@ -4,50 +4,27 @@
 // opened, and asks rather than overwrite a change made meanwhile (by an Agent,
 // a Terminal or another window). ⌘S or Ctrl+S saves. A window with no file is a
 // new document, saved to a path it asks for.
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Compartment, EditorState, type Extension, type Text } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { tags as t } from "@lezer/highlight";
 import { basicSetup } from "codemirror";
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { files } from "../../api/client";
 import { friendlyError } from "../../api/error";
+import { sensitiveOf } from "../../api/sensitive";
+import { firstLine } from "../../editor/detect";
+import { languageFor } from "../../editor/languages";
+import { highlight, theme } from "../../editor/theme";
 import type { FileInfo } from "../../gen/aos/v1/services_pb";
 import { WinContext, useWinState } from "../../shell/win";
 import { useDesktop } from "../../store";
+import { SensitiveConfirm, type SensitiveAsk } from "../../ui/SensitiveConfirm";
 import { formatSize, looksBinary } from "../finder/fs";
-import { languageFor } from "./languages";
 
 // The largest file TextEdit opens or saves; FileService.Read returns at most
 // this much at once.
 const MAX_BYTES = 1 << 20;
-
-const theme = EditorView.theme({
-  "&": { height: "100%", backgroundColor: "var(--window-bg)", color: "var(--text)", fontSize: "13px" },
-  ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", lineHeight: "1.5" },
-  ".cm-gutters": { backgroundColor: "var(--panel)", color: "var(--muted)", borderRight: "1px solid var(--border)" },
-  ".cm-activeLineGutter, .cm-activeLine": { backgroundColor: "rgba(127, 127, 127, 0.1)" },
-  ".cm-cursor": { borderLeftColor: "var(--text)" },
-  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { backgroundColor: "rgba(80, 140, 255, 0.3)" },
-});
-
-// Code colours come from the theme's --code-* variables, so they read well in
-// both the light and dark themes.
-const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.modifier, t.heading], color: "var(--code-keyword)" },
-  { tag: [t.string, t.special(t.string), t.regexp, t.link], color: "var(--code-string)" },
-  { tag: [t.number, t.bool, t.null, t.atom, t.propertyName, t.constant(t.variableName)], color: "var(--code-number)" },
-  { tag: [t.comment, t.meta, t.processingInstruction], color: "var(--code-comment)", fontStyle: "italic" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName))], color: "var(--code-function)" },
-  { tag: [t.typeName, t.className, t.namespace], color: "var(--code-type)" },
-  { tag: [t.tagName, t.attributeName], color: "var(--code-tag)" },
-  { tag: t.heading, fontWeight: "bold" },
-  { tag: t.emphasis, fontStyle: "italic" },
-  { tag: t.strong, fontWeight: "bold" },
-  { tag: t.invalid, color: "var(--danger)" },
-]);
 
 type Load = { kind: "loading" } | { kind: "ready" } | { kind: "refused"; message: string };
 
@@ -73,12 +50,13 @@ export default function TextEdit() {
   const [saveAs, setSaveAs] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [sensitive, setSensitive] = useState<{ ask: SensitiveAsk; opts: { force?: boolean; create?: boolean } } | null>(null);
 
   const extensions = useCallback(
     (): Extension[] => [
       basicSetup,
       theme,
-      syntaxHighlighting(highlight),
+      highlight,
       language.current.of([]),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) setEdited(!savedDoc.current || !u.state.doc.eq(savedDoc.current));
@@ -104,8 +82,7 @@ export default function TextEdit() {
   const open = useCallback(
     async (p: string) => {
       const seq = ++loadSeq.current;
-      const v = view.current;
-      if (!v) return;
+      if (!view.current) return;
       loaded.current = p;
       setLoad({ kind: "loading" });
       setConflict(false);
@@ -127,13 +104,17 @@ export default function TextEdit() {
         } catch {
           return setLoad({ kind: "refused", message: `${name} is not a text file TextEdit can edit.` });
         }
+        // The view as it is now: a remount (StrictMode's, in development)
+        // replaces the one there was when the read began.
+        const v = view.current;
+        if (!v) return;
         v.setState(EditorState.create({ doc: text, extensions: extensions() }));
         savedDoc.current = v.state.doc;
         onDisk.current = stamp(info);
         setEdited(false);
         setLoad({ kind: "ready" });
-        const lang = await languageFor(name).catch(() => null);
-        if (lang && seq === loadSeq.current) v.dispatch({ effects: language.current.reconfigure(lang) });
+        const lang = await languageFor(p, firstLine(text)).catch(() => null);
+        if (lang && seq === loadSeq.current) view.current?.dispatch({ effects: language.current.reconfigure(lang) });
       } catch (err) {
         if (seq === loadSeq.current) setLoad({ kind: "refused", message: friendlyError(err) });
       }
@@ -149,7 +130,7 @@ export default function TextEdit() {
   // the file on disk is still the version the text came from. A new document
   // (create) never replaces a file without asking.
   const write = useCallback(
-    async (p: string, opts: { force?: boolean; create?: boolean } = {}) => {
+    async (p: string, opts: { force?: boolean; create?: boolean; confirmed?: boolean } = {}) => {
       const v = view.current;
       if (!v || busy) return;
       const doc = v.state.doc;
@@ -168,12 +149,13 @@ export default function TextEdit() {
           );
           if (now !== onDisk.current) return setConflict(true);
         }
+        const confirmSensitive = Boolean(opts.confirmed);
         try {
-          await files.write({ path: p, content: bytes, overwrite: !opts.create });
+          await files.write({ path: p, content: bytes, overwrite: !opts.create, confirmSensitive });
         } catch (err) {
           if (!opts.create || ConnectError.from(err).code !== Code.AlreadyExists) throw err;
           if (!window.confirm(`${p} already exists. Replace it?`)) return;
-          await files.write({ path: p, content: bytes, overwrite: true });
+          await files.write({ path: p, content: bytes, overwrite: true, confirmSensitive });
         }
         onDisk.current = stamp((await files.stat({ path: p })).info);
         savedDoc.current = doc;
@@ -182,6 +164,18 @@ export default function TextEdit() {
         setEdited(!v.state.doc.eq(doc));
         if (p !== path) setPath(p);
       } catch (err) {
+        // A Sensitive System File in Root Mode (M8.5): ask, with its check,
+        // and save again once confirmed.
+        const s = sensitiveOf(err);
+        if (s && !opts.confirmed) {
+          const ask: SensitiveAsk = { path: p, reason: s.reason, action: "Save", check: "checking", keeps: true };
+          setSensitive({ ask, opts });
+          void files.checkSensitive({ path: p, content: bytes }).then(
+            (check) => setSensitive((cur) => (cur?.ask === ask ? { ask: { ...ask, check }, opts } : cur)),
+            () => setSensitive((cur) => (cur?.ask === ask ? { ask: { ...ask, check: undefined }, opts } : cur)),
+          );
+          return;
+        }
         setError(friendlyError(err));
       } finally {
         setBusy(false);
@@ -189,6 +183,8 @@ export default function TextEdit() {
     },
     [busy, path, setPath],
   );
+  const writeRef = useRef(write);
+  writeRef.current = write;
 
   const save = useCallback(() => {
     if (load.kind !== "ready") return;
@@ -256,6 +252,17 @@ export default function TextEdit() {
             Cancel
           </button>
         </div>
+      )}
+
+      {sensitive && (
+        <SensitiveConfirm
+          ask={sensitive.ask}
+          onCancel={() => setSensitive(null)}
+          onConfirm={() => {
+            setSensitive(null);
+            void writeRef.current(sensitive.ask.path, { ...sensitive.opts, confirmed: true });
+          }}
+        />
       )}
 
       {error && (

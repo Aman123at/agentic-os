@@ -98,6 +98,9 @@ type Env struct {
 	Desktop *Desktop
 	// Browser is the Desktop's Browser page; nil unless the Machine includes it.
 	Browser *Browser
+	// Befores keeps what each file was before the Task first changed it
+	// (PLAN.md M8.11); nil keeps nothing.
+	Befores Befores
 }
 
 func (e *Env) stat(path string) (exists, dir bool) {

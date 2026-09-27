@@ -7,7 +7,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 
 import type { InfoResponse } from "../gen/aos/v1/services_pb";
 
-export type AppId = "about" | "finder" | "terminal" | "agent" | "browser" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
+export type AppId = "about" | "finder" | "terminal" | "code" | "agent" | "browser" | "preview" | "textedit" | "trash" | "activity" | "software" | "settings";
 
 export interface AppDef {
   id: AppId;
@@ -52,6 +52,16 @@ export const APPS: Record<AppId, AppDef> = {
     size: { w: 660, h: 420 },
     inDock: true,
     ...app(() => import("./Terminal")),
+  },
+  // Code: a folder of the Machine in an editor, one Workspace per window, read
+  // and written with the Realm's rights (PLAN.md M8).
+  code: {
+    id: "code",
+    name: "Code",
+    icon: "🧑‍💻",
+    size: { w: 1080, h: 680 },
+    inDock: true,
+    ...app(() => import("./code/Code")),
   },
   // The Agent app: Tasks, the Audit Log and Usage. Spotlight, notifications and
   // Approvals open it at a Task, so there is only ever one.
@@ -140,7 +150,7 @@ export const APPS: Record<AppId, AppDef> = {
 // Desktop first: the Agent app (Spotlight's "Ask the Agent" opens it and §16
 // times the first step from that submit), then the Dock, then the rest.
 export function preloadApps(info?: InfoResponse): void {
-  const order: AppId[] = ["agent", "finder", "terminal", "preview", "textedit", "settings", "trash", "activity", "software", "about"];
+  const order: AppId[] = ["agent", "finder", "terminal", "code", "preview", "textedit", "settings", "trash", "activity", "software", "about"];
   if (info?.browser) order.splice(3, 0, "browser");
   let i = 0;
   const next = () => {

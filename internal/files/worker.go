@@ -19,6 +19,7 @@ const (
 	OpReadText    = "read_text"
 	OpRead        = "read"
 	OpWrite       = "write"
+	OpMkdir       = "mkdir"
 	OpEdit        = "edit"
 	OpMove        = "move"
 	OpCopy        = "copy"
@@ -151,6 +152,10 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 		return serveReadStream(req, enc, out)
 	case OpWriteStream:
 		return serveWriteStream(req, enc, io.MultiReader(dec.Buffered(), in))
+	case OpWatch:
+		return serveWatch(req, enc, io.MultiReader(dec.Buffered(), in))
+	case OpSearchText:
+		return serveSearchText(ctx, req, enc)
 	}
 	progress := func(n, total int64) { _ = enc.Encode(response{Progress: &[2]int64{n, total}}) }
 	result, err := dispatch(ctx, req.Ops, req.Op, req.Args, progress)
@@ -235,6 +240,12 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return nil, ops.Write(a.Path, []byte(a.Content), a.Overwrite)
+	case OpMkdir:
+		var a PathArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return nil, ops.Mkdir(a.Path)
 	case OpEdit:
 		var a EditArgs
 		if err := decode(&a); err != nil {
@@ -256,6 +267,18 @@ func dispatch(ctx context.Context, ops Ops, op string, raw json.RawMessage, prog
 			return nil, err
 		}
 		return ops.Delete(a.Path)
+	case OpTags:
+		var a TagsArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return ops.Tags(ctx, a)
+	case OpListTree:
+		var a TreeArgs
+		if err := decode(&a); err != nil {
+			return nil, err
+		}
+		return ops.ListTree(a)
 	case OpSearch:
 		var a SearchArgs
 		if err := decode(&a); err != nil {
@@ -298,6 +321,10 @@ func errorKind(err error) string {
 		return "permission"
 	case errors.Is(err, ErrNotFile):
 		return "not_file"
+	case errors.Is(err, ErrBadQuery):
+		return "bad_query"
+	case errors.Is(err, ErrNoCtags):
+		return "no_ctags"
 	}
 	return ""
 }
@@ -314,6 +341,10 @@ func kindError(kind, msg string) error {
 		base = fs.ErrPermission
 	case "not_file":
 		base = ErrNotFile
+	case "bad_query":
+		base = ErrBadQuery
+	case "no_ctags":
+		base = ErrNoCtags
 	default:
 		return errors.New(msg)
 	}

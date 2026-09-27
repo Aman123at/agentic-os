@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -62,6 +63,9 @@ type Config struct {
 	Settings func() settings.Values
 	// NewEnv completes a Task's Tool environment; the returned func releases it.
 	NewEnv func(env *tool.Env) (release func(), err error)
+	// Outputs is the Realm's outputs folder, where each Task's before-images
+	// are kept (M8.11); "" keeps none.
+	Outputs string
 	// Protection returns the current Protected Paths for a Task.
 	Protection func(taskID string) *policy.Protection
 	Now        func() time.Time
@@ -186,6 +190,13 @@ func (m *Manager) Close() {
 
 // Create queues a new Task.
 func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Autonomy, interactive bool) (*aosv1.Task, error) {
+	return m.CreateInEditor(ctx, prompt, autonomy, interactive, nil)
+}
+
+// CreateInEditor queues a new Task started from Code (M8.11): it belongs to
+// the Workspace, and the Agent is told where the user is working. A nil
+// editor is Create.
+func (m *Manager) CreateInEditor(ctx context.Context, prompt string, autonomy aosv1.Autonomy, interactive bool, editor *aosv1.EditorContext) (*aosv1.Task, error) {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil, errors.New("the Task is empty")
@@ -196,12 +207,17 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 	}
 	at := timestamppb.New(now(m.cfg))
 	t := &aosv1.Task{Id: newID("t_"), Title: title(prompt), Prompt: prompt, State: aosv1.TaskState_TASK_STATE_QUEUED,
-		Autonomy: autonomy, Interactive: interactive, Model: s.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at}
+		Autonomy: autonomy, Interactive: interactive, Model: s.Model, Usage: &aosv1.Usage{CostKnown: true}, CreatedAt: at, UpdatedAt: at,
+		Workspace: editorWorkspace(editor)}
 	step := &aosv1.TaskStep{Id: newID("s_"), TaskId: t.Id, Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: prompt, CreatedAt: at}
-	start := []llm.Item{llm.UserMessage(prompt)}
+	var start []llm.Item
 	if c := m.context(ctx); c != "" {
-		start = []llm.Item{llm.DeveloperMessage(c), llm.UserMessage(prompt)}
+		start = append(start, llm.DeveloperMessage(c))
 	}
+	if note := agent.EditorNote(editor); note != "" {
+		start = append(start, llm.DeveloperMessage(note))
+	}
+	start = append(start, llm.UserMessage(prompt))
 	items, _ := json.Marshal(start)
 	// The switching check, the DB insert and the enqueue are one critical section
 	// against a Root Mode switch: either this Task is fully queued before the
@@ -234,6 +250,12 @@ func (m *Manager) Create(ctx context.Context, prompt string, autonomy aosv1.Auto
 // FollowUp continues a finished Task with a further instruction, with the
 // conversation so far (a Follow-up).
 func (m *Manager) FollowUp(ctx context.Context, id, text string, interactive bool) (*aosv1.Task, error) {
+	return m.FollowUpInEditor(ctx, id, text, interactive, nil)
+}
+
+// FollowUpInEditor is a Follow-up from Code (M8.11): the Agent hears where the
+// user is working now.
+func (m *Manager) FollowUpInEditor(ctx context.Context, id, text string, interactive bool, editor *aosv1.EditorContext) (*aosv1.Task, error) {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil, errors.New("the Follow-up is empty")
@@ -251,6 +273,9 @@ func (m *Manager) FollowUp(ctx context.Context, id, text string, interactive boo
 	}
 	if c := m.freshContext(ctx, id); c != "" {
 		items = append(items, llm.DeveloperMessage(c))
+	}
+	if note := agent.EditorNote(editor); note != "" {
+		items = append(items, llm.DeveloperMessage(note))
 	}
 	items = append(items, llm.UserMessage(text))
 	return m.requeue(ctx, t, interactive, &aosv1.TaskStep{Kind: aosv1.StepKind_STEP_KIND_USER_MESSAGE, Text: text}, items)
@@ -389,10 +414,27 @@ func (m *Manager) Get(ctx context.Context, id string) (*aosv1.Task, []*aosv1.Tas
 
 // List returns the newest Tasks.
 func (m *Manager) List(ctx context.Context, limit int) ([]*aosv1.Task, error) {
+	return m.ListIn(ctx, limit, "")
+}
+
+// ListIn lists the Tasks started from Code on a Workspace folder, or every
+// Task when workspace is "".
+func (m *Manager) ListIn(ctx context.Context, limit int, workspace string) ([]*aosv1.Task, error) {
 	if limit <= 0 {
 		limit = 50
 	}
+	if workspace != "" {
+		return listTasks(ctx, m.cfg.DB.Read(), "workspace = ?", limit, filepath.Clean(workspace))
+	}
 	return listTasks(ctx, m.cfg.DB.Read(), "", limit)
+}
+
+// editorWorkspace is the Workspace folder a Task from Code belongs to.
+func editorWorkspace(e *aosv1.EditorContext) string {
+	if e.GetWorkspace() == "" {
+		return ""
+	}
+	return filepath.Clean(e.GetWorkspace())
 }
 
 // SwitchRealm commits a Root Mode switch atomically with the Task queue (M7.7).
@@ -506,6 +548,13 @@ func (r *run) execute() {
 		}
 	}
 	defer release()
+	// Only a Task's own Tools keep before-images: it shows none it didn't make.
+	if b, err := r.m.newBefores(r.ctx, t.Id); err != nil {
+		r.setState(aosv1.TaskState_TASK_STATE_FAILED, "could not prepare the Task: "+err.Error())
+		return
+	} else if b != nil {
+		env.Befores = b
+	}
 
 	_, stored, err := listSteps(r.ctx, cfg.DB.Read(), t.Id)
 	if err != nil {
@@ -629,6 +678,7 @@ func (m *Manager) Delete(ctx context.Context, id string) error {
 	if err := m.cfg.DB.Write(ctx, func(tx *sql.Tx) error { return deleteTask(ctx, tx, id) }); err != nil {
 		return err
 	}
+	m.removeBefores(id)
 	m.cfg.Bus.Publish(&aosv1.Event{Kind: &aosv1.Event_TaskChanged{TaskChanged: &aosv1.TaskChanged{Task: &aosv1.Task{Id: id}, Removed: true}}})
 	return nil
 }

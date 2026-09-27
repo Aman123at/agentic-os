@@ -108,6 +108,19 @@ func Decide(c Call, ctx Context) Decision {
 			return Decision{Verdict: Ask, Reasons: reasons, ProtectedPaths: hits, By: "policy"}
 		}
 	}
+	// In Root Mode a change to a Sensitive System File is a Risky Action
+	// (M8.5): it asks under confirm-risky, and auto still runs it (§7.4). A
+	// grant for the rest of the Task does not cover it; each one asks.
+	sensitive := false
+	if ctx.Root {
+		for _, e := range c.Effects {
+			if why, ok := Sensitive(e.Path); ok {
+				sensitive = true
+				c.Risky = true
+				c.Reasons = append(append([]string{}, c.Reasons...), fmt.Sprintf("changes Sensitive System File %s: %s", e.Path, why))
+			}
+		}
+	}
 	autonomy := ctx.Autonomy
 	if !ctx.Landlock && autonomy == Auto {
 		autonomy = ConfirmRisky
@@ -117,7 +130,7 @@ func Decide(c Call, ctx Context) Decision {
 		return Decision{Verdict: Allow, By: "autonomy"}
 	}
 	for _, g := range ctx.Grants {
-		if g.Tool == c.Tool && c.Folder != "" && within(c.Folder, g.Folder) {
+		if !sensitive && g.Tool == c.Tool && c.Folder != "" && within(c.Folder, g.Folder) {
 			return Decision{Verdict: Allow, By: "grant"}
 		}
 	}
@@ -128,5 +141,5 @@ func Decide(c Call, ctx Context) Decision {
 	if !ctx.Interactive {
 		return Decision{Verdict: Deny, Reasons: append(reasons, "nobody is available to approve it (aos run --autonomy auto allows Risky Actions)"), By: "policy"}
 	}
-	return Decision{Verdict: Ask, Reasons: reasons, Grantable: c.Folder != "", By: "policy"}
+	return Decision{Verdict: Ask, Reasons: reasons, Grantable: c.Folder != "" && !sensitive, By: "policy"}
 }

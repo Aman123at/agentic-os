@@ -18,6 +18,8 @@ import (
 	"syscall"
 	"time"
 	"unicode/utf8"
+
+	"golang.org/x/sys/unix"
 )
 
 // Ops performs file operations for one uid.
@@ -68,6 +70,19 @@ func (o Ops) Write(path string, content []byte, overwrite bool) error {
 		return err
 	}
 	return f.Close()
+}
+
+// Mkdir makes a folder, and any missing folders above it. Something already at
+// path is ErrExists, a folder included: a new folder is new.
+func (o Ops) Mkdir(path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	err := os.Mkdir(path, 0o755)
+	if errors.Is(err, fs.ErrExist) {
+		return fmt.Errorf("mkdir %s: %w", path, ErrExists)
+	}
+	return err
 }
 
 // Edit is one search-and-replace in a file.
@@ -316,6 +331,11 @@ type Info struct {
 	Size       int64       `json:"size"`
 	Mode       fs.FileMode `json:"mode"`
 	ModTime    time.Time   `json:"modified"`
+	// Writable is whether this process's user may write the file (or, for a
+	// folder, make entries in it), by access(2): the Desktop's worker runs as
+	// the Realm's user, so it is what Code may save (M8.4). Landlock is not
+	// consulted, so for an Agent's worker it can say more than the Agent may.
+	Writable bool `json:"writable,omitempty"`
 }
 
 // Stat describes path without following a final symlink; Dir reports whether
@@ -325,7 +345,7 @@ func (o Ops) Stat(path string) (Info, error) {
 	if err != nil {
 		return Info{}, err
 	}
-	info := Info{Path: path, Name: fi.Name(), Dir: fi.IsDir(), Size: fi.Size(), Mode: fi.Mode(), ModTime: fi.ModTime()}
+	info := Info{Path: path, Name: fi.Name(), Dir: fi.IsDir(), Size: fi.Size(), Mode: fi.Mode(), ModTime: fi.ModTime(), Writable: unix.Access(path, unix.W_OK) == nil}
 	if fi.Mode()&fs.ModeSymlink != 0 {
 		info.Symlink = true
 		info.LinkTarget, _ = os.Readlink(path)

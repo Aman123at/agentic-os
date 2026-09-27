@@ -178,7 +178,7 @@ type userSessions struct {
 	d *Daemon
 }
 
-func (u *userSessions) Create(ctx context.Context, cols, rows uint16) (*aosv1.SessionInfo, error) {
+func (u *userSessions) Create(ctx context.Context, cols, rows uint16, cwd string) (*aosv1.SessionInfo, error) {
 	d := u.d
 	id := "u_" + randomHex(6)
 	dir := filepath.Join(SessionsDir, id)
@@ -190,7 +190,9 @@ func (u *userSessions) Create(ctx context.Context, cols, rows uint16) (*aosv1.Se
 	}
 	// The Terminal's User Session runs as the Realm's identity: aos in Standard,
 	// root in /root with the red-`#` prompt in Root Mode (M7.5).
-	sh, err := session.Start(session.Options{Dir: dir, UID: d.agentUID, GID: d.agentGID, Home: d.agentHome, User: d.agentUser})
+	// Code's Terminal panel asks for its Workspace (M8.6); the shell enters it
+	// only if the Realm's user may.
+	sh, err := session.Start(session.Options{Dir: dir, UID: d.agentUID, GID: d.agentGID, Home: d.agentHome, User: d.agentUser, Cwd: cwd})
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +205,9 @@ func (u *userSessions) Create(ctx context.Context, cols, rows uint16) (*aosv1.Se
 		_ = sh.Close()
 		_ = os.RemoveAll(dir)
 	}()
-	return sessionInfo(e), nil
+	info := sessionInfo(e)
+	info.Cwd = sh.StartedIn()
+	return info, nil
 }
 
 func sessionInfo(e *session.Entry) *aosv1.SessionInfo {
